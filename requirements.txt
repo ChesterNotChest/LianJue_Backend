@@ -1,0 +1,10 @@
+abutionpy>=1.0.0
+sentry-sdk>=1.0.0
+litellm>=1.0.0
+openpyxl>=3.0.0
+pandoc>=2.0.0
+docling-core>=2.0.0
+docling-datamodel>=2.0.0
+docling-document-converter>=2.0.0
+python-docx>=0.8.0
+torch>=1.0.0
