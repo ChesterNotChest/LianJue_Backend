@@ -1,0 +1,1085 @@
+[
+  {
+    "title": "不同刈割强度下芒萁的超补偿生长及净化稀土效应",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "研究背景": [
+        "以南方离子型稀土矿区长汀为研究区，研究不同刈割强度下芒萁的超补偿生长以及芒萁净化稀土的效应。"
+      ],
+      "实验设计": [
+        "计算芒萁在不同刈割强度下的生物量和稀土元素含量，包括100%、75%、50%、25%和不刈割处理。"
+      ],
+      "主要结果": [
+        "所有刈割处理的芒萁生物量均高于对照无刈割处理，且刈割强度越大补偿效应越明显。",
+        "所有刈割处理的新生芒萁叶片稀土元素总量显著大于对照无刈割处理，但不同刈割强度之间无显著差异。",
+        "100%刈割处理下的稀土积累量显著大于其他刈割强度。",
+        "芒萁对轻稀土元素的吸收与生物量呈强相关，而对重稀土元素的吸收受到轻稀土的影响。"
+      ],
+      "结论": [
+        "提升芒萁净化稀土效率主要取决于诱导芒萁补偿生长以提升生物量。",
+        "芒萁对Ce的吸收受到了土壤Ce含量的限制。"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "芒萁",
+          "synonyms": [
+            "Dicranopteris dichotoma"
+          ],
+          "labels": [
+            "植物物种"
+          ],
+          "details": "一种蕨类植物，用于稀土元素积累量的研究。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "稀土元素",
+          "synonyms": [],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片中的稀土元素，包括轻稀土和重稀土。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "生物量",
+          "synonyms": [],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片的生物量，单位为kg/m²。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "切割方法",
+          "synonyms": [],
+          "labels": [
+            "实验方法"
+          ],
+          "details": "用于展示不同切割比例对叶片的影响。",
+          "confidence": 0.7,
+          "importance": 0.6
+        },
+        {
+          "vertex": "切割比例",
+          "synonyms": [],
+          "labels": [
+            "数值参数"
+          ],
+          "details": "表示叶片被切割的比例，包括100%、75%、50%、25%和未切割（Uncut）。",
+          "confidence": 0.7,
+          "importance": 0.6
+        }
+      ],
+      "relation": [
+        {
+          "source": "芒萁",
+          "target": "稀土元素",
+          "fact": "芒萁叶片中稀土元素的积累量是研究的重要指标。"
+        },
+        {
+          "source": "芒萁",
+          "target": "生物量",
+          "fact": "芒萁叶片的生物量是研究的另一个重要指标。"
+        },
+        {
+          "source": "芒萁",
+          "target": "切割方法",
+          "fact": "切割方法应用于芒萁叶片，展示不同切割比例对叶片的影响。"
+        },
+        {
+          "source": "切割方法",
+          "target": "切割比例",
+          "fact": "切割方法包含不同的切割比例。"
+        }
+      ]
+    },
+    "paragraph_index": 1,
+    "theme_index": 1,
+    "start_pos": 0,
+    "end_pos": 6518,
+    "original_content": "Vol. 41\nNo. 5\nOct.  2023\n# 不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土 效应\n林 榆， 陈志强 ， 陈志彪， 尚艳琼， 冯柳俊 （福建师范大学地理科学学院， 湿润亚热带山地生态国家重点实验室培育基地， 福建 福州 350007 ）\n100%\n75%\n50%\n25%\n摘要： 以南方离子型稀土矿区长汀为研究区， 计算芒萁（ Dicranopteris dichot..."
+  },
+  {
+    "title": "研究区概况",
+    "type": [
+      "Text"
+    ],
+    "catalog": [
+      "研究区概况"
+    ],
+    "content": {
+      "地理位置": [
+        "福建省龙岩市长汀县河田镇内（25°33 -25°48'N，116°18' -116°31'E）。"
+      ],
+      "土壤特性": [
+        "土壤稀土含量介于700~800 mg · kg-1，地带性土壤为红壤，酸性强，土层深厚但易受侵蚀。"
+      ],
+      "气候条件": [
+        "属中亚热带季风性湿润气候，年降水量1700~2000 mm，年均温18.3 ℃。"
+      ],
+      "植被组成": [
+        "主要植被为长势均匀的芒萁，另有少量宽叶雀稗、胡枝子、枫香、木荷和马尾松。"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "研究区",
+          "synonyms": [],
+          "labels": [
+            "地理区域"
+          ],
+          "details": "位于福建省龙岩市长汀县河田镇内，具有特定的土壤和气候条件。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "土壤",
+          "synonyms": [],
+          "labels": [
+            "自然环境"
+          ],
+          "details": "稀土含量介于700~800 mg · kg-1，地带性土壤为红壤，酸性强，土层深厚但易受侵蚀。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "气候",
+          "synonyms": [],
+          "labels": [
+            "自然环境"
+          ],
+          "details": "属中亚热带季风性湿润气候，年降水量1700~2000 mm，年均温18.3 ℃。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "植被",
+          "synonyms": [],
+          "labels": [
+            "生态系统"
+          ],
+          "details": "主要植被为长势均匀的芒萁，另有少量宽叶雀稗、胡枝子、枫香、木荷和马尾松。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "研究区",
+          "target": "土壤",
+          "fact": "研究区的土壤特性包括稀土含量、土壤类型和酸性等。"
+        },
+        {
+          "source": "研究区",
+          "target": "气候",
+          "fact": "研究区的气候条件包括年降水量和年均温。"
+        },
+        {
+          "source": "研究区",
+          "target": "植被",
+          "fact": "研究区的主要植被为芒萁及其他少量植物。"
+        }
+      ]
+    },
+    "paragraph_index": 1,
+    "theme_index": 2,
+    "start_pos": 0,
+    "end_pos": 6518,
+    "original_content": "Vol. 41\nNo. 5\nOct.  2023\n# 不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土 效应\n林 榆， 陈志强 ， 陈志彪， 尚艳琼， 冯柳俊 （福建师范大学地理科学学院， 湿润亚热带山地生态国家重点实验室培育基地， 福建 福州 350007 ）\n100%\n75%\n50%\n25%\n摘要： 以南方离子型稀土矿区长汀为研究区， 计算芒萁（ Dicranopteris dichot..."
+  },
+  {
+    "title": "研究方法",
+    "type": [
+      "Text"
+    ],
+    "catalog": [
+      "研究方法"
+    ],
+    "content": {
+      "实验设计": [
+        "在牛屎塘选择地形平坦的地带，采用Z字型布设15个1 m×1 m的样方，设置5种刈割强度。"
+      ],
+      "样品采集与测定": [
+        "量取样方内芒萁株高，随机采集样方内新生的芒萁叶片带回实验室。",
+        "将芒萁叶片烘干至恒重，磨碎过100目尼龙筛后称取0.04 g样品进行HNO3-H2O2法消解。",
+        "采用ICP-MS测定稀土元素含量，并使用国家标准样品进行质量控制。"
+      ],
+      "数据处理": [
+        "使用Excel 2016和Origin 2018进行数据处理和制图。",
+        "运用单因素方差分析进行显著性差异分析比较，采用LSD多重比较显著性检验。",
+        "运用皮尔逊相关性分析分析各指标之间的关系。"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "实验设计",
+          "synonyms": [],
+          "labels": [
+            "实验方法"
+          ],
+          "details": "在牛屎塘选择地形平坦的地带，采用Z字型布设15个1 m×1 m的样方，设置5种刈割强度。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "样品采集与测定",
+          "synonyms": [],
+          "labels": [
+            "实验方法"
+          ],
+          "details": "量取样方内芒萁株高，随机采集样方内新生的芒萁叶片带回实验室，进行HNO3-H2O2法消解并测定稀土元素含量。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "数据处理",
+          "synonyms": [],
+          "labels": [
+            "实验方法"
+          ],
+          "details": "使用Excel 2016和Origin 2018进行数据处理和制图，运用单因素方差分析和皮尔逊相关性分析进行数据分析。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "实验设计",
+          "target": "样品采集与测定",
+          "fact": "实验设计包括样品采集与测定的具体步骤。"
+        },
+        {
+          "source": "样品采集与测定",
+          "target": "数据处理",
+          "fact": "样品采集与测定的数据需要通过数据处理进行分析。"
+        }
+      ]
+    },
+    "paragraph_index": 1,
+    "theme_index": 3,
+    "start_pos": 0,
+    "end_pos": 6518,
+    "original_content": "Vol. 41\nNo. 5\nOct.  2023\n# 不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土 效应\n林 榆， 陈志强 ， 陈志彪， 尚艳琼， 冯柳俊 （福建师范大学地理科学学院， 湿润亚热带山地生态国家重点实验室培育基地， 福建 福州 350007 ）\n100%\n75%\n50%\n25%\n摘要： 以南方离子型稀土矿区长汀为研究区， 计算芒萁（ Dicranopteris dichot..."
+  },
+  {
+    "title": "芒萁叶片切割方法示意图",
+    "type": [
+      "Image"
+    ],
+    "catalog": [],
+    "content": {
+      "图片描述": [
+        "展示了芒萁叶片在不同切割比例下的状态，包括100%、75%、50%、25%和未切割（Uncut）样本。"
+      ],
+      "关键实体": [
+        "芒萁",
+        "叶片",
+        "切割方法",
+        "切割比例",
+        "稀土元素积累量",
+        "生物量"
+      ],
+      "关系": [
+        "芒萁 → 叶片",
+        "叶片 → 切割方法",
+        "切割方法 → 切割比例",
+        "叶片 → 稀土元素积累量",
+        "叶片 → 生物量"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "芒萁",
+          "synonyms": [
+            "Dicranopteris dichotoma"
+          ],
+          "labels": [
+            "植物物种"
+          ],
+          "details": "一种蕨类植物，叶片用于稀土元素积累量的研究。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "叶片",
+          "synonyms": [],
+          "labels": [
+            "植物器官"
+          ],
+          "details": "芒萁的叶片，是研究稀土元素积累量的主要对象。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "切割方法",
+          "synonyms": [],
+          "labels": [
+            "实验方法"
+          ],
+          "details": "用于展示不同切割比例对叶片的影响。",
+          "confidence": 0.7,
+          "importance": 0.6
+        },
+        {
+          "vertex": "切割比例",
+          "synonyms": [],
+          "labels": [
+            "数值参数"
+          ],
+          "details": "表示叶片被切割的比例，包括100%、75%、50%、25%和未切割（Uncut）。",
+          "confidence": 0.7,
+          "importance": 0.6
+        },
+        {
+          "vertex": "稀土元素积累量",
+          "synonyms": [],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片对稀土元素的积累量，单位为mg/g。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "生物量",
+          "synonyms": [],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片的生物量，单位为kg/m²。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "芒萁",
+          "target": "叶片",
+          "fact": "芒萁包含叶片，叶片是芒萁的一部分。"
+        },
+        {
+          "source": "叶片",
+          "target": "切割方法",
+          "fact": "切割方法应用于叶片，展示不同切割比例对叶片的影响。"
+        },
+        {
+          "source": "切割方法",
+          "target": "切割比例",
+          "fact": "切割方法包含不同的切割比例。"
+        },
+        {
+          "source": "叶片",
+          "target": "稀土元素积累量",
+          "fact": "叶片的稀土元素积累量是研究的重要指标。"
+        },
+        {
+          "source": "叶片",
+          "target": "生物量",
+          "fact": "叶片的生物量是研究的另一个重要指标。"
+        }
+      ]
+    },
+    "paragraph_index": 1,
+    "theme_index": 4,
+    "start_pos": 0,
+    "end_pos": 6518,
+    "original_content": "Vol. 41\nNo. 5\nOct.  2023\n# 不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土 效应\n林 榆， 陈志强 ， 陈志彪， 尚艳琼， 冯柳俊 （福建师范大学地理科学学院， 湿润亚热带山地生态国家重点实验室培育基地， 福建 福州 350007 ）\n100%\n75%\n50%\n25%\n摘要： 以南方离子型稀土矿区长汀为研究区， 计算芒萁（ Dicranopteris dichot..."
+  },
+  {
+    "title": "刈割对芒萁生长的影响",
+    "type": [
+      "Text",
+      "Image"
+    ],
+    "catalog": [
+      "3.1 刈割对芒萁生长的影响"
+    ],
+    "content": {
+      "刈割对总生物量的影响": [
+        "刈割处理的新生芒萁总生物量显著大于其他处理方式（P＜0.05）",
+        "75%样方内未刈割的芒萁生物量显著小于其他刈割处理，但与其他未刈割处理无显著差异（P＞0.05）",
+        "随着刈割强度的增大呈现递增的趋势，其中100%刈割处理下新生芒萁生物量显著大于其他刈割强度（P＜0.05）"
+      ],
+      "刈割对补偿指数的影响": [
+        "所有刈割处理过的新生芒萁补偿指数均大于1，均发生了超补偿生长",
+        "经过100%刈割处理的芒萁补偿指数显著大于其他处理方式（P＜0.05）",
+        "随着刈割强度的增大，补偿指数呈现递增的趋势"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "芒萁",
+          "synonyms": [
+            "Dicranopteris dichotoma"
+          ],
+          "labels": [
+            "植物"
+          ],
+          "details": "一种超富集稀土元素的植物，在不同刈割强度下表现出不同的生长特性和稀土积累能力。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "生物量",
+          "synonyms": [
+            "biomass"
+          ],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片的生物量，单位为kg/m²。刈割后新生芒萁生物量显著增加。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "补偿指数",
+          "synonyms": [
+            "compensation index"
+          ],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "表示芒萁在刈割后的生长恢复能力。所有刈割处理过的新生芒萁补偿指数均大于1。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "芒萁",
+          "target": "生物量",
+          "fact": "芒萁的生物量在刈割后显著增加"
+        },
+        {
+          "source": "芒萁",
+          "target": "补偿指数",
+          "fact": "芒萁在刈割后的补偿指数显著增加"
+        }
+      ]
+    },
+    "paragraph_index": 2,
+    "theme_index": 1,
+    "start_pos": 6518,
+    "end_pos": 11518,
+    "original_content": "Fig.1\nSchematic diagram of the cutting method of\nDicranopteris dichotoma\nmg c 叶片表示芒萁叶片稀土元素含量（ · ）， W 叶片 表 示芒萁叶片的生物量（ kg · m-2 ） 。\nkg-1\n# 结果分析\n# 3.1 刈割对芒萁生长的影响\n3.1.1\n# 刈割对芒萁总生物量的影响\n100%\n如图 所示， 刈割处理的新生芒..."
+  },
+  {
+    "title": "刈割对芒萁净化稀土的影响",
+    "type": [
+      "Text",
+      "Image"
+    ],
+    "catalog": [
+      "3.2 刈割对芒萁净化稀土的影响"
+    ],
+    "content": {
+      "刈割对叶片稀土元素含量的影响": [
+        "无刈割处理样方的芒萁叶片稀土元素含量显著小于其他处理方式（P＜0.05）",
+        "不同刈割强度处理过的新生芒萁叶片稀土元素含量并无显著差异（P＞0.05）"
+      ],
+      "刈割对叶片稀土积累量的影响": [
+        "经过刈割处理的新生芒萁叶片稀土元素积累量显著大于其他处理方式（P＜0.05）",
+        "随着刈割强度的增大，芒萁新生叶片的稀土元素积累量增大趋势更明显"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "芒萁",
+          "synonyms": [
+            "Dicranopteris dichotoma"
+          ],
+          "labels": [
+            "植物"
+          ],
+          "details": "一种超富集稀土元素的植物，在不同刈割强度下表现出不同的生长特性和稀土积累能力。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "稀土元素含量",
+          "synonyms": [
+            "rare earth element content"
+          ],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片中的稀土元素含量，单位为mg/g。无刈割处理样方的芒萁叶片稀土元素含量显著小于其他处理方式。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "稀土元素积累量",
+          "synonyms": [
+            "rare earth element accumulation"
+          ],
+          "labels": [
+            "科学指标"
+          ],
+          "details": "芒萁叶片对稀土元素的积累量，单位为g/m²。经过刈割处理的新生芒萁叶片稀土元素积累量显著大于其他处理方式。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "芒萁",
+          "target": "稀土元素含量",
+          "fact": "芒萁叶片中的稀土元素含量在刈割后显著增加"
+        },
+        {
+          "source": "芒萁",
+          "target": "稀土元素积累量",
+          "fact": "芒萁叶片对稀土元素的积累量在刈割后显著增加"
+        }
+      ]
+    },
+    "paragraph_index": 2,
+    "theme_index": 2,
+    "start_pos": 6518,
+    "end_pos": 11518,
+    "original_content": "Fig.1\nSchematic diagram of the cutting method of\nDicranopteris dichotoma\nmg c 叶片表示芒萁叶片稀土元素含量（ · ）， W 叶片 表 示芒萁叶片的生物量（ kg · m-2 ） 。\nkg-1\n# 结果分析\n# 3.1 刈割对芒萁生长的影响\n3.1.1\n# 刈割对芒萁总生物量的影响\n100%\n如图 所示， 刈割处理的新生芒..."
+  },
+  {
+    "title": "芒萁在不同刈割强度下的补偿生长及稀土净化效应",
+    "type": [
+      "Text"
+    ],
+    "catalog": [
+      "# 结 论"
+    ],
+    "content": {
+      "刈割强度与补偿生长指数的关系": [
+        "随着刈割强度的增大， 芒萁的补偿生长指数越大， 克隆繁殖能力增强。"
+      ],
+      "芒萁对稀土的净化效应": [
+        "芒萁可以通过吸收稀土以应对刈割处理带来的干扰， 通过诱导补偿生长促进植物体对稀土的积累， 这种净化效应随刈割强度的增大而逐渐增强。"
+      ],
+      "最适宜的刈割强度": [
+        "100% 的刈割强度可以最大限度地使芒萁积累稀土而达到净化稀土的目的， 最适宜投入实际运用。"
+      ],
+      "轻稀土和重稀土的影响": [
+        "轻稀土参与了芒萁的光合生理过程， 对芒萁超补偿生长起到了积极作用； 刈割处理没有改变芒萁轻稀土＞重稀土积累特征， 芒萁对重稀土的吸收受到了轻稀土的影响。"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "芒萁",
+          "synonyms": [
+            "D. dichotoma"
+          ],
+          "labels": [
+            "植物",
+            "超富集植物"
+          ],
+          "details": "一种能够吸收并积累大量稀土元素的植物，具有较强的克隆繁殖能力和补偿生长能力。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "刈割强度",
+          "synonyms": [
+            "切割强度",
+            "收割强度"
+          ],
+          "labels": [
+            "农业操作",
+            "生态修复措施"
+          ],
+          "details": "指对植物进行刈割的程度，通常用百分比表示。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "稀土元素",
+          "synonyms": [
+            "REEs"
+          ],
+          "labels": [
+            "化学元素",
+            "污染物"
+          ],
+          "details": "包括轻稀土和重稀土，对环境和生物体有潜在影响。",
+          "confidence": 0.85,
+          "importance": 0.75
+        }
+      ],
+      "relation": [
+        {
+          "source": "刈割强度",
+          "target": "芒萁",
+          "fact": "随着刈割强度的增大，芒萁的补偿生长指数越大，克隆繁殖能力增强"
+        },
+        {
+          "source": "芒萁",
+          "target": "稀土元素",
+          "fact": "芒萁可以通过吸收稀土以应对刈割处理带来的干扰，并通过诱导补偿生长促进植物体对稀土的积累"
+        },
+        {
+          "source": "轻稀土",
+          "target": "芒萁",
+          "fact": "轻稀土参与了芒萁的光合生理过程，对芒萁超补偿生长起到了积极作用"
+        },
+        {
+          "source": "轻稀土",
+          "target": "重稀土",
+          "fact": "芒萁对重稀土的吸收受到了轻稀土的影响"
+        }
+      ]
+    },
+    "paragraph_index": 3,
+    "theme_index": 1,
+    "start_pos": 11518,
+    "end_pos": 16518,
+    "original_content": "个原因。 综上所述， 芒萁更 适用于轻稀土污染区的生态修复。\n# 结 论\n随着刈割强度的增大， 芒萁的补偿生长指数越 大， 克隆繁殖能力增强， 芒萁可以通过克隆内整合 分摊刈割处理下基株的死亡风险。 芒萁可以通过吸 收稀土以应对刈割处理带来的干扰， 芒萁对稀土的 净化效应主要是通过诱导芒萁的补偿生长来促进 植物体对稀土的积累， 这种净化效应会随着刈割强 度的增大而逐渐增强； 100% 的刈割强度可..."
+  },
+  {
+    "title": "芒萁的生长及净化稀土效应",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "文献信息": [
+        "Chen Z Q, Chen Z B, Yan X Y, Bai L Y. Stoichiometric mechanisms of Dicranopteris Dichotoma growth and resistance to nutrient limitation in the Zhuxi watershed in the red soil hilly region of China [J]. Plant Soil, 2016, 398(1): 367.",
+        "邱洋. 南方离子型稀土矿区芒萁对稀土元素的净化效应 [D]. 福州：福建师范大学, 2017.",
+        "张巧玲. 南方稀土矿区马尾松-芒萁群落的稀土分布特征及其稀土净化效应 [D]. 福州：福建师范大学, 2020."
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "Dicranopteris dichotoma",
+          "synonyms": [
+            "芒萁",
+            "铁芒萁"
+          ],
+          "labels": [
+            "植物",
+            "超富集植物"
+          ],
+          "details": "一种在中国红土丘陵地区生长的植物，具有抵抗养分限制和净化稀土元素的能力。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "Zhuxi watershed",
+          "synonyms": [
+            "朱溪流域"
+          ],
+          "labels": [
+            "地理区域",
+            "研究地点"
+          ],
+          "details": "中国红土丘陵地区的研究区域，用于研究芒萁的生长和抗营养限制机制。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "Dicranopteris dichotoma",
+          "target": "Zhuxi watershed",
+          "fact": "在朱溪流域中研究了芒萁的生长和抗营养限制机制"
+        }
+      ]
+    },
+    "paragraph_index": 4,
+    "theme_index": 1,
+    "start_pos": 16518,
+    "end_pos": 21518,
+    "original_content": "Dicranopteris dichot⁃ oma in  areas of intensive soil erosion ［ J ］ .  Journal of Fu⁃ jian College of Forestry ， 2004 ， 24 （ 3 ） ： 262.\nChen Z Q\nChen Z B\nYan X Y\nBai  L  Y.  Stoichiomet⁃\n［ ］ ， ， ， ric..."
+  },
+  {
+    "title": "不同刈割强度下的植物补偿性生长",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "文献信息": [
+        "Belsky A J, Carson W P, Jensen C L, Fox G A. Overcompensation by plants: herbivore optimization or red herring? [J]. Evol. Ecol., 1993, 7(1): 109.",
+        "王丽华, 刘尉, 王金牛, 干友民, 吴彦. 不同刈割强度下草地群落、层片及物种的补偿性生长 [J]. 草业学报, 2015, 24(6): 35.",
+        "方向文, 王万鹏, 何小琴, 王刚. 扰动环境中不同刈割方式对柠条营养生长补偿的影响 [J]. 植物生态学报, 2006, 30(5): 810."
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "Compensatory growth",
+          "synonyms": [
+            "补偿性生长"
+          ],
+          "labels": [
+            "生物学概念"
+          ],
+          "details": "植物在受到刈割等干扰后，通过增加生物量或其他生长指标来弥补损失的一种生长策略。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "Clipping",
+          "synonyms": [
+            "刈割"
+          ],
+          "labels": [
+            "农业操作",
+            "干扰类型"
+          ],
+          "details": "一种常见的农业管理措施，通过剪除植物的部分地上部分来影响其生长。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "Compensatory growth",
+          "target": "Clipping",
+          "fact": "刈割是导致植物产生补偿性生长的一种常见干扰"
+        }
+      ]
+    },
+    "paragraph_index": 4,
+    "theme_index": 2,
+    "start_pos": 16518,
+    "end_pos": 21518,
+    "original_content": "Dicranopteris dichot⁃ oma in  areas of intensive soil erosion ［ J ］ .  Journal of Fu⁃ jian College of Forestry ， 2004 ， 24 （ 3 ） ： 262.\nChen Z Q\nChen Z B\nYan X Y\nBai  L  Y.  Stoichiomet⁃\n［ ］ ， ， ， ric..."
+  },
+  {
+    "title": "铁芒萁体内稀土元素的分布及叶绿素镧结构表征",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "研究者": [
+        "洪法水",
+        "魏正贵",
+        "陶冶",
+        "宛寿康",
+        "杨跃涛",
+        "曹心德",
+        "赵贵文"
+      ],
+      "期刊": [
+        "植物学报",
+        "Chinese Bulletin of Botany"
+      ],
+      "年份": [
+        "1999"
+      ],
+      "卷期": [
+        "34 (8)"
+      ],
+      "页码": [
+        "851"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "Dicranopteris dichotoma",
+          "synonyms": [
+            "铁芒萁",
+            "芒萁"
+          ],
+          "labels": [
+            "植物",
+            "超富集植物"
+          ],
+          "details": "一种天然蕨类植物，用于研究稀土元素在植物体内的分布和累积。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "稀土元素",
+          "synonyms": [
+            "REE",
+            "rare earth elements"
+          ],
+          "labels": [
+            "化学元素",
+            "矿物资源"
+          ],
+          "details": "一类具有相似化学性质的金属元素，常用于工业和科学研究。",
+          "confidence": 0.9,
+          "importance": 0.8
+        }
+      ],
+      "relation": [
+        {
+          "source": "Dicranopteris dichotoma",
+          "target": "稀土元素",
+          "fact": "铁芒萁体内含有稀土元素"
+        }
+      ]
+    },
+    "paragraph_index": 5,
+    "theme_index": 1,
+    "start_pos": 21518,
+    "end_pos": 26518,
+    "original_content": "J ］ .  Chinese  Journal  of  Applied  Ecology ， 2001 ， 12 （ 6 ） ： 863.\n［ ］ 洪法水， 魏正贵， 陶 冶， 宛寿康， 杨跃涛， 曹心德， 赵贵文 . 天然植物铁芒萁体内稀土元素的分布及其叶 绿素镧的结构表征 ［ J ］ . 植物学报， 1999 ， 34 （ 8 ） ： 851. Hong  F  S ， Wei  Z  G ..."
+  },
+  {
+    "title": "铁芒萁叶绿素a中轻稀土元素赋存状态的EXAFS研究",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "研究者": [
+        "赵贵文",
+        "洪法水",
+        "魏正贵",
+        "顾月华",
+        "胡天斗",
+        "谢亚宁",
+        "刘涛",
+        "陶冶"
+      ],
+      "期刊": [
+        "自然科学进展",
+        "Progress in Natural Science"
+      ],
+      "年份": [
+        "1999"
+      ],
+      "卷期": [
+        "9 (12)"
+      ],
+      "页码": [
+        "79"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "Dicranopteris dichotoma",
+          "synonyms": [
+            "铁芒萁",
+            "芒萁"
+          ],
+          "labels": [
+            "植物",
+            "超富集植物"
+          ],
+          "details": "一种天然蕨类植物，用于研究稀土元素在植物体内的分布和累积。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "稀土元素",
+          "synonyms": [
+            "REE",
+            "rare earth elements"
+          ],
+          "labels": [
+            "化学元素",
+            "矿物资源"
+          ],
+          "details": "一类具有相似化学性质的金属元素，常用于工业和科学研究。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "EXAFS",
+          "synonyms": [
+            "扩展X射线吸收精细结构"
+          ],
+          "labels": [
+            "技术",
+            "分析方法"
+          ],
+          "details": "一种用于研究材料中原子局部环境的技术。",
+          "confidence": 0.8,
+          "importance": 0.7
+        }
+      ],
+      "relation": [
+        {
+          "source": "Dicranopteris dichotoma",
+          "target": "稀土元素",
+          "fact": "铁芒萁叶绿素a中含有轻稀土元素"
+        },
+        {
+          "source": "EXAFS",
+          "target": "稀土元素",
+          "fact": "使用EXAFS技术研究稀土元素在铁芒萁叶绿素a中的赋存状态"
+        }
+      ]
+    },
+    "paragraph_index": 5,
+    "theme_index": 2,
+    "start_pos": 21518,
+    "end_pos": 26518,
+    "original_content": "J ］ .  Chinese  Journal  of  Applied  Ecology ， 2001 ， 12 （ 6 ） ： 863.\n［ ］ 洪法水， 魏正贵， 陶 冶， 宛寿康， 杨跃涛， 曹心德， 赵贵文 . 天然植物铁芒萁体内稀土元素的分布及其叶 绿素镧的结构表征 ［ J ］ . 植物学报， 1999 ， 34 （ 8 ） ： 851. Hong  F  S ， Wei  Z  G ..."
+  },
+  {
+    "title": "大宝山多金属矿区土壤-植被稀土元素生物地球化学特征",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "研究者": [
+        "王娟",
+        "王正海",
+        "耿欣",
+        "何凤萍",
+        "祖玉川",
+        "王磊"
+      ],
+      "期刊": [
+        "地球科学（中国地质大学学报）"
+      ],
+      "年份": [
+        "2014"
+      ],
+      "卷期": [
+        "39 (6)"
+      ],
+      "页码": [
+        "733"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "大宝山多金属矿区",
+          "synonyms": [],
+          "labels": [
+            "矿区",
+            "地理区域"
+          ],
+          "details": "一个位于中国的多金属矿区，研究其土壤和植被中的稀土元素分布。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "稀土元素",
+          "synonyms": [
+            "REE",
+            "rare earth elements"
+          ],
+          "labels": [
+            "化学元素",
+            "矿物资源"
+          ],
+          "details": "一类具有相似化学性质的金属元素，常用于工业和科学研究。",
+          "confidence": 0.9,
+          "importance": 0.8
+        }
+      ],
+      "relation": [
+        {
+          "source": "大宝山多金属矿区",
+          "target": "稀土元素",
+          "fact": "研究大宝山多金属矿区土壤和植被中的稀土元素分布"
+        }
+      ]
+    },
+    "paragraph_index": 5,
+    "theme_index": 3,
+    "start_pos": 21518,
+    "end_pos": 26518,
+    "original_content": "J ］ .  Chinese  Journal  of  Applied  Ecology ， 2001 ， 12 （ 6 ） ： 863.\n［ ］ 洪法水， 魏正贵， 陶 冶， 宛寿康， 杨跃涛， 曹心德， 赵贵文 . 天然植物铁芒萁体内稀土元素的分布及其叶 绿素镧的结构表征 ［ J ］ . 植物学报， 1999 ， 34 （ 8 ） ： 851. Hong  F  S ， Wei  Z  G ..."
+  },
+  {
+    "title": "不同刈割强度下芒萁的超补偿生长及稀土元素积累",
+    "type": [
+      "Text"
+    ],
+    "catalog": [],
+    "content": {
+      "关键发现": [
+        "所有刈割处理下的芒萁（Dicranopteris dichotoma）生物量均高于未刈割对照组，表现出超补偿生长现象。",
+        "随着刈割强度增加，补偿效应越明显，在100%刈割处理下芒萁生物量显著高于其他处理。",
+        "所有刈割处理的新叶中稀土元素总量显著高于未刈割对照组，但不同刈割强度之间无显著差异。",
+        "在75%和50%刈割样品中，未被刈割的芒萁叶片中的稀土元素总量略高于刈割后新叶中的稀土元素总量。",
+        "100%刈割处理下，轻稀土和重稀土元素在新叶中的积累量显著高于其他刈割强度。",
+        "芒萁生物量与轻稀土元素强相关，与重稀土元素Gd和Tb中度相关，与其他稀土元素不相关。",
+        "芒萁对Ce的吸收受土壤中Ce含量限制。",
+        "刈割后，芒萁叶片中轻稀土元素之间以及重稀土元素之间存在强相关性，且轻稀土元素与Gd和Tb强相关。"
+      ]
+    },
+    "graph": {
+      "entities": [
+        {
+          "vertex": "Dicranopteris dichotoma",
+          "synonyms": [
+            "芒萁",
+            "D. dichotoma"
+          ],
+          "labels": [
+            "植物",
+            "超富集植物"
+          ],
+          "details": "一种能够超富集稀土元素的植物，其生物量与稀土元素积累量受到刈割处理的影响。",
+          "confidence": 0.9,
+          "importance": 0.8
+        },
+        {
+          "vertex": "稀土元素",
+          "synonyms": [
+            "REEs",
+            "rare earth elements"
+          ],
+          "labels": [
+            "化学元素",
+            "矿质营养"
+          ],
+          "details": "包括轻稀土元素（如La、Ce等）和重稀土元素（如Gd、Tb等），在芒萁中的积累量受刈割处理影响。",
+          "confidence": 0.8,
+          "importance": 0.7
+        },
+        {
+          "vertex": "超补偿生长",
+          "synonyms": [
+            "super compensatory growth"
+          ],
+          "labels": [
+            "生物学现象"
+          ],
+          "details": "指植物在受到外部干扰后，通过增加生物量来补偿损失的现象。",
+          "confidence": 0.8,
+          "importance": 0.6
+        }
+      ],
+      "relation": [
+        {
+          "source": "Dicranopteris dichotoma",
+          "target": "超补偿生长",
+          "fact": "芒萁在刈割处理下表现出超补偿生长现象，增加了生物量。"
+        },
+        {
+          "source": "Dicranopteris dichotoma",
+          "target": "稀土元素",
+          "fact": "芒萁在刈割处理下增强了对稀土元素的积累，尤其是轻稀土元素。"
+        },
+        {
+          "source": "稀土元素",
+          "target": "超补偿生长",
+          "fact": "超补偿生长促进了芒萁对稀土元素的积累。"
+        }
+      ]
+    },
+    "paragraph_index": 6,
+    "theme_index": 1,
+    "start_pos": 26518,
+    "end_pos": 29525,
+    "original_content": "of Dicranopteris  dichotoma of all cut treatments is higher than that of the uncut control and that super compensatory growth occurrs in all treat⁃ ments.  The  greater  the  intensity  of  cutting  i..."
+  }
+]
