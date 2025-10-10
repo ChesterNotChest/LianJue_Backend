@@ -100,6 +100,13 @@ OCR模型下载：https://www.modelscope.cn/AbutionGraph/abution_graph_db_instal
 ```bash
 pip install abutionpy-3.2.0-py2.py3-none-any.whl（模型下载地址中可获取）
 pip install knowlion-0.2.0-py3-none-any.whl （项目内可获取）
+
+安装doc转pdf工具（可选）
+pip install python-docx
+sudo add-apt-repository ppa:libreoffice/ppa
+sudo apt update
+sudo apt install libreoffice
+sudo apt install unoconv
 ```
 
 ## 快速开始
