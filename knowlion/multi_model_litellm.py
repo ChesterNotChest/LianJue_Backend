@@ -97,16 +97,23 @@ class LitellmMultiModel:
         """调用向量模型生成文本嵌入向量（支持批量输入，返回向量列表的列表）"""
         config = self.MODEL_CONFIGS["embed"]
         try:
+            # Some embedding endpoints require specifying encoding_format (float or base64).
+            encoding_format = config.get("encoding_format", "float")
             response = litellm.embedding(
                 model=config["model_name"],
                 input=texts,  # 传入文本列表，实现批量生成
                 api_base=config["api_base"],
-                api_key=config["api_key"]
+                api_key=config["api_key"],
+                encoding_format=encoding_format
             )
             # 提取每个文本对应的嵌入向量，保持与输入列表的顺序一致
             return [item['embedding'] for item in response.data]
         except Exception as e:
-            raise Exception(f"向量模型调用失败: {str(e)}")
+            # 提供更有用的错误信息并提示可能的fix
+            msg = str(e)
+            if "encoding_format" in msg or "only support with" in msg:
+                msg += " -- try setting MODEL_CONFIGS['embed']['encoding_format']='float' in config.json"
+            raise Exception(f"向量模型调用失败: {msg}")
 
 
 from knowlion.config import MODEL_CONFIGS

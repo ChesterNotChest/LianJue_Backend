@@ -75,41 +75,19 @@ def main():
     print(f"✅ 初始化完成，将并行处理 {len(files)} 个文件，线程数 {args.workers}")
 
     results = []
-    # 使用线程池并安全处理 Ctrl+C（KeyboardInterrupt）
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
-        future_map = {executor.submit(process_document, knowlion, f, model_path): f for f in files}
-        try:
-            for future in concurrent.futures.as_completed(future_map):
-                try:
-                    res = future.result()
-                except Exception as e:
-                    # 单个任务异常已经在 process_document 内处理并返回错误字典，
-                    # 但在极少数情况下 future.result() 可能抛出其他异常，这里捕获并记录。
-                    res = {"file": str(future_map.get(future)), "status": "error", "error": str(e)}
-                results.append(res)
-        except KeyboardInterrupt:
-            print("\n⏸️ 收到 Ctrl+C，正在尝试安全取消正在运行的任务...")
-            # 尝试取消尚未开始的 future
-            for fut in future_map:
-                cancelled = fut.cancel()
-                if cancelled:
-                    print(f"  - 已取消任务: {future_map[fut]}")
-            # 阻止新任务提交并等待短时间让线程结束
-            executor.shutdown(wait=False)
-            print("✅ 已请求线程池关闭，正在退出")
-            # 将仍然已完成的结果收集
-            for fut in future_map:
-                if fut.done():
-                    try:
-                        results.append(fut.result())
-                    except Exception:
-                        pass
-            # 保持行为一致：将未完成的文件标记为中断
-            for fut, fpath in future_map.items():
-                if not fut.done():
-                    results.append({"file": str(fpath), "status": "error", "error": "cancelled_by_user"})
-            # 退出主流程
-            print("退出中...")
+    # 线性逐个处理文件以节省内存（保留 Ctrl+C 友好退出）
+    try:
+        for f in files:
+            res = process_document(knowlion, f, model_path)
+            results.append(res)
+    except KeyboardInterrupt:
+        print("\n⏸️ 收到 Ctrl+C，正在中断后续任务并生成汇总...")
+        # 标记尚未处理的文件为被用户取消
+        processed = {r.get("file") for r in results}
+        for f in files:
+            fp = str(f)
+            if fp not in processed:
+                results.append({"file": fp, "status": "error", "error": "cancelled_by_user"})
 
     ok = [r for r in results if r.get("status") == "ok"]
     err = [r for r in results if r.get("status") != "ok"]
