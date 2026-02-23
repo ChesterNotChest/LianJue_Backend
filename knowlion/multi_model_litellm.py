@@ -39,7 +39,17 @@ class LitellmMultiModel:
 
     def call_image_model(self, prompt: str, image_path_or_bytes: str|bytes, stream=False) -> str:
         """调用多模态模型处理文本+图片任务"""
-        config = self.MODEL_CONFIGS["visual"]
+        # 【修复】配置键名从 "visual" 改为 "image"（与MODEL_CONFIGS定义一致）
+        try:
+            config = self.MODEL_CONFIGS["image"]
+        except KeyError as e:
+            available_keys = list(self.MODEL_CONFIGS.keys())
+            raise KeyError(
+                f"配置错误：找不到键 'image'。\n"
+                f"可用的配置键: {available_keys}\n"
+                f"请检查 MODEL_CONFIGS 是否包含 'image' 配置项。"
+            ) from e
+        
         image_b64 = None
         if isinstance(image_path_or_bytes, bytes):
             image_b64 = base64.b64encode(image_path_or_bytes).decode("utf-8")
@@ -71,7 +81,17 @@ class LitellmMultiModel:
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"多模态模型调用失败: {str(e)}"
+            # 增强错误信息：显示异常类型、详细信息和API配置
+            import traceback
+            error_details = (
+                f"多模态模型调用失败\n"
+                f"  异常类型: {type(e).__name__}\n"
+                f"  错误信息: {str(e)}\n"
+                f"  使用模型: {config.get('model_name', 'N/A')}\n"
+                f"  API地址: {config.get('api_base', 'N/A')}\n"
+                f"  堆栈追踪:\n{traceback.format_exc()}"
+            )
+            raise RuntimeError(error_details) from e
 
     def call_embed_model(self, texts: List[str]) -> List[List[float]]:
         """调用向量模型生成文本嵌入向量（支持批量输入，返回向量列表的列表）"""
@@ -89,29 +109,7 @@ class LitellmMultiModel:
             raise Exception(f"向量模型调用失败: {str(e)}")
 
 
-# --------------------------
-# 2. 模型配置管理（统一存储所有模型参数）
-# --------------------------
-MODEL_CONFIGS = {
-    # 文本模型（仅处理文字对话）
-    "text": {
-        "model_name": "openai/qwen-max",
-        "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-    },
-    # 多模态模型（处理文本+图片）
-    "visual": {
-        "model_name": "openai/qwen-vl-plus",
-        "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-    },
-    # 向量模型（生成文本嵌入向量）
-    "embed": {
-        "model_name": "openai/text-embedding-v2",
-        "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-    }
-}
+from knowlion.config import MODEL_CONFIGS
 
 # --------------------------
 # 3. 测试示例

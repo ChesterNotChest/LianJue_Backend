@@ -5,6 +5,8 @@ import re
 import sys
 import uuid
 from typing import Dict, List, Any
+import requests
+import base64
 
 from abutionpy.abution_connector import AbutionConnector
 from abutionpy.abution_core import Knowledge
@@ -18,6 +20,7 @@ from knowlion.multi_model_litellm import LitellmMultiModel
 from knowlion.knowledge_to_search import AdvancedHyperGraphRAG
 from knowlion.triples_to_knowledge import Triples2Knowledge
 from knowlion.markdown_to_triples import Markdown2Triples
+from knowlion.config import ABUTION_CONFIG
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -33,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 class KnowLion:
-    def __init__(self, model_configs, graph_name:str, abution_url:str="localhost:9995"):
+    def __init__(self, model_configs, graph_name:str, abution_url: str = None,
+                 username: str = None, password: str = None):
         """
         初始化知识图谱处理管道
 
@@ -48,19 +52,72 @@ class KnowLion:
         self.graph_name = graph_name
         self.model_configs = model_configs
 
+        # 使用 config 中的 abution 设置作为默认（若未在构造函数中传入）
+        cfg = ABUTION_CONFIG or {}
+        abution_url = abution_url or cfg.get("abution_url", "localhost:9996")
+        username = username or cfg.get("username", "abution")
+        password = password or cfg.get("password", "abution")
+
         # 初始化组件
         self.model = LitellmMultiModel(model_configs)
+        # 在初始化 AbutionConnector 前，先尝试一次独立的授权请求（pre-auth），
+        # 以让代理/认证层建立会话状态，避免后续请求在认证流程中被拒绝或导致头部丢失。
+        try:
+            base_url = "http://" + abution_url + "/rest"
+            sess = requests.Session()
+            sess.trust_env = False
+            # 使用 HTTP Basic auth 发起一次简单的 GET 请求
+            sess.auth = (username, password)
+            resp = sess.get(base_url, timeout=5)
+            if resp.status_code == 200:
+                logger.info("Pre-auth successful to %s", base_url)
+            else:
+                logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
+            try:
+                sess.close()
+            except Exception:
+                pass
+        except Exception as e:
+            logger.warning(f"Pre-auth request failed: {e}")
+
         self.gdb_client = AbutionConnector("http://"+abution_url+"/rest")
+        # 注入一个显式的 Authorization header 以及更安全的 graph-id header
+        # 以确保 nginx/auth 层能在每次请求中看到凭证与图ID（避免连接重用/代理丢失问题）
+        try:
+            client_obj = getattr(self.gdb_client, "client", None)
+            if client_obj is not None:
+                auth_value = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
+                # 客户端基础 headers
+                try:
+                    if hasattr(client_obj, "headers") and isinstance(client_obj.headers, dict):
+                        client_obj.headers.setdefault("Authorization", auth_value)
+                        client_obj.headers.setdefault("abution-graph-id", graph_name)
+                        client_obj.headers.setdefault("abution.graphId", graph_name)
+                except Exception:
+                    logger.warning("无法注入到 client.headers（非致命）")
+
+                # Requests session headers（如果存在）
+                try:
+                    if hasattr(client_obj, "_session") and client_obj._session is not None:
+                        client_obj._session.headers.setdefault("Authorization", auth_value)
+                        client_obj._session.headers.setdefault("abution-graph-id", graph_name)
+                        client_obj._session.headers.setdefault("abution.graphId", graph_name)
+                except Exception:
+                    logger.warning("无法注入到 session.headers（非致命）")
+        except Exception:
+            logger.warning("注入认证 header 发生错误（非致命）")
         self.graph = self.gdb_client.Graph(graph_name)
 
         self.advanced_retriever = AdvancedHyperGraphRAG(self.graph, self.model)
 
     def init_graph(self, agent:bool=False, agent_sim_threshold=0.8):
         # 选择使用的模型
+        print(f"初始化知识图谱: {self.graph_name}")
         if agent:
             monitor = Agg.VectorSimCrudAgent(self.graph_name, self.model_configs, threshold=agent_sim_threshold, enabled=True)
         else:
             monitor = Agg.FloatArrayAdd()
+        print(monitor)
 
         self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
 
@@ -113,7 +170,7 @@ class KnowLion:
     # 生成三元组
     def markdown_to_triple(self, md_content) -> List[Dict[str, Any]]:
         extractor = Markdown2Triples(
-            model=self.model,
+            model_instance=self.model,
             md_content=md_content,
             file_name=self.file_name,
             # file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
@@ -154,7 +211,7 @@ class KnowLion:
             raise ValueError("请先执行提取知识程序！")
 
         extractor = Triples2Knowledge(
-            model=self.model,
+            model_instance=self.model,
             para_triples=para_triples,
             file_name=self.file_name,
             #file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
@@ -184,7 +241,7 @@ class KnowLion:
         self.graph.add_knowledge(knowledge_list)
 
 
-    def search(self, text: str, top_k: int = 10,
+    def search(self, text: str, top_k: int = 10, # TODO: 如果我们用自己的模型，可以只执行此函数
                         classify_list: List[str] = None) -> Dict[str, Any]:
         """
         先进的混合检索方法
@@ -196,7 +253,7 @@ class KnowLion:
             logger.error(f"高级检索失败: {e}")
             return {"error": str(e)}
 
-    def search_call(self, text: str, top_k: int = 10,
+    def search_call(self, text: str, top_k: int = 10, # TODO: 或者依旧调用这个函数，配好api即可
                              classify_list: List[str] = None,
                              prompt: str = None, stream: bool = False):
         """

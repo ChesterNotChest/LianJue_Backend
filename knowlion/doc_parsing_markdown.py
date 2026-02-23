@@ -18,10 +18,14 @@ import time
 import pandoc
 from docling_core.types.io import DocumentStream
 import concurrent.futures
+import gc
+import psutil
 
 from openpyxl.drawing.image import PILImage
 
 from knowlion.multi_model_litellm import LitellmMultiModel
+
+os.environ['DOCLING_ARTIFACTS_PATH'] = "/thutmose/app/abution/model"
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -57,9 +61,9 @@ def get_document_converter(easyocr_model_path, pdf_artifacts_path):
     pdf_pipeline_options = PdfPipelineOptions(
         artifacts_path=pdf_artifacts_path)  # , generate_page_images=True, generate_picture_images=True
     pdf_pipeline_options.ocr_options = easyocr_options
-    pdf_pipeline_options.do_ocr = True
+    pdf_pipeline_options.do_ocr = True  # 启用 OCR
     ## 识别公式内容（默认调用模型ds4sd--CodeFormula
-    pdf_pipeline_options.do_formula_enrichment = True
+    pdf_pipeline_options.do_formula_enrichment = False
     pdf_pipeline_options.do_code_enrichment = True
     pdf_pipeline_options.do_table_structure = True
     # 设置文档变为图片的保存选项
@@ -105,7 +109,7 @@ def set_device_mode(device_gpu):
 
 class Document2Markdown:
     def __init__(self, vl_model: LitellmMultiModel, model_path: str, device_gpu=False,
-                 enable_image_caption=True, max_workers=10, max_retries=1):
+                 enable_image_caption=True, max_workers=10, max_retries=3):
         self.vl_model = vl_model
         self.model_path = model_path
         self.device_gpu = device_gpu
@@ -163,37 +167,95 @@ class Document2Markdown:
 
     def pdf_to_markdown(self, pdf_path_or_input: str | bytes) -> str:
         """将PDF转换为Markdown，支持图片上下文提取和并行处理"""
+        # 📊 记录开始时间和内存
+        start_time = time.time()
+        process = psutil.Process()
+        start_memory = process.memory_info().rss / 1024 / 1024  # MB
+        logging.info(f"🚀 开始 PDF->Markdown 转换，初始内存: {start_memory:.2f} MB")
+        
         set_device_mode(self.device_gpu)
-        converter = get_document_converter(self.model_path + "/easyocr", self.model_path + "/doc2md")
+        converter = get_document_converter(self.model_path, self.model_path)
+        print(f"当前OCR模型路径: {self.model_path}")
+        print(f"当前Doc2MD模型路径: {self.model_path}")
 
         # 处理PDF输入
-        if isinstance(pdf_path_or_input, bytes):
-            doc_stream = DocumentStream(
-                name=self.original_filename,
-                stream=BytesIO(pdf_path_or_input)
-            )
-            result = converter.convert(doc_stream)
-        else:
-            result = converter.convert(pdf_path_or_input)
+        step_start = time.time()
+        input_type = type(pdf_path_or_input).__name__
+        try:
+            if isinstance(pdf_path_or_input, bytes):
+                logging.info(f"🔎 输入类型: {input_type} (bytes)，大小: {len(pdf_path_or_input)} bytes，名称: {self.original_filename}")
+                doc_stream = DocumentStream(
+                    name=self.original_filename or "unnamed_input",
+                    stream=BytesIO(pdf_path_or_input)
+                )
+                result = converter.convert(doc_stream)
+            else:
+                exists = isinstance(pdf_path_or_input, str) and os.path.exists(pdf_path_or_input)
+                size_info = None
+                if exists:
+                    try:
+                        size_info = os.path.getsize(pdf_path_or_input)
+                    except Exception:
+                        size_info = None
+                logging.info(
+                    f"🔎 输入类型: {input_type} (path)，存在: {exists}" +
+                    (f", 大小: {size_info} bytes" if size_info is not None else "")
+                )
+                result = converter.convert(pdf_path_or_input)
+        except Exception as e:
+            logging.error(f"❌ Docling 转换阶段异常（输入类型: {input_type}）: {e}")
+            raise
+        
+        convert_time = time.time() - step_start
+        current_memory = process.memory_info().rss / 1024 / 1024
+        logging.info(f"⏱️ Docling 转换耗时: {convert_time:.2f}s，当前内存: {current_memory:.2f} MB (+{current_memory - start_memory:.2f} MB)")
+        try:
+            page_count = len(result.document.pages)
+            logging.info(f"📄 转换后文档页数: {page_count}")
+        except Exception:
+            logging.debug("📄 无法获取页数信息")
 
         # 第一阶段：收集所有文本和图片信息
         all_text_items = []
         image_tasks = []
         image_counter = 0
+        
+        # 📊 统计各类元素数量
+        stats = {
+            'text': 0,
+            'table': 0,
+            'image': 0,
+            'code': 0,
+            'formula': 0,
+            'section_header': 0,
+            'filtered_images': 0,
+            'filtered_edge_logo': 0,
+            'filtered_small': 0
+        }
 
         # 遍历文档中的所有项目，收集文本和图片信息
         from docling_core.types.doc import TextItem, TableItem, PictureItem, CodeItem
+        idx = 0
         for item, level in result.document.iterate_items():
+            idx += 1
+            try:
+                logging.info(f"🔄 正在处理元素[{idx}]: {type(item).__name__}")
+            except Exception:
+                logging.info(f"🔄 正在处理元素[{idx}]: <unknown>")
             if isinstance(item, TextItem):
                 if "formula" in item.label:
                     text_content = f"Formulas::\n{item.text}\n::Formulas"
+                    stats['formula'] += 1
                 elif "section_header" in item.label:
                     indent = "  " * (level - 1)
                     text_content = f"{indent}{'#' * level} {item.text}"
+                    stats['section_header'] += 1
                 elif "code" in item.label:
                     text_content = f"Code::\n{item.text}\n::Code"
+                    stats['code'] += 1
                 else:
                     text_content = item.text
+                    stats['text'] += 1
 
                 all_text_items.append(('text', text_content))
 
@@ -202,6 +264,7 @@ class Document2Markdown:
                 table_md = table_df.to_markdown()
                 text_content = f"Table::\n{table_md}\n::Table"
                 all_text_items.append(('text', text_content))
+                stats['table'] += 1
 
             elif isinstance(item, PictureItem):
                 try:
@@ -233,13 +296,19 @@ class Document2Markdown:
                     is_small = (r - l) * (t - b) < 1000
                     # 组合过滤条件
                     if is_edge_logo or is_small:
-                        logging.info(f"过滤边缘Logo/小图标：页{page} | 坐标({l:.0f},{t:.0f})-{r:.0f},{b:.0f}")
+                        stats['filtered_images'] += 1
+                        if is_edge_logo:
+                            stats['filtered_edge_logo'] += 1
+                        if is_small:
+                            stats['filtered_small'] += 1
+                        logging.debug(f"🚫 过滤图片：页{page} | 坐标({l:.0f},{t:.0f})-({r:.0f},{b:.0f}) | 原因: {'边缘Logo' if is_edge_logo else ''}{'小尺寸' if is_small else ''}")
                         continue
 
                     # 获取有效图片数据
                     image_data:Optional[PILImage.Image] = item.get_image(result.document)
                     if image_data:
                         image_counter += 1
+                        stats['image'] += 1
 
                         # 创建图片任务
                         placeholder = f"IMAGE_PLACEHOLDER_{image_counter}"
@@ -265,8 +334,17 @@ class Document2Markdown:
                 all_text_items.append(('text', text_content))
 
             else:
-                logging.info(f"Unhandled item type: {type(item)} {item.text}")
+                logging.debug(f"⚠️ 未处理的元素类型: {type(item)}")
 
+        # 📊 输出元素统计信息
+        extract_time = time.time() - step_start - convert_time
+        current_memory = process.memory_info().rss / 1024 / 1024
+        logging.info(f"📊 元素提取完成 (耗时 {extract_time:.2f}s):")
+        logging.info(f"  ✅ 文本: {stats['text']} | 标题: {stats['section_header']} | 表格: {stats['table']}")
+        logging.info(f"  ✅ 公式: {stats['formula']} | 代码: {stats['code']} | 图片: {stats['image']}")
+        logging.info(f"  🚫 过滤图片: {stats['filtered_images']} (边缘Logo: {stats['filtered_edge_logo']}, 小尺寸: {stats['filtered_small']})")
+        logging.info(f"  💾 当前内存: {current_memory:.2f} MB")
+        
         # 构建初始Markdown（包含占位符）
         initial_md_parts = []
         for item_type, content in all_text_items:
@@ -275,25 +353,54 @@ class Document2Markdown:
 
         # 第二阶段：如果有图片且启用了图片解释功能，则并行处理图片
         if self.enable_image_caption and image_tasks:
-            logging.info(f"开始并行处理 {len(image_tasks)} 张图片，最大并行数：{self.max_workers}")
+            step_start = time.time()
+            logging.info(f"🖼️ 开始并行处理 {len(image_tasks)} 张图片，最大并行数：{self.max_workers}")
 
             # 为每个图片任务添加上下文信息
             image_tasks_with_context = self._add_image_context(image_tasks, all_text_items)
 
             # 并行处理图片
             processed_images = self._process_images_parallel(image_tasks_with_context)
+            
+            image_process_time = time.time() - step_start
+            current_memory = process.memory_info().rss / 1024 / 1024
+            logging.info(f"⏱️ 图片AI处理耗时: {image_process_time:.2f}s ({image_process_time/len(image_tasks):.2f}s/张)")
+            logging.info(f"💾 当前内存: {current_memory:.2f} MB")
 
             # 替换占位符
             final_md = initial_md
             for placeholder, description in processed_images.items():
                 final_md = final_md.replace(placeholder, f"Image::\n{description}\n::Image")
 
+            # 📊 最终统计
+            total_time = time.time() - start_time
+            final_memory = process.memory_info().rss / 1024 / 1024
+            logging.info(f"✅ PDF->Markdown 转换完成！")
+            logging.info(f"⏱️ 总耗时: {total_time:.2f}s | Markdown长度: {len(final_md)} 字符")
+            logging.info(f"💾 最终内存: {final_memory:.2f} MB (增加 {final_memory - start_memory:.2f} MB)")
+            
+            # 释放内存
+            del converter, result, all_text_items, image_tasks, processed_images
+            gc.collect()
+            
             return final_md
         else:
             # 如果不启用图片解释，移除所有图片占位符
             if not self.enable_image_caption:
                 for task in image_tasks:
                     initial_md = initial_md.replace(task['placeholder'], "[图片]")
+            
+            # 📊 最终统计
+            total_time = time.time() - start_time
+            final_memory = process.memory_info().rss / 1024 / 1024
+            logging.info(f"✅ PDF->Markdown 转换完成（无图片AI处理）！")
+            logging.info(f"⏱️ 总耗时: {total_time:.2f}s | Markdown长度: {len(initial_md)} 字符")
+            logging.info(f"💾 最终内存: {final_memory:.2f} MB (增加 {final_memory - start_memory:.2f} MB)")
+            
+            # 释放内存
+            del converter, result, all_text_items, image_tasks
+            gc.collect()
+            
             return initial_md
 
     def _add_image_context(self, image_tasks: List[Dict], all_text_items: List[Tuple]) -> List[Dict]:
@@ -327,45 +434,65 @@ class Document2Markdown:
         return image_tasks
 
     def _process_images_parallel(self, image_tasks: List[Dict]) -> Dict[str, str]:
-        """并行处理图片"""
-        processed_results = {}
+        """并行处理图片 - 使用多线程池同时调用视觉语言模型API"""
+        processed_results = {}  # 存储所有图片的处理结果 {占位符: 描述文本}
+        completed_count = 0
+        total_count = len(image_tasks)
 
+        # 创建线程池，最大并发数由 self.max_workers 控制（默认10）
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # 提交所有任务
+            # 【第1步】一次性提交所有图片处理任务到线程池
+            # executor.submit() 立即返回 Future 对象，不会阻塞
+            # 每个任务会在独立线程中调用 _process_single_image 方法（该方法内部会调用API）
             future_to_placeholder = {
                 executor.submit(self._process_single_image, task): task['placeholder']
                 for task in image_tasks
             }
 
-            # 收集结果
+            # 【第2步】收集已完成任务的结果
+            # as_completed() 会按完成顺序（非提交顺序）逐个返回已完成的 Future
             for future in concurrent.futures.as_completed(future_to_placeholder):
                 placeholder = future_to_placeholder[future]
                 try:
+                    # future.result() 获取线程执行结果（阻塞直到该任务完成）
+                    # 这里拿到的是 VLM API 返回的图片描述文本
                     description = future.result()
                     processed_results[placeholder] = description
-                    logging.info(f"成功处理图片：{placeholder}")
+                    completed_count += 1
+                    logging.info(f"✅ 图片处理进度: {completed_count}/{total_count} ({placeholder})")
                 except Exception as e:
-                    logging.error(f"处理图片 {placeholder} 失败: {e}")
+                    logging.error(f"❌ 处理图片 {placeholder} 失败: {e}")
                     processed_results[placeholder] = "图片内容处理失败"
+                    completed_count += 1
 
         return processed_results
 
     def _process_single_image(self, image_task: Dict) -> str:
-        """处理单张图片，包含重试机制"""
-        # placeholder = image_task['placeholder']
-        image_data = image_task['image_data']
-        context = image_task['context']
-        page_info = image_task['page_info']
+        """处理单张图片，包含重试机制
+        
+        工作流程：
+        1. 提取图片数据和上下文
+        2. 将PIL图片转为PNG字节流
+        3. 构建prompt（系统提示词 + 上下文 + 用户要求）
+        4. 🔥 调用视觉语言模型API（这是真正的网络请求）
+        5. 返回API生成的图片描述文本
+        """
+        # 从任务字典中提取所需信息
+        image_data = image_task['image_data']  # PIL.Image 对象
+        context = image_task['context']  # 图片前后文本（前后各200字符）
+        page_info = image_task['page_info']  # 图片所在页码
 
-        full_context = f"{page_info}\n{context}"
+        full_context = f"{page_info}\n{context}"  # 组合完整上下文
 
+        # 重试机制：允许失败后重试 max_retries 次（默认1次）
         for attempt in range(self.max_retries + 1):
             try:
-                # 将PIL Image转换为bytes格式
+                # 【步骤1】将PIL Image转换为PNG字节流（API要求的格式）
                 buffered = BytesIO()
                 image_data.save(buffered, format="PNG")
                 image_bytes = buffered.getvalue()
 
+                # 【步骤2】构建AI模型的输入prompt
                 system_prompt = """请详细描述图片内容，识别其中的关键信息，并生成适合知识图谱构建的结构化信息。"""
                 user_prompt = f"""
                     图片上下文：{full_context}
@@ -374,15 +501,32 @@ class Document2Markdown:
                     - 识别出的关键实体和关系
                 """
 
+                # 🔥🔥🔥 【关键：这一行调用远程API】 🔥🔥🔥
+                # 调用 LitellmMultiModel.call_image_model() 方法
+                # 实际发送HTTP请求到 qwen-vl-plus API（通义千问视觉模型）
+                # 参数1: 完整prompt（系统提示+用户需求）
+                # 参数2: 图片字节数据
+                # 返回值: API生成的图片描述文本（JSON格式）
                 result = self.vl_model.call_image_model(system_prompt + user_prompt, image_bytes)
-                return result
+                return result  # 成功则返回结果并退出重试循环
 
             except Exception as e:
-                logging.warning(f"图片处理尝试 {attempt + 1} 失败: {e}")
-                if attempt < self.max_retries:
-                    time.sleep(1)  # 重试前等待1秒
+                # 增强错误日志：显示异常类型和详细堆栈（仅在首次失败时显示完整堆栈）
+                if attempt == 0:
+                    import traceback
+                    logging.error(
+                        f"图片处理首次尝试失败（将重试{self.max_retries}次）\n"
+                        f"  异常类型: {type(e).__name__}\n"
+                        f"  错误详情: {str(e)}\n"
+                        f"  完整堆栈:\n{traceback.format_exc()}"
+                    )
                 else:
-                    raise Exception(f"图片处理失败，已重试{self.max_retries}次")
+                    logging.warning(f"图片处理尝试 {attempt + 1}/{self.max_retries + 1} 失败: {type(e).__name__}: {e}")
+                
+                if attempt < self.max_retries:
+                    time.sleep(1)  # 重试前等待1秒，避免API限流
+                else:
+                    raise Exception(f"图片处理失败，已重试{self.max_retries}次。最后错误: {type(e).__name__}: {e}") from e
 
     def _convert_doc_to_docx_libreoffice(self, input_path: str, output_docx: str):
         """使用LibreOffice将DOC转换为DOCX"""
@@ -570,30 +714,12 @@ def convert_docx_to_pdf_libreoffice(input_path, output_dir=None):
 
 
 if __name__ == "__main__":
-    file_path = "/home/raini/Downloads/pdfs/pdf/基于液态天然气冷能利用的液...空气储能系统优化与性能评估_李俊先.pdf"
-    file_path = "/home/raini/Downloads/pdfs/test1.pdf"
+    # file_path = "/root/knowlion/pdfs/不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土效应.pdf"
+    # file_path = "/root/knowlion/pdfs/基于RAG的维修手册智能问答系统研究与应用_郭超_象征性编辑.pdf"
+    file_path = "/root/knowlion/pdfs/第1章+绪论.pdf"
     model_path = "/thutmose/app/abution/model"
 
-    MODEL_CONFIGS = {
-        # 文本模型（仅处理文字对话）
-        "text": {
-            "model_name": "openai/qwen-max",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        # 多模态模型（处理文本+图片）
-        "image": {
-            "model_name": "openai/qwen-vl-plus",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        # 向量模型（生成文本嵌入向量）
-        "embed": {
-            "model_name": "openai/text-embedding-v4",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        }
-    }
+    from knowlion.config import MODEL_CONFIGS
 
     model_instance = LitellmMultiModel(MODEL_CONFIGS)
 
@@ -617,4 +743,20 @@ if __name__ == "__main__":
 
     # 3. 将PDF转换为Markdown
     md_content = parser.pdf_to_markdown(pdf_bytes)
-    print(md_content)
+    
+    # 4. 保存Markdown到文件
+    markdowns_dir = os.path.join(os.path.dirname(__file__), '..', 'markdowns')
+    os.makedirs(markdowns_dir, exist_ok=True)
+    
+    md_filename = f"{parser.original_filename}.md"
+    md_filepath = os.path.join(markdowns_dir, md_filename)
+    
+    with open(md_filepath, 'w', encoding='utf-8') as f:
+        f.write(md_content)
+    
+    print(f"✅ Markdown已保存到: {md_filepath}")
+    print(f"📝 文件大小: {len(md_content)} 字符")
+    print(f"\n📄 Markdown 前500字符预览:")
+    print("="*50)
+    print(md_content[:500])
+    print("="*50)

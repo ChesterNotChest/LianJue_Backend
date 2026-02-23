@@ -152,19 +152,19 @@ MODEL_CONFIGS = {
     "text": {
         "model_name": "openai/qwen-max",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a998..."
+        "api_key": "<YOUR_API_KEY_HERE>"
     },
     # 多模态模型（处理文本+图片）
     "visual": {
         "model_name": "openai/qwen-vl-plus",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a998..."
+        "api_key": "<YOUR_API_KEY_HERE>"
     },
     # 向量模型（生成文本嵌入向量）
     "embed": {
         "model_name": "openai/text-embedding-v4",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a998..."
+        "api_key": "<YOUR_API_KEY_HERE>"
     }
 }
 # OCR本地模型路径

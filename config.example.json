@@ -1,0 +1,25 @@
+{
+  "MODEL_CONFIGS": {
+    "text": {
+      "model_name": "openai/qwen-max",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "<YOUR_TEXT_API_KEY_HERE>"
+    },
+    "image": {
+      "model_name": "openai/qwen-vl-plus",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "<YOUR_IMAGE_API_KEY_HERE>"
+    },
+    "embed": {
+      "model_name": "openai/text-embedding-v4",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "<YOUR_EMBED_API_KEY_HERE>"
+    }
+  },
+  "ABUTION": {
+    "abution_url": "localhost:9996",
+    "username": "abution",
+    "password": "abution"
+  }
+}
+

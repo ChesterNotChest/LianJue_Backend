@@ -661,7 +661,7 @@ class Markdown2Triples:
                 return []
 
             # # 4. 保存处理结果
-            # self._save_processing_results(processed_paragraphs)
+            self._save_triple_results(processed_paragraphs)
 
             logger.info("✅ 处理完成")
             return processed_paragraphs
@@ -674,10 +674,10 @@ class Markdown2Triples:
         """保存处理结果"""
         try:
             # 创建结果目录
-            results_dir = f"../test/knowlion/processing_results/{self.file_name}"
+            results_dir = f"../triples"
             os.makedirs(results_dir, exist_ok=True)
 
-            with open(f"{results_dir}/processed_result.json", 'w', encoding='utf-8') as f:
+            with open(f"{results_dir}/{self.file_name}.json", 'w', encoding='utf-8') as f:
                 json.dump(processed_paragraphs, f, ensure_ascii=False, indent=2)
 
             # 保存处理后的段落（精简版）
@@ -704,27 +704,13 @@ class Markdown2Triples:
 # 使用示例
 if __name__ == "__main__":
     # 初始化模型
-    MODEL_CONFIGS = {
-        "text": {
-            "model_name": "openai/qwen-max",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        "image": {
-            "model_name": "openai/qwen-vl-plus",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        "embed": {
-            "model_name": "openai/text-embedding-v4",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        }
-    }
+    from knowlion.config import MODEL_CONFIGS
+
     model_instance = LitellmMultiModel(MODEL_CONFIGS)
 
     # 读取Markdown内容
-    md_file_path = "/media/raini/新加卷12/Abution-3.0/GDB/AbutionRag/test/storage/稀土论文/中印度洋盆岩心沉积物中稀土元素赋存特征/extract_marked.md"
+    # md_file_path = "/root/knowlion/markdowns/基于RAG的维修手册智能问答系统研究与应用_郭超.md"
+    md_file_path = "/root/knowlion/markdowns/第1章+绪论.md"
     try:
         with open(md_file_path, "r", encoding="utf-8") as f:
             md_content = f.read()
@@ -737,7 +723,7 @@ if __name__ == "__main__":
     processor = Markdown2Triples(
         model_instance=model_instance,
         md_content=md_content,
-        # file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
+        file_name="第1章+绪论",
         # classify="地质研究",
         chunk_size=5000,  # 减小块大小以提高处理质量
         overlap_size=600,
@@ -745,8 +731,8 @@ if __name__ == "__main__":
     )
 
     # 执行处理
-    #knowledge_objects = processor.execute()
-    #print(knowledge_objects)
+    knowledge_objects = processor.execute()
+    print(knowledge_objects)
 
     # with open("/media/raini/新加卷12/Abution-3.0/GDB/AbutionRag/knowlion/processing_results/中印度洋盆岩心沉积物中稀土元素赋存特征/processed_result.json", "r", encoding="utf-8") as f:
     #     processed_paragraphs = json.load(f)

@@ -831,39 +831,67 @@ class Triples2Knowledge:
 # 使用示例
 if __name__ == "__main__":
     # 初始化模型
-    MODEL_CONFIGS = {
-        "text": {
-            "model_name": "openai/qwen-max",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        "image": {
-            "model_name": "openai/qwen-vl-plus",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        "embed": {
-            "model_name": "openai/text-embedding-v4",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        }
-    }
+    from knowlion.config import MODEL_CONFIGS
+
     model_instance = LitellmMultiModel(MODEL_CONFIGS)
 
     # 读取Markdown内容
-    md_file_path = "/media/raini/新加卷12/Abution-3.0/GDB/AbutionRag/test/storage/稀土论文/中印度洋盆岩心沉积物中稀土元素赋存特征/extract_marked.md"
+    json_file_path = "/root/knowlion/triples/基于RAG的维修手册智能问答系统研究与应用_郭超.json"
     try:
-        with open(md_file_path, "r", encoding="utf-8") as f:
+        # 读取文件内容
+        with open(json_file_path, "r", encoding="utf-8") as f:
             md_content = f.read()
-        logger.info(f"成功读取MD文件，长度: {len(md_content)} 字符")
+
+        logger.info(f"成功读取JSON文件，长度: {len(md_content)} 字符")
+
+        # 尝试解析JSON内容
+        try:
+            # 如果md_content是JSON字符串，解析它
+            json_data = json.loads(md_content)
+            logger.info(f"成功解析JSON数据，数据类型: {type(json_data)}")
+
+            # 根据实际数据结构处理
+            if isinstance(json_data, dict):
+                # 如果是字典，可以根据需要提取特定字段
+                # 例如：triples_data = json_data.get('triples', [])
+                # 或者直接使用整个字典
+                triples_data = json_data
+                logger.info(f"JSON数据为字典格式，键: {list(triples_data.keys())}")
+            elif isinstance(json_data, list):
+                # 如果是列表
+                triples_data = json_data
+                logger.info(f"JSON数据为列表格式，长度: {len(triples_data)}")
+            else:
+                # 其他类型，转换为字符串
+                triples_data = md_content
+                logger.warning(f"JSON数据为其他类型: {type(json_data)}，将使用原始字符串")
+
+        except json.JSONDecodeError as json_err:
+            # JSON解析失败，记录错误但尝试继续处理原始字符串
+            logger.error(f"JSON解析失败: {json_err}")
+            logger.warning("JSON格式无效，将使用原始文件内容")
+            triples_data = md_content
+            logger.info(f"使用原始字符串内容，长度: {len(triples_data)} 字符")
+
+    except FileNotFoundError:
+        logger.error(f"文件不存在: {md_file_path}")
+        sys.exit(1)
+    except PermissionError:
+        logger.error(f"没有权限读取文件: {md_file_path}")
+        sys.exit(1)
+    except UnicodeDecodeError:
+        logger.error(f"文件编码错误，无法以UTF-8解码: {md_file_path}")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"读取MD文件失败: {e}")
+        logger.error(f"读取文件失败: {e}")
+        logger.error(f"详细错误信息:\n{traceback.format_exc()}")
         sys.exit(1)
 
     # 创建处理器
     processor = Triples2Knowledge(
         model_instance=model_instance,
-        file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
+        para_triples=triples_data,
+        file_name="基于RAG的维修手册智能问答系统研究与应用_郭超",
         classify=None,
         # chunk_size=5000,  # 减小块大小以提高处理质量
         # overlap_size=600,
@@ -871,15 +899,15 @@ if __name__ == "__main__":
     )
 
     # 执行处理
-    #knowledge_objects = processor.execute()
-    #print(knowledge_objects)
-
-    with open("/knowlion/test/processing_results/中印度洋盆岩心沉积物中稀土元素赋存特征/processed_result.json", "r", encoding="utf-8") as f:
-        processed_paragraphs = json.load(f)
-    knowledge_objects = processor.build_knowledge_objects(processed_paragraphs)
+    knowledge_objects = processor.execute()
     print(knowledge_objects)
 
-    if knowledge_objects:
-        logger.info(f"成功生成 {len(knowledge_objects)} 个知识对象")
-    else:
-        logger.error("未能生成知识对象")
+    # with open("/knowlion/test/processing_results/中印度洋盆岩心沉积物中稀土元素赋存特征/processed_result.json", "r", encoding="utf-8") as f:
+    #     processed_paragraphs = json.load(f)
+    # knowledge_objects = processor.build_knowledge_objects(processed_paragraphs)
+    # print(knowledge_objects)
+    #
+    # if knowledge_objects:
+    #     logger.info(f"成功生成 {len(knowledge_objects)} 个知识对象")
+    # else:
+    #     logger.error("未能生成知识对象")
