@@ -21,6 +21,7 @@ from knowlion.knowledge_to_search import AdvancedHyperGraphRAG
 from knowlion.triples_to_knowledge import Triples2Knowledge
 from knowlion.markdown_to_triples import Markdown2Triples
 from knowlion.config import ABUTION_CONFIG
+import time
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -238,7 +239,37 @@ class KnowLion:
         if knowledge_list is None:
             raise ValueError("请先执行extract_knowledge方法提取知识信息")
 
-        self.graph.add_knowledge(knowledge_list)
+        # 分段/批量传输以避免一次性请求体过大或内存峰值
+        cfg = ABUTION_CONFIG or {}
+        # 降低默认批大小以更保守地避免超大请求导致 413
+        batch_size = int(cfg.get("batch_size", 20))
+        max_retries = int(cfg.get("batch_retries", 2))
+        retry_delay = float(cfg.get("batch_retry_delay", 0.5))
+
+        total = len(knowledge_list)
+        failures = []
+        logger.info(f"开始分批保存知识对象，共 {total} 条，批大小 {batch_size}")
+
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch = knowledge_list[start:end]
+            attempt = 0
+            while True:
+                try:
+                    self.graph.add_knowledge(batch)
+                    logger.info(f"已保存批次: {start}-{end-1}，数量: {len(batch)}")
+                    break
+                except Exception as e:
+                    attempt += 1
+                    logger.warning(f"保存批次 {start}-{end-1} 失败 (尝试 {attempt}/{max_retries}): {e}")
+                    if attempt > max_retries:
+                        failures.append({"start": start, "end": end, "error": str(e)})
+                        break
+                    time.sleep(retry_delay)
+
+        if failures:
+            logger.error(f"部分批次保存失败: {failures}")
+            raise RuntimeError(f"部分批次保存失败: {failures}")
 
 
     def search(self, text: str, top_k: int = 10, # TODO: 如果我们用自己的模型，可以只执行此函数

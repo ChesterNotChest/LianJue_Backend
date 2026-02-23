@@ -13,13 +13,17 @@
     "embed": {
       "model_name": "openai/text-embedding-v4",
       "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key": "<YOUR_EMBED_API_KEY_HERE>"
+      "api_key": "<YOUR_EMBED_API_KEY_HERE>",
+      "encoding_format": "float"
     }
   },
-  "ABUTION": {
+  "ABUTION_CONFIG": {
     "abution_url": "localhost:9996",
     "username": "abution",
-    "password": "abution"
+    "password": "abution",
+    "batch_size": 20,
+    "batch_retries": 2,
+    "batch_retry_delay": 0.5
   }
 }
 
