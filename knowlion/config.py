@@ -37,6 +37,8 @@ _CONFIG = _load_config_file()
 # Expose MODEL_CONFIGS and ABUTION_CONFIG with sensible defaults
 MODEL_CONFIGS = _CONFIG.get("MODEL_CONFIGS", {})
 ABUTION_CONFIG = _CONFIG.get("ABUTION_CONFIG", {})
+# Expose processing config (save flags, device mode, batching)
+PROCESSING_CONFIG = _CONFIG.get("PROCESSING_CONFIG", {})
 
 def get_config():
     """Return full loaded config dict."""

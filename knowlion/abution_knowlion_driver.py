@@ -20,7 +20,7 @@ from knowlion.multi_model_litellm import LitellmMultiModel
 from knowlion.knowledge_to_search import AdvancedHyperGraphRAG
 from knowlion.triples_to_knowledge import Triples2Knowledge
 from knowlion.markdown_to_triples import Markdown2Triples
-from knowlion.config import ABUTION_CONFIG
+from knowlion.config import ABUTION_CONFIG, PROCESSING_CONFIG
 import time
 
 # 强制重新配置日志
@@ -139,10 +139,16 @@ class KnowLion:
         self.file_name = file_name
 
         # 创建文档解析器实例
+        # 根据全局 PROCESSING_CONFIG 决定 OCR 使用 CPU 还是 GPU
+        proc_cfg = PROCESSING_CONFIG or {}
+        device_mode = str(proc_cfg.get("device_mode", "cpu")).lower()
+        device_gpu = device_mode in ("cuda", "gpu")
+        logger.info(f"初始化 Document2Markdown，device_mode={device_mode}")
+
         parser = Document2Markdown(
             vl_model=self.model,
             model_path=model_path,
-            device_gpu=False  # 可根据需要调整
+            device_gpu=device_gpu
         )
 
         try:

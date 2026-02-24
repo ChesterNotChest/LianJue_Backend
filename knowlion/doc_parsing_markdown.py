@@ -24,6 +24,12 @@ import psutil
 from openpyxl.drawing.image import PILImage
 
 from knowlion.multi_model_litellm import LitellmMultiModel
+from knowlion.config import get_config
+try:
+    from pypdf import PdfReader, PdfWriter
+except Exception:
+    PdfReader = None
+    PdfWriter = None
 
 os.environ['DOCLING_ARTIFACTS_PATH'] = "/thutmose/app/abution/model"
 
@@ -85,26 +91,53 @@ def get_document_converter(easyocr_model_path, pdf_artifacts_path):
 
 
 def set_device_mode(device_gpu):
-    if not device_gpu:
-        import torch
-        # DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-        # torch.device('cpu')
-        # 1. 禁用 CUDA 设备
-        os.environ['CUDA_VISIBLE_DEVICES'] = ''
-        # 2. 设置默认设备为 CPU（替代原 torch.set_default_tensor_type）
-        torch.set_default_device('cpu')
-        print(f"当前默认OCR模式: {torch.device('cpu')}")
-        # 3. 设置默认数据类型（原 torch.FloatTensor 对应 torch.float32）
-        torch.set_default_dtype(torch.float32)
-        # print(f"当前默认数据类型: {torch.get_default_dtype()}")
-        # 4. 禁用 DataLoader 的 pin_memory（防止 GPU 相关警告）
-        #    - 直接修改 DataLoader 默认参数
-        if hasattr(torch.utils.data.DataLoader, '__init__'):
-            default_args = list(torch.utils.data.DataLoader.__init__.__defaults__)
-            if len(default_args) >= 5:  # 检查是否包含 pin_memory 参数（位置索引 4）
-                default_args[4] = False  # 将 pin_memory 默认值设为 False
-                torch.utils.data.DataLoader.__init__.__defaults__ = tuple(default_args)
-            # print("已禁用 DataLoader 的 pin_memory")
+    import torch
+    if device_gpu:
+        try:
+            if getattr(torch, 'cuda', None) is not None and torch.cuda.is_available():
+                try:
+                    torch.set_default_device('cuda')
+                except Exception:
+                    pass
+                print(f"当前默认OCR模式: {torch.device('cuda')}")
+            else:
+                # GPU 不可用，回退到 CPU
+                try:
+                    torch.set_default_device('cpu')
+                except Exception:
+                    pass
+                print("当前默认OCR模式: cpu（GPU 不可用）")
+        except Exception:
+            print("尝试启用 GPU 失败，使用 CPU")
+            try:
+                torch.set_default_device('cpu')
+            except Exception:
+                pass
+    else:
+        # 禁用 CUDA 设备并强制使用 CPU
+        try:
+            os.environ['CUDA_VISIBLE_DEVICES'] = ''
+        except Exception:
+            pass
+        try:
+            torch.set_default_device('cpu')
+            print(f"当前默认OCR模式: {torch.device('cpu')}")
+        except Exception:
+            print("当前默认OCR模式: cpu")
+        # 设置默认数据类型（原 torch.FloatTensor 对应 torch.float32）
+        try:
+            torch.set_default_dtype(torch.float32)
+        except Exception:
+            pass
+        # 禁用 DataLoader 的 pin_memory（防止 GPU 相关警告）
+        try:
+            if hasattr(torch.utils.data.DataLoader, '__init__'):
+                default_args = list(torch.utils.data.DataLoader.__init__.__defaults__)
+                if len(default_args) >= 5:
+                    default_args[4] = False
+                    torch.utils.data.DataLoader.__init__.__defaults__ = tuple(default_args)
+        except Exception:
+            pass
 
 
 class Document2Markdown:
@@ -215,193 +248,179 @@ class Document2Markdown:
         except Exception:
             logging.debug("📄 无法获取页数信息")
 
-        # 第一阶段：收集所有文本和图片信息
-        all_text_items = []
-        image_tasks = []
-        image_counter = 0
-        
-        # 📊 统计各类元素数量
-        stats = {
-            'text': 0,
-            'table': 0,
-            'image': 0,
-            'code': 0,
-            'formula': 0,
-            'section_header': 0,
-            'filtered_images': 0,
-            'filtered_edge_logo': 0,
-            'filtered_small': 0
-        }
+        # 支持按页拆分的批处理（可在 config.PROCESSING_CONFIG.pages_per_batch 中配置）
+        proc_cfg = get_config().get("PROCESSING_CONFIG", {})
+        pages_per_batch = int(proc_cfg.get("pages_per_batch", 0) or 0)
+        overlap = int(proc_cfg.get("page_context_window", 1) or 1)
 
-        # 遍历文档中的所有项目，收集文本和图片信息
-        from docling_core.types.doc import TextItem, TableItem, PictureItem, CodeItem
-        idx = 0
-        for item, level in result.document.iterate_items():
-            idx += 1
-            try:
-                logging.info(f"🔄 正在处理元素[{idx}]: {type(item).__name__}")
-            except Exception:
-                logging.info(f"🔄 正在处理元素[{idx}]: <unknown>")
-            if isinstance(item, TextItem):
-                if "formula" in item.label:
-                    text_content = f"Formulas::\n{item.text}\n::Formulas"
-                    stats['formula'] += 1
-                elif "section_header" in item.label:
-                    indent = "  " * (level - 1)
-                    text_content = f"{indent}{'#' * level} {item.text}"
-                    stats['section_header'] += 1
-                elif "code" in item.label:
-                    text_content = f"Code::\n{item.text}\n::Code"
-                    stats['code'] += 1
-                else:
-                    text_content = item.text
-                    stats['text'] += 1
+        def _render_result_to_markdown(res, image_counter_start=0):
+            # 将单个 Docling result 转为 markdown（包含图片占位符替换）
+            all_text_items = []
+            image_tasks = []
+            image_counter = image_counter_start
 
-                all_text_items.append(('text', text_content))
+            stats = {
+                'text': 0,
+                'table': 0,
+                'image': 0,
+                'code': 0,
+                'formula': 0,
+                'section_header': 0,
+                'filtered_images': 0,
+                'filtered_edge_logo': 0,
+                'filtered_small': 0
+            }
 
-            elif isinstance(item, TableItem):
-                table_df = item.export_to_dataframe()
-                table_md = table_df.to_markdown()
-                text_content = f"Table::\n{table_md}\n::Table"
-                all_text_items.append(('text', text_content))
-                stats['table'] += 1
-
-            elif isinstance(item, PictureItem):
+            from docling_core.types.doc import TextItem, TableItem, PictureItem, CodeItem
+            idx = 0
+            for item, level in res.document.iterate_items():
+                idx += 1
                 try:
-                    # 获取图片元数据
-                    prov = item.prov[0]  # 第一个来源信息
-                    bbox = prov.bbox
-                    page = prov.page_no
-                    # 动态获取页面尺寸（基于实际图像数据）
-                    page_obj = result.document.pages[page]
-                    pil_image = page_obj.image.pil_image
-                    page_width, page_height = pil_image.size
-                    # 边界框坐标转换（假设坐标系原点在左下角）
-                    t = bbox.t  # 顶部坐标
-                    l = bbox.l  # 左侧坐标
-                    r = bbox.r  # 右侧坐标
-                    b = bbox.b  # 底部坐标
-                    # 四向Logo过滤条件（单位：磅，根据实际文档调整阈值）
-                    is_edge_logo = (
-                        # 顶部Logo（距页面上边缘 < 120磅）
-                            (t < 80) or
-                            # 底部Logo（距页面下边缘 < 120磅）
-                            ((page_height - b) < 80) or
-                            # 左侧Logo（距左边缘 < 150磅）
-                            (l < 90) or
-                            # 右侧Logo（距右边缘 < 150磅）
-                            ((page_width - r) < 90)
-                    )
-                    # 小尺寸图片过滤（面积 < 1000平方磅）
-                    is_small = (r - l) * (t - b) < 1000
-                    # 组合过滤条件
-                    if is_edge_logo or is_small:
-                        stats['filtered_images'] += 1
-                        if is_edge_logo:
-                            stats['filtered_edge_logo'] += 1
-                        if is_small:
-                            stats['filtered_small'] += 1
-                        logging.debug(f"🚫 过滤图片：页{page} | 坐标({l:.0f},{t:.0f})-({r:.0f},{b:.0f}) | 原因: {'边缘Logo' if is_edge_logo else ''}{'小尺寸' if is_small else ''}")
+                    logging.debug(f"🔄 处理元素[{idx}]: {type(item).__name__}")
+                except Exception:
+                    pass
+
+                if isinstance(item, TextItem):
+                    if "formula" in item.label:
+                        text_content = f"Formulas::\n{item.text}\n::Formulas"
+                        stats['formula'] += 1
+                    elif "section_header" in item.label:
+                        indent = "  " * (level - 1)
+                        text_content = f"{indent}{'#' * level} {item.text}"
+                        stats['section_header'] += 1
+                    elif "code" in item.label:
+                        text_content = f"Code::\n{item.text}\n::Code"
+                        stats['code'] += 1
+                    else:
+                        text_content = item.text
+                        stats['text'] += 1
+                    all_text_items.append(('text', text_content))
+                elif isinstance(item, TableItem):
+                    try:
+                        table_df = item.export_to_dataframe()
+                        table_md = table_df.to_markdown()
+                        text_content = f"Table::\n{table_md}\n::Table"
+                        all_text_items.append(('text', text_content))
+                        stats['table'] += 1
+                    except Exception:
                         continue
+                elif isinstance(item, PictureItem):
+                    try:
+                        prov = item.prov[0]
+                        bbox = prov.bbox
+                        page = prov.page_no
+                        page_obj = res.document.pages[page]
+                        pil_image = page_obj.image.pil_image
+                        page_width, page_height = pil_image.size
+                        t = bbox.t
+                        l = bbox.l
+                        r = bbox.r
+                        b = bbox.b
+                        is_edge_logo = ((t < 80) or ((page_height - b) < 80) or (l < 90) or ((page_width - r) < 90))
+                        is_small = (r - l) * (t - b) < 1000
+                        if is_edge_logo or is_small:
+                            stats['filtered_images'] += 1
+                            if is_edge_logo:
+                                stats['filtered_edge_logo'] += 1
+                            if is_small:
+                                stats['filtered_small'] += 1
+                            continue
 
-                    # 获取有效图片数据
-                    image_data:Optional[PILImage.Image] = item.get_image(result.document)
-                    if image_data:
-                        image_counter += 1
-                        stats['image'] += 1
-
-                        # 创建图片任务
-                        placeholder = f"IMAGE_PLACEHOLDER_{image_counter}"
-                        image_task = {
-                            'placeholder': placeholder,
-                            'image_data': image_data,
-                            'position': len(all_text_items),  # 记录图片在文本中的位置
-                            'page': page,
-                            'coordinates': (l, t, r, b)
-                        }
-                        image_tasks.append(image_task)
-
-                        # 添加占位符到文本列表
-                        all_text_items.append(('image', placeholder))
-                        logging.info(f"添加图片占位符：{placeholder}，位置：{len(all_text_items) - 1}")
-
-                except Exception as e:
-                    logging.info(f"处理图片异常：{str(e)}")
+                        image_data = item.get_image(res.document)
+                        if image_data:
+                            image_counter += 1
+                            stats['image'] += 1
+                            placeholder = f"IMAGE_PLACEHOLDER_{image_counter}"
+                            image_task = {
+                                'placeholder': placeholder,
+                                'image_data': image_data,
+                                'position': len(all_text_items),
+                                'page': page,
+                                'coordinates': (l, t, r, b)
+                            }
+                            image_tasks.append(image_task)
+                            all_text_items.append(('image', placeholder))
+                    except Exception:
+                        continue
+                elif isinstance(item, CodeItem):
+                    text_content = f"Code::\n{item.text}\n::Code"
+                    all_text_items.append(('text', text_content))
+                else:
                     continue
 
-            elif isinstance(item, CodeItem):
-                text_content = f"Code::\n{item.text}\n::Code"
-                all_text_items.append(('text', text_content))
+            # 构建初始 Markdown
+            initial_md_parts = [content for (_t, content) in all_text_items]
+            initial_md = "\n\n".join(initial_md_parts)
 
+            # 图片处理
+            if self.enable_image_caption and image_tasks:
+                image_tasks_with_context = self._add_image_context(image_tasks, all_text_items)
+                processed_images = self._process_images_parallel(image_tasks_with_context)
+                final_md = initial_md
+                for placeholder, description in processed_images.items():
+                    final_md = final_md.replace(placeholder, f"Image::\n{description}\n::Image")
+                return final_md, image_counter
             else:
-                logging.debug(f"⚠️ 未处理的元素类型: {type(item)}")
+                if not self.enable_image_caption:
+                    for task in image_tasks:
+                        initial_md = initial_md.replace(task['placeholder'], "[图片]")
+                return initial_md, image_counter
 
-        # 📊 输出元素统计信息
-        extract_time = time.time() - step_start - convert_time
-        current_memory = process.memory_info().rss / 1024 / 1024
-        logging.info(f"📊 元素提取完成 (耗时 {extract_time:.2f}s):")
-        logging.info(f"  ✅ 文本: {stats['text']} | 标题: {stats['section_header']} | 表格: {stats['table']}")
-        logging.info(f"  ✅ 公式: {stats['formula']} | 代码: {stats['code']} | 图片: {stats['image']}")
-        logging.info(f"  🚫 过滤图片: {stats['filtered_images']} (边缘Logo: {stats['filtered_edge_logo']}, 小尺寸: {stats['filtered_small']})")
-        logging.info(f"  💾 当前内存: {current_memory:.2f} MB")
-        
-        # 构建初始Markdown（包含占位符）
-        initial_md_parts = []
-        for item_type, content in all_text_items:
-            initial_md_parts.append(content)
-        initial_md = "\n\n".join(initial_md_parts)
+        # 如果启用了按页分批
+        if pages_per_batch > 0:
+            # 获取原始 bytes
+            if isinstance(pdf_path_or_input, bytes):
+                pdf_bytes = pdf_path_or_input
+            else:
+                try:
+                    with open(pdf_path_or_input, 'rb') as f:
+                        pdf_bytes = f.read()
+                except Exception:
+                    # 回退：使用已经转换的 result（单次处理）
+                    return _render_result_to_markdown(result)[0]
 
-        # 第二阶段：如果有图片且启用了图片解释功能，则并行处理图片
-        if self.enable_image_caption and image_tasks:
-            step_start = time.time()
-            logging.info(f"🖼️ 开始并行处理 {len(image_tasks)} 张图片，最大并行数：{self.max_workers}")
+            batches = self.split_pdf_batches(pdf_bytes, pages_per_batch, overlap=overlap)
+            fragments = []
+            image_counter_global = getattr(self, '_image_counter', 0)
+            device_mode = str(proc_cfg.get('device_mode', 'cpu')).lower()
+            for bidx, batch_bytes in enumerate(batches):
+                logging.info(f"📦 处理批次 {bidx+1}/{len(batches)}，大小: {len(batch_bytes)} bytes")
+                doc_stream = DocumentStream(name=self.original_filename or f"batch_{bidx}", stream=BytesIO(batch_bytes))
+                try:
+                    res = converter.convert(doc_stream)
+                except Exception as e:
+                    logging.error(f"批次转换失败: {e}")
+                    continue
 
-            # 为每个图片任务添加上下文信息
-            image_tasks_with_context = self._add_image_context(image_tasks, all_text_items)
+                frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
+                fragments.append(frag)
 
-            # 并行处理图片
-            processed_images = self._process_images_parallel(image_tasks_with_context)
-            
-            image_process_time = time.time() - step_start
-            current_memory = process.memory_info().rss / 1024 / 1024
-            logging.info(f"⏱️ 图片AI处理耗时: {image_process_time:.2f}s ({image_process_time/len(image_tasks):.2f}s/张)")
-            logging.info(f"💾 当前内存: {current_memory:.2f} MB")
+                # 释放批次占用的中间资源
+                try:
+                    del res
+                except Exception:
+                    pass
+                gc.collect()
+                if device_mode in ("cuda", "gpu"):
+                    try:
+                        import torch
+                        torch.cuda.empty_cache()
+                    except Exception:
+                        pass
 
-            # 替换占位符
-            final_md = initial_md
-            for placeholder, description in processed_images.items():
-                final_md = final_md.replace(placeholder, f"Image::\n{description}\n::Image")
+            # 更新实例计数器
+            self._image_counter = image_counter_global
+            final = "\n\n".join(fragments)
+            return final
 
-            # 📊 最终统计
-            total_time = time.time() - start_time
-            final_memory = process.memory_info().rss / 1024 / 1024
-            logging.info(f"✅ PDF->Markdown 转换完成！")
-            logging.info(f"⏱️ 总耗时: {total_time:.2f}s | Markdown长度: {len(final_md)} 字符")
-            logging.info(f"💾 最终内存: {final_memory:.2f} MB (增加 {final_memory - start_memory:.2f} MB)")
-            
-            # 释放内存
-            del converter, result, all_text_items, image_tasks, processed_images
-            gc.collect()
-            
-            return final_md
-        else:
-            # 如果不启用图片解释，移除所有图片占位符
-            if not self.enable_image_caption:
-                for task in image_tasks:
-                    initial_md = initial_md.replace(task['placeholder'], "[图片]")
-            
-            # 📊 最终统计
-            total_time = time.time() - start_time
-            final_memory = process.memory_info().rss / 1024 / 1024
-            logging.info(f"✅ PDF->Markdown 转换完成（无图片AI处理）！")
-            logging.info(f"⏱️ 总耗时: {total_time:.2f}s | Markdown长度: {len(initial_md)} 字符")
-            logging.info(f"💾 最终内存: {final_memory:.2f} MB (增加 {final_memory - start_memory:.2f} MB)")
-            
-            # 释放内存
-            del converter, result, all_text_items, image_tasks
-            gc.collect()
-            
-            return initial_md
+        # 否则按单次结果渲染（原有行为）
+        final_md, _ = _render_result_to_markdown(result, getattr(self, '_image_counter', 0))
+        try:
+            del converter, result
+        except Exception:
+            pass
+        gc.collect()
+        return final_md
 
     def _add_image_context(self, image_tasks: List[Dict], all_text_items: List[Tuple]) -> List[Dict]:
         """为图片添加上下文信息"""
@@ -432,6 +451,40 @@ class Document2Markdown:
             task['page_info'] = f"文档第{task['page']}页"
 
         return image_tasks
+
+    def split_pdf_batches(self, pdf_bytes: bytes, pages_per_batch: int = None, overlap: int = 1) -> list:
+        """
+        原型：将 PDF bytes 拆分为按页范围的若干批次并返回每个批次的 bytes 列表。
+        - 需要安装 `pypdf`（包名 `pypdf`）。
+        - 若 pages_per_batch 为 0/None/>=页数，则直接返回原始bytes列表。
+        - overlap 为跨批的上下文页数，默认 1。
+        """
+        if PdfReader is None or PdfWriter is None:
+            raise RuntimeError("pypdf 未安装，无法进行 PDF 拆分，请安装 pypdf")
+
+        reader = PdfReader(BytesIO(pdf_bytes))
+        num_pages = len(reader.pages)
+        if pages_per_batch is None or pages_per_batch <= 0 or pages_per_batch >= num_pages:
+            return [pdf_bytes]
+
+        batches = []
+        start = 0
+        while start < num_pages:
+            end = min(start + pages_per_batch, num_pages)
+            write_start = max(0, start - overlap)
+            write_end = min(num_pages, end + overlap)
+
+            writer = PdfWriter()
+            for p in range(write_start, write_end):
+                writer.add_page(reader.pages[p])
+
+            out = BytesIO()
+            writer.write(out)
+            batches.append(out.getvalue())
+
+            start = end
+
+        return batches
 
     def _process_images_parallel(self, image_tasks: List[Dict]) -> Dict[str, str]:
         """并行处理图片 - 使用多线程池同时调用视觉语言模型API"""

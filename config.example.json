@@ -24,6 +24,14 @@
     "batch_size": 20,
     "batch_retries": 2,
     "batch_retry_delay": 0.5
+  },
+  "PROCESSING_CONFIG": {
+    "save_md": true,
+    "save_triples": true,
+    "device_mode": "cpu",
+    "pages_per_batch": 0,
+    "page_context_window": 1,
+    "memory_threshold_mb": 1024
   }
 }
 

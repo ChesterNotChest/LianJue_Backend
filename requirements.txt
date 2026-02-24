@@ -9,3 +9,4 @@ torch>=1.0.0
 tenacity
 html5lib
 easyocr
+pypdf
