@@ -34,7 +34,8 @@ class Triples2Knowledge:
                  para_triples:List[Dict[str, Any]],
                  file_name: str,
                  classify: str = None,
-                 user_id: str = "default_user"):
+                 user_id: str = "default_user",
+                 create_doc_vertex: bool = True):
         """
         初始化Markdown到知识图谱转换器
         """
@@ -43,6 +44,8 @@ class Triples2Knowledge:
         self.file_name = file_name
         self.classify = classify if classify != "" and classify != "PUBLIC" else None
         self.user_id = user_id
+        # 控制是否在构建知识对象时创建 Doc 顶点（分片合并场景下只在最后一次创建）
+        self.create_doc_vertex = bool(create_doc_vertex)
 
         # 内容块标识符
         self.block_patterns = [
@@ -486,9 +489,10 @@ class Triples2Knowledge:
         para_vertex = self._create_para_vertex(self.para_triples, vec_index)
         knowledge_objects.extend(para_vertex)
 
-        # 创建文档顶点
-        doc_vertex = self._create_doc_vertex(self.para_triples, vec_index, bm25_index)
-        knowledge_objects.append(doc_vertex)
+        # 创建文档顶点（在分片处理中只在最后一次创建，避免重复创建多个 Doc 节点）
+        if self.create_doc_vertex:
+            doc_vertex = self._create_doc_vertex(self.para_triples, vec_index, bm25_index)
+            knowledge_objects.append(doc_vertex)
 
         return knowledge_objects
 

@@ -198,10 +198,17 @@ class KnowLion:
 
             # 3. 将PDF转换为Markdown
             logger.info("开始将PDF转换为Markdown")
-            md_content = parser.pdf_to_markdown(pdf_bytes)
-            logger.info(f"Markdown转换完成，内容长度: {len(md_content)} 字符")
+            md_res = parser.pdf_to_markdown(pdf_bytes)
+            # pdf_to_markdown 返回 (final_md, partial_files)
+            if isinstance(md_res, tuple) and len(md_res) == 2:
+                md_content, partial_files = md_res
+            else:
+                md_content = md_res
+                partial_files = []
 
-            return md_content
+            logger.info(f"Markdown转换完成，内容长度: {len(md_content)} 字符，部分文件数: {len(partial_files)}")
+
+            return md_content, partial_files
 
         except Exception as e:
             logger.error(f"文档转换失败: {e}")
@@ -240,7 +247,7 @@ class KnowLion:
             return []
 
 
-    def triple_to_knowledge(self, para_triples:List[Dict[str, Any]], classify_id=None) -> List[Knowledge]:
+    def triple_to_knowledge(self, para_triples:List[Dict[str, Any]], classify_id=None, create_doc_vertex: bool = True) -> List[Knowledge]:
         """
         步骤2: 从Markdown内容提取知识
 
@@ -256,7 +263,8 @@ class KnowLion:
             para_triples=para_triples,
             file_name=self.file_name,
             #file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
-            classify=classify_id
+            classify=classify_id,
+            create_doc_vertex=create_doc_vertex
         )
 
         # 3. 构建知识图谱对象

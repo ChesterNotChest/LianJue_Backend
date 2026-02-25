@@ -29,10 +29,9 @@ except Exception:
     fitz = None
 
 try:
-    import pytesseract
     from PIL import Image
 except Exception:
-    pytesseract = None
+    Image = None
 
 from openpyxl.drawing.image import PILImage
 
@@ -408,16 +407,43 @@ class Document2Markdown:
             fragments = []
             image_counter_global = getattr(self, '_image_counter', 0)
             device_mode = str(proc_cfg.get('device_mode', 'cpu')).lower()
+            # flush control: write partial markdown to disk every `flush_batches` to free memory
+            flush_interval = int(proc_cfg.get('flush_batches', 10) or 10)
+            partial_dir = None
+            partial_file = None
+            processed_since_flush = 0
+
             for bidx, batch_bytes in enumerate(batches):
                 logging.info(f"📦 处理批次 {bidx+1}/{len(batches)}，大小: {len(batch_bytes)} bytes")
+                # 创建 per-batch converter（确保内部状态不会在多个批次间累积）
+                try:
+                    converter = get_document_converter(self.model_path, self.model_path)
+                except Exception as e:
+                    logging.error(f"初始化 converter 失败: {e}")
+                    converter = None
+
                 doc_stream = DocumentStream(name=self.original_filename or f"batch_{bidx}", stream=BytesIO(batch_bytes))
                 try:
+                    if converter is None:
+                        raise RuntimeError("converter 未能初始化")
                     res = converter.convert(doc_stream)
                 except Exception as e:
                     logging.error(f"批次转换失败: {e}")
+                    # 确保释放 converter 后继续
+                    try:
+                        del converter
+                    except Exception:
+                        pass
+                    gc.collect()
+                    if device_mode in ("cuda", "gpu"):
+                        try:
+                            import torch
+                            torch.cuda.empty_cache()
+                        except Exception:
+                            pass
                     continue
 
-                # 评估文本质量，必要时执行回退提取
+                # 评估文本质量，必要时执行回退提取（PyMuPDF）
                 try:
                     stats = self._assess_result_text_quality(res)
                 except Exception:
@@ -426,13 +452,11 @@ class Document2Markdown:
                 poor_quality = False
                 if stats.get('chars', 0) < 200:
                     poor_quality = True
-                # 当文档有页并且 CJK 比例极低，视为可能提取错误（针对中文PDF）
                 if stats.get('pages', 0) > 0 and stats.get('cjk_ratio', 0.0) < 0.02:
                     poor_quality = True
 
                 if poor_quality:
-                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，尝试回退提取")
-                    # 首先尝试 PyMuPDF 提取文本
+                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，尝试 PyMuPDF 回退提取")
                     pymupdf_text = None
                     try:
                         pymupdf_text = self._fallback_extract_pymupdf(batch_bytes)
@@ -442,26 +466,47 @@ class Document2Markdown:
                     if pymupdf_text:
                         frag = f"RawText::\n{pymupdf_text}\n::RawText"
                     else:
-                        # 再尝试全页OCR（开销大）
-                        ocr_text = None
-                        try:
-                            ocr_text = self._fallback_full_ocr(batch_bytes)
-                        except Exception:
-                            ocr_text = None
-
-                        if ocr_text:
-                            frag = f"RawText::\n{ocr_text}\n::RawText"
-                        else:
-                            # 如果所有回退都失败，回退到 docling 的渲染结果（尽力而为）
-                            logging.warning("所有回退提取均失败，使用原始Docling渲染结果作为最后手段")
-                            frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
+                        logging.warning("PyMuPDF 回退未能提取可用文本，使用 Docling 渲染结果作为退路")
+                        frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
                 else:
                     frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
-                fragments.append(frag)
 
-                # 释放批次占用的中间资源
+                fragments.append(frag)
+                processed_since_flush += 1
+
+                # 当累计达到 flush_interval 时，写出部分 Markdown 并释放内存
+                if flush_interval > 0 and processed_since_flush >= flush_interval:
+                    try:
+                        from pathlib import Path
+                        # 保存至项目的 markdowns 目录，覆盖单个 partial 文件以避免磁盘/内存累积
+                        if partial_dir is None:
+                            partial_dir = Path("./markdowns")
+                            partial_dir.mkdir(parents=True, exist_ok=True)
+                            partial_file = partial_dir / f"{self.original_filename}_partial.md"
+
+                        with open(partial_file, 'w', encoding='utf-8') as pf:
+                            pf.write("\n\n".join(fragments))
+
+                        # free memory: 清空 fragments，仅保留单一 partial 文件在磁盘
+                        fragments = []
+                        processed_since_flush = 0
+                        gc.collect()
+                        if device_mode in ("cuda", "gpu"):
+                            try:
+                                import torch
+                                torch.cuda.empty_cache()
+                            except Exception:
+                                pass
+                    except Exception as e:
+                        logging.warning(f"写出部分 Markdown 失败: {e}")
+
+                # 确保释放 per-batch converter 及中间结果以释放内存
                 try:
                     del res
+                except Exception:
+                    pass
+                try:
+                    del converter
                 except Exception:
                     pass
                 gc.collect()
@@ -475,7 +520,9 @@ class Document2Markdown:
             # 更新实例计数器
             self._image_counter = image_counter_global
             final = "\n\n".join(fragments)
-            return final
+            # partial_file 可能为 Path 对象或 None
+            partial_files = [str(partial_file)] if partial_file is not None else []
+            return final, partial_files
 
         # 否则按单次结果渲染（原有行为）
         final_md, _ = _render_result_to_markdown(result, getattr(self, '_image_counter', 0))
@@ -484,7 +531,8 @@ class Document2Markdown:
         except Exception:
             pass
         gc.collect()
-        return final_md
+        # 对于非分批模式，返回最终 Markdown 与空的 partial list 以保证调用方兼容
+        return final_md, []
 
     def _add_image_context(self, image_tasks: List[Dict], all_text_items: List[Tuple]) -> List[Dict]:
         """为图片添加上下文信息"""
@@ -574,6 +622,29 @@ class Document2Markdown:
         cjk_ratio = (cjk_chars / total_chars) if total_chars > 0 else 0.0
         return { 'chars': total_chars, 'pages': pages, 'cjk_ratio': cjk_ratio }
 
+    def result_contains_text(self, result) -> bool:
+        """检查 Docling 转换结果中是否包含可用的文本项（TextItem）。
+        返回 True 表示存在至少一个非空文本块。
+        """
+        try:
+            from docling_core.types.doc import TextItem
+            for item, _ in result.document.iterate_items():
+                try:
+                    if isinstance(item, TextItem) and getattr(item, 'text', None):
+                        if isinstance(item.text, str) and item.text.strip():
+                            return True
+                except Exception:
+                    continue
+        except Exception:
+            # 如果无法导入 TextItem 或 result 结构异常，则尝试宽松判断
+            try:
+                for item, _ in result.document.iterate_items():
+                    if hasattr(item, 'text') and isinstance(item.text, str) and item.text.strip():
+                        return True
+            except Exception:
+                return False
+        return False
+
     def _fallback_extract_pymupdf(self, pdf_bytes: bytes) -> Optional[str]:
         """使用 PyMuPDF 提取文本（流式按页），若不可用或提取很少则返回 None"""
         if fitz is None:
@@ -593,31 +664,7 @@ class Document2Markdown:
         except Exception as e:
             logging.warning(f"PyMuPDF 回退提取失败: {e}")
             return None
-
-    def _fallback_full_ocr(self, pdf_bytes: bytes) -> Optional[str]:
-        """对每页进行图像渲染并使用 pytesseract OCR 提取全文（如果可用）。"""
-        if fitz is None:
-            logging.info("PyMuPDF 未安装，无法渲染页面做 OCR")
-            return None
-        if pytesseract is None:
-            logging.info("pytesseract 未安装，无法执行图像 OCR 回退")
-            return None
-        try:
-            doc = fitz.open(stream=pdf_bytes, filetype='pdf')
-            ocr_texts = []
-            for p in range(len(doc)):
-                page = doc.load_page(p)
-                pix = page.get_pixmap(dpi=200)
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                text = pytesseract.image_to_string(img)
-                ocr_texts.append(text)
-            merged = "\n\n".join(ocr_texts)
-            if len(merged.strip()) < 50:
-                return None
-            return merged
-        except Exception as e:
-            logging.warning(f"Full OCR 回退失败: {e}")
-            return None
+    # Note: full OCR via pytesseract removed; rely on docling's OCR pipeline instead.
 
     def _process_images_parallel(self, image_tasks: List[Dict]) -> Dict[str, str]:
         """并行处理图片 - 使用多线程池同时调用视觉语言模型API"""

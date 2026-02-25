@@ -29,8 +29,14 @@ def doc_parse_task(knowlion: KnowLion, file_path: Path, model_path: str):
     """
     print(f"\n📄 [DOC_PARSE] 开始: {file_path}")
     try:
-        md_content = knowlion.convert_to_markdown(model_path, str(file_path))
-        print(f"   ✅ [DOC_PARSE] Markdown 长度: {len(md_content)} 字符")
+        md_res = knowlion.convert_to_markdown(model_path, str(file_path))
+        # convert_to_markdown 现在返回 (md_content, partial_files)
+        if isinstance(md_res, tuple) and len(md_res) == 2:
+            md_content, partial_files = md_res
+        else:
+            md_content = md_res
+            partial_files = []
+        print(f"   ✅ [DOC_PARSE] Markdown 长度: {len(md_content)} 字符，partial files: {len(partial_files)}")
 
         # doc_parsing 阶段完成后，显式释放内存并在需要时清理 GPU 缓存
         try:
@@ -61,14 +67,14 @@ def doc_parse_task(knowlion: KnowLion, file_path: Path, model_path: str):
         except Exception as e:
             print(f"   ⚠️ [DOC_PARSE] 保存 Markdown 失败: {e}")
 
-        return str(file_path), md_content
+        return str(file_path), md_content, partial_files
     except Exception as exc:
         print(f"   ❌ [DOC_PARSE] 失败: {exc}")
         traceback.print_exc()
         return str(file_path), None
 
 
-def post_process_task(knowlion: KnowLion, file_path: str, md_content: str):
+def post_process_task(knowlion: KnowLion, file_path: str, md_content: str, create_doc_vertex: bool = True):
     """对已生成的 Markdown 执行 triples 提取、构建知识对象并保存到图库。
     返回处理结果字典。
     """
@@ -92,7 +98,7 @@ def post_process_task(knowlion: KnowLion, file_path: str, md_content: str):
         except Exception as e:
             print(f"   ⚠️ [POST] 保存 Triples 失败: {e}")
 
-        knowledge = knowlion.triple_to_knowledge(triples)
+        knowledge = knowlion.triple_to_knowledge(triples, create_doc_vertex=create_doc_vertex)
         print(f"   ✅ [POST] 知识对象数量: {len(knowledge)}")
 
         knowlion.knowledge_to_save(knowledge)
@@ -158,12 +164,23 @@ def main():
         for hf in concurrent.futures.as_completed(heavy_futures):
             f = heavy_futures[hf]
             try:
-                file_path_str, md_content = hf.result()
+                file_path_str, md_content, partial_files = hf.result()
                 if md_content is None:
                     results.append({"file": str(f), "status": "error", "error": "doc_parse_failed"})
                     continue
-                # 提交 post 任务
-                pf = light_executor.submit(post_process_task, knowlion, file_path_str, md_content)
+
+                # 如果存在 partial files，则为每个 partial 提交 post（但不创建 Doc 顶点）
+                for p in partial_files or []:
+                    try:
+                        with open(p, 'r', encoding='utf-8') as pf:
+                            part_md = pf.read()
+                        pfut = light_executor.submit(post_process_task, knowlion, file_path_str, part_md, False)
+                        post_futures.append(pfut)
+                    except Exception as e:
+                        print(f"⚠️ 无法读取或提交部分文件 {p}: {e}")
+
+                # 提交最终的完整 Markdown，允许创建 Doc 顶点（或在 config 中控制）
+                pf = light_executor.submit(post_process_task, knowlion, file_path_str, md_content, True)
                 post_futures.append(pf)
             except Exception as e:
                 print(f"⚠️ doc_parse 任务失败 for {f}: {e}")
@@ -193,9 +210,18 @@ def main():
             try:
                 if hf.done() and not hf.cancelled():
                     try:
-                        file_path_str, md_content = hf.result()
+                        file_path_str, md_content, partial_files = hf.result()
                         if md_content is not None:
-                            pf = light_executor.submit(post_process_task, knowlion, file_path_str, md_content)
+                            # 提交 partials（不创建 Doc）
+                            for p in partial_files or []:
+                                try:
+                                    with open(p, 'r', encoding='utf-8') as pf:
+                                        part_md = pf.read()
+                                    pfut = light_executor.submit(post_process_task, knowlion, file_path_str, part_md, False)
+                                    post_futures.append(pfut)
+                                except Exception:
+                                    pass
+                            pf = light_executor.submit(post_process_task, knowlion, file_path_str, md_content, True)
                             post_futures.append(pf)
                         else:
                             results.append({"file": str(f), "status": "error", "error": "doc_parse_failed"})
