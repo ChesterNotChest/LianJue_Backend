@@ -23,7 +23,10 @@
     "password": "abution",
     "batch_size": 20,
     "batch_retries": 2,
-    "batch_retry_delay": 0.5
+    "batch_retry_delay": 0.5,
+    "use_ssl": false,
+    "allow_self_signed": false,
+    "ssl_ca_cert": null
   },
   "PROCESSING_CONFIG": {
     "save_md": true,

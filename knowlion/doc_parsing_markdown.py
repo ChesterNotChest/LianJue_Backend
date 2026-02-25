@@ -227,27 +227,39 @@ class Document2Markdown:
         # 处理PDF输入
         step_start = time.time()
         input_type = type(pdf_path_or_input).__name__
+
+        # 支持按页拆分的批处理（可在 config.PROCESSING_CONFIG.pages_per_batch 中配置）
+        proc_cfg = get_config().get("PROCESSING_CONFIG", {})
+        pages_per_batch = int(proc_cfg.get("pages_per_batch", 0) or 0)
+        overlap = int(proc_cfg.get("page_context_window", 1) or 1)
+
+        # 如果启用了按页分批，我们要避免对整个文档进行一次性 heavy convert；
+        # 后续会在分批循环中对每个批次单独调用 converter.convert()
         try:
-            if isinstance(pdf_path_or_input, bytes):
-                logging.info(f"🔎 输入类型: {input_type} (bytes)，大小: {len(pdf_path_or_input)} bytes，名称: {self.original_filename}")
-                doc_stream = DocumentStream(
-                    name=self.original_filename or "unnamed_input",
-                    stream=BytesIO(pdf_path_or_input)
-                )
-                result = converter.convert(doc_stream)
+            if pages_per_batch > 0:
+                logging.info(f"🔎 输入类型: {input_type}，启用按页分批 (pages_per_batch={pages_per_batch})，跳过全文转换")
+                result = None
             else:
-                exists = isinstance(pdf_path_or_input, str) and os.path.exists(pdf_path_or_input)
-                size_info = None
-                if exists:
-                    try:
-                        size_info = os.path.getsize(pdf_path_or_input)
-                    except Exception:
-                        size_info = None
-                logging.info(
-                    f"🔎 输入类型: {input_type} (path)，存在: {exists}" +
-                    (f", 大小: {size_info} bytes" if size_info is not None else "")
-                )
-                result = converter.convert(pdf_path_or_input)
+                if isinstance(pdf_path_or_input, bytes):
+                    logging.info(f"🔎 输入类型: {input_type} (bytes)，大小: {len(pdf_path_or_input)} bytes，名称: {self.original_filename}")
+                    doc_stream = DocumentStream(
+                        name=self.original_filename or "unnamed_input",
+                        stream=BytesIO(pdf_path_or_input)
+                    )
+                    result = converter.convert(doc_stream)
+                else:
+                    exists = isinstance(pdf_path_or_input, str) and os.path.exists(pdf_path_or_input)
+                    size_info = None
+                    if exists:
+                        try:
+                            size_info = os.path.getsize(pdf_path_or_input)
+                        except Exception:
+                            size_info = None
+                    logging.info(
+                        f"🔎 输入类型: {input_type} (path)，存在: {exists}" +
+                        (f", 大小: {size_info} bytes" if size_info is not None else "")
+                    )
+                    result = converter.convert(pdf_path_or_input)
         except Exception as e:
             logging.error(f"❌ Docling 转换阶段异常（输入类型: {input_type}）: {e}")
             raise

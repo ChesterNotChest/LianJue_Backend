@@ -22,6 +22,7 @@ from knowlion.triples_to_knowledge import Triples2Knowledge
 from knowlion.markdown_to_triples import Markdown2Triples
 from knowlion.config import ABUTION_CONFIG, PROCESSING_CONFIG
 import time
+import utils.network_utils as netutils
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -64,24 +65,42 @@ class KnowLion:
         # 在初始化 AbutionConnector 前，先尝试一次独立的授权请求（pre-auth），
         # 以让代理/认证层建立会话状态，避免后续请求在认证流程中被拒绝或导致头部丢失。
         try:
-            base_url = "http://" + abution_url + "/rest"
+            cfg = ABUTION_CONFIG or {}
+            # Global SSL config (for urllib/stdlib usage)
+            netutils.configure_global_ssl(cfg)
+
+            # assemble base URL respecting whether config provided a scheme
+            provided_url = abution_url or cfg.get("abution_url", "localhost:9996")
+            base = netutils.build_base_url(provided_url, cfg)
+
+            base_url = base + "/rest"
             sess = requests.Session()
-            sess.trust_env = False
-            # 使用 HTTP Basic auth 发起一次简单的 GET 请求
             sess.auth = (username, password)
-            resp = sess.get(base_url, timeout=5)
-            if resp.status_code == 200:
-                logger.info("Pre-auth successful to %s", base_url)
-            else:
-                logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
+            _scheme, verify_val = netutils.configure_ssl_session(cfg, sess)
+
+            try:
+                resp = sess.get(base_url, timeout=5, verify=sess.verify)
+                if resp.status_code == 200:
+                    logger.info("Pre-auth successful to %s", base_url)
+                else:
+                    logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
+            except Exception as e:
+                logger.warning(f"Pre-auth request failed: {e}")
+
             try:
                 sess.close()
             except Exception:
                 pass
         except Exception as e:
-            logger.warning(f"Pre-auth request failed: {e}")
+            logger.warning(f"Pre-auth setup failed: {e}")
 
-        self.gdb_client = AbutionConnector("http://"+abution_url+"/rest")
+        # 初始化 AbutionConnector，优先使用配置的 scheme
+        try:
+            gdb_base = base + "/rest"
+        except Exception:
+            gdb_base = ("https://" + abution_url + "/rest")
+
+        self.gdb_client = AbutionConnector(gdb_base)
         # 注入一个显式的 Authorization header 以及更安全的 graph-id header
         # 以确保 nginx/auth 层能在每次请求中看到凭证与图ID（避免连接重用/代理丢失问题）
         try:
@@ -103,6 +122,21 @@ class KnowLion:
                         client_obj._session.headers.setdefault("Authorization", auth_value)
                         client_obj._session.headers.setdefault("abution-graph-id", graph_name)
                         client_obj._session.headers.setdefault("abution.graphId", graph_name)
+                        # ensure SSL verify setting propagates to connector session when possible
+                        try:
+                            # if we configured sess earlier, reuse its verify setting
+                            cfg = ABUTION_CONFIG or {}
+                            if cfg.get("use_ssl", False):
+                                allow_self_signed = bool(cfg.get("allow_self_signed", False))
+                                ssl_ca_cert = cfg.get("ssl_ca_cert")
+                                if allow_self_signed:
+                                    client_obj._session.verify = False
+                                elif ssl_ca_cert:
+                                    client_obj._session.verify = ssl_ca_cert
+                                else:
+                                    client_obj._session.verify = True
+                        except Exception:
+                            pass
                 except Exception:
                     logger.warning("无法注入到 session.headers（非致命）")
         except Exception:
