@@ -10,3 +10,4 @@ tenacity
 html5lib
 easyocr
 pypdf
+PyMuPDF

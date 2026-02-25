@@ -20,6 +20,19 @@ from docling_core.types.io import DocumentStream
 import concurrent.futures
 import gc
 import psutil
+import re
+from typing import Union
+
+try:
+    import fitz  # PyMuPDF
+except Exception:
+    fitz = None
+
+try:
+    import pytesseract
+    from PIL import Image
+except Exception:
+    pytesseract = None
 
 from openpyxl.drawing.image import PILImage
 
@@ -392,7 +405,46 @@ class Document2Markdown:
                     logging.error(f"批次转换失败: {e}")
                     continue
 
-                frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
+                # 评估文本质量，必要时执行回退提取
+                try:
+                    stats = self._assess_result_text_quality(res)
+                except Exception:
+                    stats = { 'chars': 0, 'pages': 0, 'cjk_ratio': 0.0 }
+
+                poor_quality = False
+                if stats.get('chars', 0) < 200:
+                    poor_quality = True
+                # 当文档有页并且 CJK 比例极低，视为可能提取错误（针对中文PDF）
+                if stats.get('pages', 0) > 0 and stats.get('cjk_ratio', 0.0) < 0.02:
+                    poor_quality = True
+
+                if poor_quality:
+                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，尝试回退提取")
+                    # 首先尝试 PyMuPDF 提取文本
+                    pymupdf_text = None
+                    try:
+                        pymupdf_text = self._fallback_extract_pymupdf(batch_bytes)
+                    except Exception:
+                        pymupdf_text = None
+
+                    if pymupdf_text:
+                        frag = f"RawText::\n{pymupdf_text}\n::RawText"
+                    else:
+                        # 再尝试全页OCR（开销大）
+                        ocr_text = None
+                        try:
+                            ocr_text = self._fallback_full_ocr(batch_bytes)
+                        except Exception:
+                            ocr_text = None
+
+                        if ocr_text:
+                            frag = f"RawText::\n{ocr_text}\n::RawText"
+                        else:
+                            # 如果所有回退都失败，回退到 docling 的渲染结果（尽力而为）
+                            logging.warning("所有回退提取均失败，使用原始Docling渲染结果作为最后手段")
+                            frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
+                else:
+                    frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
                 fragments.append(frag)
 
                 # 释放批次占用的中间资源
@@ -485,6 +537,75 @@ class Document2Markdown:
             start = end
 
         return batches
+
+    def _assess_result_text_quality(self, result) -> dict:
+        """评估 docling result 的文本质量，返回统计信息。
+        返回示例: { 'chars': int, 'pages': int, 'cjk_ratio': float }
+        """
+        total_chars = 0
+        cjk_chars = 0
+        pages = 0
+        try:
+            from docling_core.types.doc import TextItem
+            pages = len(result.document.pages) if hasattr(result.document, 'pages') else 0
+            for item, _ in result.document.iterate_items():
+                try:
+                    if hasattr(item, 'text') and isinstance(item.text, str):
+                        s = item.text
+                        total_chars += len(s)
+                        cjk_chars += len(re.findall(r'[\u4e00-\u9fff]', s))
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        cjk_ratio = (cjk_chars / total_chars) if total_chars > 0 else 0.0
+        return { 'chars': total_chars, 'pages': pages, 'cjk_ratio': cjk_ratio }
+
+    def _fallback_extract_pymupdf(self, pdf_bytes: bytes) -> Optional[str]:
+        """使用 PyMuPDF 提取文本（流式按页），若不可用或提取很少则返回 None"""
+        if fitz is None:
+            logging.info("PyMuPDF (fitz) 未安装，跳过该回退")
+            return None
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+            texts = []
+            for p in range(len(doc)):
+                page = doc.load_page(p)
+                t = page.get_text("text")
+                texts.append(t)
+            merged = "\n\n".join(texts)
+            if len(merged.strip()) < 50:
+                return None
+            return merged
+        except Exception as e:
+            logging.warning(f"PyMuPDF 回退提取失败: {e}")
+            return None
+
+    def _fallback_full_ocr(self, pdf_bytes: bytes) -> Optional[str]:
+        """对每页进行图像渲染并使用 pytesseract OCR 提取全文（如果可用）。"""
+        if fitz is None:
+            logging.info("PyMuPDF 未安装，无法渲染页面做 OCR")
+            return None
+        if pytesseract is None:
+            logging.info("pytesseract 未安装，无法执行图像 OCR 回退")
+            return None
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype='pdf')
+            ocr_texts = []
+            for p in range(len(doc)):
+                page = doc.load_page(p)
+                pix = page.get_pixmap(dpi=200)
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                text = pytesseract.image_to_string(img)
+                ocr_texts.append(text)
+            merged = "\n\n".join(ocr_texts)
+            if len(merged.strip()) < 50:
+                return None
+            return merged
+        except Exception as e:
+            logging.warning(f"Full OCR 回退失败: {e}")
+            return None
 
     def _process_images_parallel(self, image_tasks: List[Dict]) -> Dict[str, str]:
         """并行处理图片 - 使用多线程池同时调用视觉语言模型API"""
