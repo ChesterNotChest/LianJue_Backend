@@ -35,10 +35,9 @@
     "MODEL_PATH": "./model",
     "pages_per_batch": 0,
     "page_context_window": 1,
-    "memory_threshold_mb": 1024,
-    "flush_batches": 10
+    "memory_threshold_mb": 1024
   },
-    "mysql": {
+  "MYSQL": {
     "host": "localhost",
     "port": 3306,
     "user": "root",

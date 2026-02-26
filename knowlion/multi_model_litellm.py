@@ -116,7 +116,7 @@ class LitellmMultiModel:
             raise Exception(f"向量模型调用失败: {msg}")
 
 
-from knowlion.config import MODEL_CONFIGS
+from config import MODEL_CONFIGS
 
 # --------------------------
 # 3. 测试示例

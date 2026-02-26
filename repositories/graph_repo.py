@@ -1,5 +1,5 @@
-from ..extensions import db
-from ..schemas.graph import Graph
+from extensions import db
+from schemas.graph import Graph
 
 def get_graph_by_id(graph_id):
     '''

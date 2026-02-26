@@ -36,7 +36,7 @@ except Exception:
 from openpyxl.drawing.image import PILImage
 
 from knowlion.multi_model_litellm import LitellmMultiModel
-from knowlion.config import get_config
+from config import get_config
 try:
     from pypdf import PdfReader, PdfWriter
 except Exception:
@@ -210,7 +210,7 @@ class Document2Markdown:
 
         logging.info(f"PDF文件已保存到: {save_path}")
 
-    def pdf_to_markdown(self, pdf_path_or_input: str | bytes) -> str:
+    def pdf_to_markdown(self, pdf_path_or_input: str | bytes, job_id: str = None, process_index: int = 0) -> tuple:
         """将PDF转换为Markdown，支持图片上下文提取和并行处理"""
         # 📊 记录开始时间和内存
         start_time = time.time()
@@ -258,7 +258,11 @@ class Document2Markdown:
                         f"🔎 输入类型: {input_type} (path)，存在: {exists}" +
                         (f", 大小: {size_info} bytes" if size_info is not None else "")
                     )
-                    result = converter.convert(pdf_path_or_input)
+                    try:
+                        result = converter.convert(pdf_path_or_input)
+                    finally:
+                        # converter may hold native/pdfium resources; prefer explicit cleanup if available
+                        pass
         except Exception as e:
             logging.error(f"❌ Docling 转换阶段异常（输入类型: {input_type}）: {e}")
             raise
@@ -401,19 +405,21 @@ class Document2Markdown:
                         pdf_bytes = f.read()
                 except Exception:
                     # 回退：使用已经转换的 result（单次处理）
-                    return _render_result_to_markdown(result)[0]
+                    final_md, _ = _render_result_to_markdown(result, getattr(self, '_image_counter', 0))
+                    return final_md, [], 1
 
             batches = self.split_pdf_batches(pdf_bytes, pages_per_batch, overlap=overlap)
+            total_batches = len(batches)
             fragments = []
             image_counter_global = getattr(self, '_image_counter', 0)
             device_mode = str(proc_cfg.get('device_mode', 'cpu')).lower()
-            # flush control: write partial markdown to disk every `flush_batches` to free memory
-            flush_interval = int(proc_cfg.get('flush_batches', 10) or 10)
+            # write partial markdown to disk after every batch (flush_batches config deprecated)
             partial_dir = None
             partial_file = None
-            processed_since_flush = 0
 
-            for bidx, batch_bytes in enumerate(batches):
+            start_idx = int(process_index or 0)
+            for bidx in range(start_idx, total_batches):
+                batch_bytes = batches[bidx]
                 logging.info(f"📦 处理批次 {bidx+1}/{len(batches)}，大小: {len(batch_bytes)} bytes")
                 # 创建 per-batch converter（确保内部状态不会在多个批次间累积）
                 try:
@@ -429,7 +435,28 @@ class Document2Markdown:
                     res = converter.convert(doc_stream)
                 except Exception as e:
                     logging.error(f"批次转换失败: {e}")
-                    # 确保释放 converter 后继续
+                    # ensure converter/result cleanup if possible then continue
+                    try:
+                        if 'res' in locals():
+                            try:
+                                if hasattr(res, 'document') and hasattr(res.document, 'close'):
+                                    res.document.close()
+                            except Exception:
+                                pass
+                            try:
+                                del res
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    try:
+                        if converter is not None and hasattr(converter, 'close'):
+                            try:
+                                converter.close()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
                     try:
                         del converter
                     except Exception:
@@ -472,41 +499,73 @@ class Document2Markdown:
                     frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
 
                 fragments.append(frag)
-                processed_since_flush += 1
 
-                # 当累计达到 flush_interval 时，写出部分 Markdown 并释放内存
-                if flush_interval > 0 and processed_since_flush >= flush_interval:
+                # 每完成一个批次，立即更新 progress_index，便于外层直接比较 process_index 与 total_batches
+                if job_id:
                     try:
-                        from pathlib import Path
-                        # 保存至项目的 markdowns 目录，覆盖单个 partial 文件以避免磁盘/内存累积
-                        if partial_dir is None:
-                            partial_dir = Path("./markdowns")
-                            partial_dir.mkdir(parents=True, exist_ok=True)
+                        from repositories.jobs_repo import update_job_progress
+                        update_job_progress(job_id, bidx + 1)
+                    except Exception:
+                        logging.debug("无法更新 jobs_repo 中的 progress_index（非致命）")
+
+                # write partial markdown to disk after each batch to ensure per-batch persistence
+                try:
+                    from pathlib import Path
+                    # 保存至项目的 markdowns 目录，覆盖单个 partial 文件以避免磁盘/内存累积
+                    if partial_dir is None:
+                        partial_dir = Path("./markdowns")
+                        partial_dir.mkdir(parents=True, exist_ok=True)
+                        if job_id:
+                            partial_file = partial_dir / f"{job_id}_partial.md"
+                        else:
                             partial_file = partial_dir / f"{self.original_filename}_partial.md"
 
-                        with open(partial_file, 'w', encoding='utf-8') as pf:
-                            pf.write("\n\n".join(fragments))
+                    with open(partial_file, 'w', encoding='utf-8') as pf:
+                        pf.write("\n\n".join(fragments))
 
-                        # free memory: 清空 fragments，仅保留单一 partial 文件在磁盘
-                        fragments = []
-                        processed_since_flush = 0
-                        gc.collect()
-                        if device_mode in ("cuda", "gpu"):
-                            try:
-                                import torch
-                                torch.cuda.empty_cache()
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        logging.warning(f"写出部分 Markdown 失败: {e}")
+                    # 如果提供了 job_id，则更新任务数据库中的 partial 路径
+                    if job_id:
+                        try:
+                            from repositories.jobs_repo import update_partial_md_path
+                            update_partial_md_path(job_id, str(partial_file))
+                        except Exception:
+                            logging.debug("无法更新 jobs_repo 中的 partial 路径或进度（非致命）")
+
+                    # free memory: do not clear fragments here to keep cumulative context in partial
+                    gc.collect()
+                    if device_mode in ("cuda", "gpu"):
+                        try:
+                            import torch
+                            torch.cuda.empty_cache()
+                        except Exception:
+                            pass
+                except Exception as e:
+                    logging.warning(f"写出部分 Markdown 失败: {e}")
 
                 # 确保释放 per-batch converter 及中间结果以释放内存
                 try:
-                    del res
+                    if 'res' in locals():
+                        try:
+                            if hasattr(res, 'document') and hasattr(res.document, 'close'):
+                                res.document.close()
+                        except Exception:
+                            pass
+                        try:
+                            del res
+                        except Exception:
+                            pass
                 except Exception:
                     pass
                 try:
-                    del converter
+                    if converter is not None and hasattr(converter, 'close'):
+                        try:
+                            converter.close()
+                        except Exception:
+                            pass
+                    try:
+                        del converter
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 gc.collect()
@@ -522,7 +581,16 @@ class Document2Markdown:
             final = "\n\n".join(fragments)
             # partial_file 可能为 Path 对象或 None
             partial_files = [str(partial_file)] if partial_file is not None else []
-            return final, partial_files
+
+            # 最终对齐进度到 total_batches，外层可直接用 progress_index >= total_batches 判断终止
+            if job_id:
+                try:
+                    from repositories.jobs_repo import update_job_progress
+                    update_job_progress(job_id, total_batches)
+                except Exception:
+                    logging.debug("无法在收尾阶段更新 progress_index（非致命）")
+
+            return final, partial_files, total_batches
 
         # 否则按单次结果渲染（原有行为）
         final_md, _ = _render_result_to_markdown(result, getattr(self, '_image_counter', 0))
@@ -531,8 +599,8 @@ class Document2Markdown:
         except Exception:
             pass
         gc.collect()
-        # 对于非分批模式，返回最终 Markdown 与空的 partial list 以保证调用方兼容
-        return final_md, []
+        # 对于非分批模式，返回最终 Markdown 与空的 partial list 以保证调用方兼容，total_batches=1
+        return final_md, [], 1
 
     def _add_image_context(self, image_tasks: List[Dict], all_text_items: List[Tuple]) -> List[Dict]:
         """为图片添加上下文信息"""
@@ -952,7 +1020,7 @@ if __name__ == "__main__":
     file_path = "/root/knowlion/pdfs/第1章+绪论.pdf"
     model_path = "/thutmose/app/abution/model"
 
-    from knowlion.config import MODEL_CONFIGS
+    from config import MODEL_CONFIGS
 
     model_instance = LitellmMultiModel(MODEL_CONFIGS)
 

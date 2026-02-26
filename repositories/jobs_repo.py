@@ -1,5 +1,8 @@
-from ..extensions import db
-from ..schemas.jobs import Jobs
+from repositories.file_repo import get_file_by_id
+
+from constant import JobStatus, JobStage
+from extensions import db
+from schemas.jobs import Jobs
 
 ###################
 # 基础getter
@@ -29,8 +32,8 @@ def get_progress_index_by_job_id(job_id):
 
 ###################
 # 创建新任务
-def create_job(job_id: int, file_id: int):
-    new_job = Jobs(job_id=job_id, file_id=file_id, status="pdf_to_md", stage="pending")
+def create_job(file_id: int, graph_id: str, end_stage: str = JobStage.KNOWLEDGE_TO_SAVE.value):
+    new_job = Jobs(file_id=file_id, graph_id=graph_id, status="pending", stage="pdf_to_md", end_stage=end_stage)
     db.session.add(new_job)
     db.session.commit()
     return new_job
@@ -81,11 +84,18 @@ def update_triples_path(job_id: int, triples_path: str = ""):
         job.triples_path = triples_path
         db.session.commit()
     return job
+
+def update_knowledge_path(job_id: int, knowledge_path: str = ""):
+    job = get_job_by_id(job_id)
+    if job:
+        job.knowledge_path = knowledge_path
+        db.session.commit()
+    return job
 ###################
 
 ###################
 # 更新异常
-def update_status(job_id: int, status: str):
+def update_job_status(job_id: int, status: str):
     job = get_job_by_id(job_id)
     if job:
         job.status = status

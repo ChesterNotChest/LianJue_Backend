@@ -704,7 +704,7 @@ class Markdown2Triples:
 # 使用示例
 if __name__ == "__main__":
     # 初始化模型
-    from knowlion.config import MODEL_CONFIGS
+    from config import MODEL_CONFIGS
 
     model_instance = LitellmMultiModel(MODEL_CONFIGS)
 

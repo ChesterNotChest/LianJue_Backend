@@ -1,5 +1,5 @@
-from ..extensions import db
-from ..schemas.filegraph import FileGraph
+from extensions import db
+from schemas.filegraph import FileGraph
 
 def add_binding(file_id, graph_id):
     new_binding = FileGraph(file_id=file_id, graph_id=graph_id)

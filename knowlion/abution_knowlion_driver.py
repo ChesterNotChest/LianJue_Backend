@@ -20,7 +20,7 @@ from knowlion.multi_model_litellm import LitellmMultiModel
 from knowlion.knowledge_to_search import AdvancedHyperGraphRAG
 from knowlion.triples_to_knowledge import Triples2Knowledge
 from knowlion.markdown_to_triples import Markdown2Triples
-from knowlion.config import ABUTION_CONFIG, PROCESSING_CONFIG
+from config import ABUTION_CONFIG, PROCESSING_CONFIG
 import time
 import utils.network_utils as netutils
 
@@ -159,7 +159,7 @@ class KnowLion:
     def delete_graph(self):
         self.gdb_client.delete_graph(self.graph_name)
 
-    def convert_to_markdown(self, model_path, file_path, file_name=None, save_pdf_dir=None):
+    def convert_to_markdown(self, model_path, file_path, file_name=None, save_pdf_dir=None, job_id: str = None, process_index: int = 0):
         """
         步骤1: 将原始文件转换为Markdown格式
 
@@ -198,17 +198,24 @@ class KnowLion:
 
             # 3. 将PDF转换为Markdown
             logger.info("开始将PDF转换为Markdown")
-            md_res = parser.pdf_to_markdown(pdf_bytes)
-            # pdf_to_markdown 返回 (final_md, partial_files)
-            if isinstance(md_res, tuple) and len(md_res) == 2:
-                md_content, partial_files = md_res
+            md_res = parser.pdf_to_markdown(pdf_bytes, job_id=job_id, process_index=process_index)
+            # pdf_to_markdown 返回 (final_md, partial_files) 或 (final_md, partial_files, total_batches)
+            total_batches = None
+            if isinstance(md_res, tuple):
+                if len(md_res) >= 3:
+                    md_content, partial_files, total_batches = md_res[0], md_res[1], md_res[2]
+                elif len(md_res) == 2:
+                    md_content, partial_files = md_res
+                else:
+                    md_content = md_res[0]
+                    partial_files = []
             else:
                 md_content = md_res
                 partial_files = []
 
             logger.info(f"Markdown转换完成，内容长度: {len(md_content)} 字符，部分文件数: {len(partial_files)}")
 
-            return md_content, partial_files
+            return md_content, partial_files, total_batches
 
         except Exception as e:
             logger.error(f"文档转换失败: {e}")
@@ -247,7 +254,7 @@ class KnowLion:
             return []
 
 
-    def triple_to_knowledge(self, para_triples:List[Dict[str, Any]], classify_id=None, create_doc_vertex: bool = True) -> List[Knowledge]:
+    def triple_to_knowledge(self, para_triples:List[Dict[str, Any]], classify_id=None) -> List[Knowledge]:
         """
         步骤2: 从Markdown内容提取知识
 
@@ -262,9 +269,8 @@ class KnowLion:
             model_instance=self.model,
             para_triples=para_triples,
             file_name=self.file_name,
-            #file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
-            classify=classify_id,
-            create_doc_vertex=create_doc_vertex
+            #file_name="中印度洋盆岩心沉殖物中稀土元素赋存特征",
+            classify=classify_id
         )
 
         # 3. 构建知识图谱对象

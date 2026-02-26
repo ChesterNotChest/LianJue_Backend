@@ -11,3 +11,7 @@ html5lib
 easyocr
 pypdf
 PyMuPDF
+tomlkit
+flask
+flask_sqlalchemy
+pymysql

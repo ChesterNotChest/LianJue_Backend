@@ -6,8 +6,8 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config_file():
-    # repo root is parent of this package
-    root = Path(__file__).resolve().parents[1]
+    # repo root is this file's directory
+    root = Path(__file__).resolve().parent
     config_path = root / "config.json"
     example_path = root / "config.example.json"
 
@@ -40,6 +40,23 @@ ABUTION_CONFIG = _CONFIG.get("ABUTION_CONFIG", {})
 # Expose processing config (save flags, device mode, batching)
 PROCESSING_CONFIG = _CONFIG.get("PROCESSING_CONFIG", {})
 
+# Expose database config (support common casings)
+MYSQL = _CONFIG.get("MYSQL")
+
+
+def get_mysql():
+    """Return MySQL configuration dict (may be empty)."""
+    return MYSQL
+
+
 def get_config():
     """Return full loaded config dict."""
     return _CONFIG
+
+
+# Convenience top-level names for common keys (fall back to env usage if empty)
+MYSQL_HOST = MYSQL.get("host") if isinstance(MYSQL, dict) else None
+MYSQL_PORT = MYSQL.get("port") if isinstance(MYSQL, dict) else None
+MYSQL_USER = MYSQL.get("user") if isinstance(MYSQL, dict) else None
+MYSQL_PASSWORD = MYSQL.get("password") if isinstance(MYSQL, dict) else None
+MYSQL_DATABASE = MYSQL.get("database") if isinstance(MYSQL, dict) else None

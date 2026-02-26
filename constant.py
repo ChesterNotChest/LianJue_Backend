@@ -8,6 +8,7 @@ class JobStage(Enum):
 
 class JobStatus(Enum):
         PENDING = "pending"
+        PAUSED = "paused"
         IN_PROGRESS = "in_progress"
         COMPLETED = "completed"
         FAILED = "failed"
