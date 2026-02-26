@@ -16,3 +16,6 @@ markdowns/*
 
 triples/*
 !triples/.gitkeep
+
+knowledge/*
+!knowledge/.gitkeep

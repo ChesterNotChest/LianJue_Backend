@@ -32,10 +32,18 @@
     "save_md": true,
     "save_triples": true,
     "device_mode": "cpu",
+    "MODEL_PATH": "./model",
     "pages_per_batch": 0,
     "page_context_window": 1,
     "memory_threshold_mb": 1024,
     "flush_batches": 10
+  },
+    "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "",
+    "database": "knowlion"
   }
 }
 
