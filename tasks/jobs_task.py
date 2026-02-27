@@ -22,7 +22,8 @@ def add_file(file_path, upload_time: str = None): # TODO 这里之后准备从ap
 #########
 # 任务构建与启停
 def create_process_job(graphId: str, file_id: int, end_stage: str):
-    create_job(file_id=file_id, graph_id=graphId, end_stage=end_stage)
+    job = create_job(file_id=file_id, graph_id=graphId, end_stage=end_stage)
+    return job.job_id if job else None
     # notify_worker_to_resume(job_id, file_id)
 
 def pause_job(job_id):

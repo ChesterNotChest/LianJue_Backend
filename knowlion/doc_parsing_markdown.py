@@ -87,6 +87,10 @@ def get_document_converter(easyocr_model_path, pdf_artifacts_path):
     # 设置文档变为图片的保存选项
     pdf_pipeline_options.generate_page_images = True  # 获取表格图片，然后使用 TableItem.get_image 函数来实现
     pdf_pipeline_options.generate_picture_images = True
+    try:
+        pdf_pipeline_options.batch_size = 2
+    except Exception:
+        pass
     IMAGE_RESOLUTION_SCALE = 5.0  # 图片分辨率缩放比例
     # 创建转换器实例
     converter = DocumentConverter(
@@ -281,118 +285,8 @@ class Document2Markdown:
         pages_per_batch = int(proc_cfg.get("pages_per_batch", 0) or 0)
         overlap = int(proc_cfg.get("page_context_window", 1) or 1)
 
-        def _render_result_to_markdown(res, image_counter_start=0):
-            # 将单个 Docling result 转为 markdown（包含图片占位符替换）
-            all_text_items = []
-            image_tasks = []
-            image_counter = image_counter_start
-
-            stats = {
-                'text': 0,
-                'table': 0,
-                'image': 0,
-                'code': 0,
-                'formula': 0,
-                'section_header': 0,
-                'filtered_images': 0,
-                'filtered_edge_logo': 0,
-                'filtered_small': 0
-            }
-
-            from docling_core.types.doc import TextItem, TableItem, PictureItem, CodeItem
-            idx = 0
-            for item, level in res.document.iterate_items():
-                idx += 1
-                try:
-                    logging.debug(f"🔄 处理元素[{idx}]: {type(item).__name__}")
-                except Exception:
-                    pass
-
-                if isinstance(item, TextItem):
-                    if "formula" in item.label:
-                        text_content = f"Formulas::\n{item.text}\n::Formulas"
-                        stats['formula'] += 1
-                    elif "section_header" in item.label:
-                        indent = "  " * (level - 1)
-                        text_content = f"{indent}{'#' * level} {item.text}"
-                        stats['section_header'] += 1
-                    elif "code" in item.label:
-                        text_content = f"Code::\n{item.text}\n::Code"
-                        stats['code'] += 1
-                    else:
-                        text_content = item.text
-                        stats['text'] += 1
-                    all_text_items.append(('text', text_content))
-                elif isinstance(item, TableItem):
-                    try:
-                        table_df = item.export_to_dataframe()
-                        table_md = table_df.to_markdown()
-                        text_content = f"Table::\n{table_md}\n::Table"
-                        all_text_items.append(('text', text_content))
-                        stats['table'] += 1
-                    except Exception:
-                        continue
-                elif isinstance(item, PictureItem):
-                    try:
-                        prov = item.prov[0]
-                        bbox = prov.bbox
-                        page = prov.page_no
-                        page_obj = res.document.pages[page]
-                        pil_image = page_obj.image.pil_image
-                        page_width, page_height = pil_image.size
-                        t = bbox.t
-                        l = bbox.l
-                        r = bbox.r
-                        b = bbox.b
-                        is_edge_logo = ((t < 80) or ((page_height - b) < 80) or (l < 90) or ((page_width - r) < 90))
-                        is_small = (r - l) * (t - b) < 1000
-                        if is_edge_logo or is_small:
-                            stats['filtered_images'] += 1
-                            if is_edge_logo:
-                                stats['filtered_edge_logo'] += 1
-                            if is_small:
-                                stats['filtered_small'] += 1
-                            continue
-
-                        image_data = item.get_image(res.document)
-                        if image_data:
-                            image_counter += 1
-                            stats['image'] += 1
-                            placeholder = f"IMAGE_PLACEHOLDER_{image_counter}"
-                            image_task = {
-                                'placeholder': placeholder,
-                                'image_data': image_data,
-                                'position': len(all_text_items),
-                                'page': page,
-                                'coordinates': (l, t, r, b)
-                            }
-                            image_tasks.append(image_task)
-                            all_text_items.append(('image', placeholder))
-                    except Exception:
-                        continue
-                elif isinstance(item, CodeItem):
-                    text_content = f"Code::\n{item.text}\n::Code"
-                    all_text_items.append(('text', text_content))
-                else:
-                    continue
-
-            # 构建初始 Markdown
-            initial_md_parts = [content for (_t, content) in all_text_items]
-            initial_md = "\n\n".join(initial_md_parts)
-
-            # 图片处理
-            if self.enable_image_caption and image_tasks:
-                image_tasks_with_context = self._add_image_context(image_tasks, all_text_items)
-                processed_images = self._process_images_parallel(image_tasks_with_context)
-                final_md = initial_md
-                for placeholder, description in processed_images.items():
-                    final_md = final_md.replace(placeholder, f"Image::\n{description}\n::Image")
-                return final_md, image_counter
-            else:
-                if not self.enable_image_caption:
-                    for task in image_tasks:
-                        initial_md = initial_md.replace(task['placeholder'], "[图片]")
-                return initial_md, image_counter
+        # _render_result_to_markdown moved to instance method so it is available
+        # to other helpers (e.g., poor-quality retry handler).
 
         # 如果启用了按页分批
         if pages_per_batch > 0:
@@ -405,7 +299,7 @@ class Document2Markdown:
                         pdf_bytes = f.read()
                 except Exception:
                     # 回退：使用已经转换的 result（单次处理）
-                    final_md, _ = _render_result_to_markdown(result, getattr(self, '_image_counter', 0))
+                    final_md, _ = self._render_result_to_markdown(result, getattr(self, '_image_counter', 0))
                     return final_md, [], 1
 
             batches = self.split_pdf_batches(pdf_bytes, pages_per_batch, overlap=overlap)
@@ -413,7 +307,7 @@ class Document2Markdown:
             fragments = []
             image_counter_global = getattr(self, '_image_counter', 0)
             device_mode = str(proc_cfg.get('device_mode', 'cpu')).lower()
-            # write partial markdown to disk after every batch (flush_batches config deprecated)
+            # write partial markdown to disk after every batch
             partial_dir = None
             partial_file = None
 
@@ -483,35 +377,52 @@ class Document2Markdown:
                     poor_quality = True
 
                 if poor_quality:
-                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，尝试 PyMuPDF 回退提取")
-                    pymupdf_text = None
+                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，使用回退策略（PyMuPDF -> full-page OCR）。")
                     try:
-                        pymupdf_text = self._fallback_extract_pymupdf(batch_bytes)
-                    except Exception:
-                        pymupdf_text = None
-
-                    if pymupdf_text:
-                        frag = f"RawText::\n{pymupdf_text}\n::RawText"
-                    else:
-                        logging.warning("PyMuPDF 回退未能提取可用文本，使用 Docling 渲染结果作为退路")
-                        frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
+                        frag, image_counter_global = self._handle_poor_quality_batch(batch_bytes, bidx, image_counter_global, device_mode)
+                    except Exception as e:
+                        logging.debug(f"回退策略处理失败: {e}")
+                        frag = ""
                 else:
-                    frag, image_counter_global = _render_result_to_markdown(res, image_counter_global)
-
-                fragments.append(frag)
-
-                # 每完成一个批次，立即更新 progress_index，便于外层直接比较 process_index 与 total_batches
-                if job_id:
+                    frag, image_counter_global = self._render_result_to_markdown(res, image_counter_global)
+                # 片段去重/规范化：避免写入与上一个或已存在 partial 完全重复的片段
+                def _normalize_fragment(s: str) -> str:
                     try:
-                        from repositories.jobs_repo import update_job_progress
-                        update_job_progress(job_id, bidx + 1)
+                        s2 = re.sub(r"[\s\u00A0]+", " ", s or "").strip()
+                        return s2
                     except Exception:
-                        logging.debug("无法更新 jobs_repo 中的 progress_index（非致命）")
+                        return (s or "").strip()
+
+                write_fragment = True
+                try:
+                    norm_frag = _normalize_fragment(frag)
+                    # 与前一片段比较
+                    if fragments:
+                        last_norm = _normalize_fragment(fragments[-1])
+                        if last_norm and norm_frag and last_norm == norm_frag:
+                            logging.warning("跳过写入：与上一个已缓存片段完全重复")
+                            write_fragment = False
+                    # 与已存在 partial 文件中比较（避免 resume 时重复）
+                    if write_fragment and partial_file is not None and partial_file.exists():
+                        try:
+                            existing_text = partial_file.read_text(encoding='utf-8')
+                            if norm_frag and re.search(re.escape(norm_frag), re.sub(r"[\s\u00A0]+", " ", existing_text)):
+                                logging.warning("跳过写入：片段已存在于 partial 文件中（resume 重复）")
+                                write_fragment = False
+                        except Exception:
+                            pass
+                except Exception:
+                    write_fragment = True
+
+                if write_fragment:
+                    fragments.append(frag)
 
                 # write partial markdown to disk after each batch to ensure per-batch persistence
+                batch_completed = False
                 try:
                     from pathlib import Path
-                    # 保存至项目的 markdowns 目录，覆盖单个 partial 文件以避免磁盘/内存累积
+
+                    # 保存至项目的 markdowns 目录
                     if partial_dir is None:
                         partial_dir = Path("./markdowns")
                         partial_dir.mkdir(parents=True, exist_ok=True)
@@ -520,8 +431,72 @@ class Document2Markdown:
                         else:
                             partial_file = partial_dir / f"{self.original_filename}_partial.md"
 
-                    with open(partial_file, 'w', encoding='utf-8') as pf:
-                        pf.write("\n\n".join(fragments))
+                    # If the partial file already exists (resuming), do NOT try to
+                    # guess how many fragments were written; simply append to EOF.
+                    try:
+                        if partial_file.exists():
+                            write_mode = 'a'
+                            logger.info(f"恢复检测: 部分文件已存在，使用 append 模式追加到 EOF。")
+                        else:
+                            write_mode = 'w'
+                    except Exception:
+                        write_mode = 'w'
+
+                    # sanitize fragment a little (remove embedded control chars, collapse many blank lines)
+                    try:
+                        frag = re.sub(r'[\x00-\x08\x0b-\x1f]', '', frag)
+                        frag = re.sub(r'\n{3,}', '\n\n', frag)
+                    except Exception:
+                        pass
+
+                    # Always append to EOF to avoid accidental overwrite by mismatched start_idx.
+                    try:
+                        if partial_file is not None:
+                            write_mode = 'a'
+                        else:
+                            write_mode = 'w'
+                    except Exception:
+                        write_mode = 'a'
+
+                    # Filter out tiny / noise fragments (e.g., isolated symbols or single words like 'user')
+                    frag_preview = frag.strip()
+                    is_cjk = bool(re.search(r'[\u4e00-\u9fff]', frag_preview))
+                    has_long_word = bool(re.search(r'[A-Za-z0-9]{3,}', frag_preview))
+                    if not frag_preview:
+                        logger.debug("跳过写入：片段为空")
+                        write_skipped = True
+                    elif len(frag_preview) < 12 and not is_cjk and not has_long_word:
+                        logger.warning(f"跳过写入疑似噪声片段: {repr(frag_preview)}")
+                        write_skipped = True
+                    else:
+                        write_skipped = False
+
+                    logger.info(f"💾 写出部分 Markdown 到: {partial_file} (mode={write_mode}, start_idx={start_idx}, skipped={write_skipped})")
+                    if not write_skipped:
+                        # log a short debug representation of the fragment
+                        try:
+                            logger.debug(f"片段预览: {repr(frag_preview[:200])}")
+                        except Exception:
+                            pass
+                        # When appending, only write a separator if the file already contains data
+                        need_sep = False
+                        try:
+                            if write_mode == 'a' and partial_file is not None and os.path.exists(str(partial_file)):
+                                try:
+                                    if os.path.getsize(str(partial_file)) > 0:
+                                        need_sep = True
+                                except Exception:
+                                    need_sep = True
+                        except Exception:
+                            need_sep = False
+
+                        with open(partial_file, write_mode, encoding='utf-8') as pf:
+                            if need_sep:
+                                pf.write("\n\n")
+                            pf.write(frag)
+                    else:
+                        # still update DB partial path so resume logic remains consistent
+                        logger.debug("已跳过写入噪声片段，但保留 partial 路径和进度")
 
                     # 如果提供了 job_id，则更新任务数据库中的 partial 路径
                     if job_id:
@@ -533,6 +508,10 @@ class Document2Markdown:
 
                     # free memory: do not clear fragments here to keep cumulative context in partial
                     gc.collect()
+                    # mark batch as successfully processed (fragment generated and partial handling attempted)
+                    batch_completed = True
+
+                    # 尝试清空 GPU 缓存（若处于 GPU 模式）
                     if device_mode in ("cuda", "gpu"):
                         try:
                             import torch
@@ -541,6 +520,14 @@ class Document2Markdown:
                             pass
                 except Exception as e:
                     logging.warning(f"写出部分 Markdown 失败: {e}")
+
+                # 仅当批次已完全处理（包括生成片段与尝试写入 partial）后才更新 progress_index
+                if job_id and batch_completed:
+                    try:
+                        from repositories.jobs_repo import update_job_progress
+                        update_job_progress(job_id, bidx + 1)
+                    except Exception:
+                        logging.debug("无法更新 jobs_repo 中的 progress_index（非致命）")
 
                 # 确保释放 per-batch converter 及中间结果以释放内存
                 try:
@@ -593,7 +580,7 @@ class Document2Markdown:
             return final, partial_files, total_batches
 
         # 否则按单次结果渲染（原有行为）
-        final_md, _ = _render_result_to_markdown(result, getattr(self, '_image_counter', 0))
+        final_md, _ = self._render_result_to_markdown(result, getattr(self, '_image_counter', 0))
         try:
             del converter, result
         except Exception:
@@ -713,6 +700,305 @@ class Document2Markdown:
                 return False
         return False
 
+    def _render_result_to_markdown(self, res, image_counter_start=0):
+        # 将单个 Docling result 转为 markdown（包含图片占位符替换）
+        all_text_items = []
+        image_tasks = []
+        image_counter = image_counter_start
+
+        stats = {
+            'text': 0,
+            'table': 0,
+            'image': 0,
+            'code': 0,
+            'formula': 0,
+            'section_header': 0,
+            'filtered_images': 0,
+            'filtered_edge_logo': 0,
+            'filtered_small': 0
+        }
+
+        try:
+            from docling_core.types.doc import TextItem, TableItem, PictureItem, CodeItem
+        except Exception:
+            TextItem = TableItem = PictureItem = CodeItem = object
+
+        idx = 0
+        for item, level in res.document.iterate_items():
+            idx += 1
+            try:
+                logging.debug(f"🔄 处理元素[{idx}]: {type(item).__name__}")
+            except Exception:
+                pass
+
+            if isinstance(item, TextItem):
+                if getattr(item, 'label', '') and "formula" in item.label:
+                    text_content = f"Formulas::\n{item.text}\n::Formulas"
+                    stats['formula'] += 1
+                elif getattr(item, 'label', '') and "section_header" in item.label:
+                    indent = "  " * (level - 1)
+                    text_content = f"{indent}{'#' * level} {item.text}"
+                    stats['section_header'] += 1
+                elif getattr(item, 'label', '') and "code" in item.label:
+                    text_content = f"Code::\n{item.text}\n::Code"
+                    stats['code'] += 1
+                else:
+                    text_content = item.text
+                    stats['text'] += 1
+                all_text_items.append(('text', text_content))
+            elif isinstance(item, TableItem):
+                try:
+                    table_df = item.export_to_dataframe()
+                    table_md = table_df.to_markdown()
+                    text_content = f"Table::\n{table_md}\n::Table"
+                    all_text_items.append(('text', text_content))
+                    stats['table'] += 1
+                except Exception:
+                    continue
+            elif isinstance(item, PictureItem):
+                try:
+                    prov = item.prov[0]
+                    bbox = prov.bbox
+                    page = prov.page_no
+                    page_obj = res.document.pages[page]
+                    pil_image = page_obj.image.pil_image
+                    page_width, page_height = pil_image.size
+                    t = bbox.t
+                    l = bbox.l
+                    r = bbox.r
+                    b = bbox.b
+                    is_edge_logo = ((t < 80) or ((page_height - b) < 80) or (l < 90) or ((page_width - r) < 90))
+                    is_small = (r - l) * (t - b) < 1000
+                    if is_edge_logo or is_small:
+                        stats['filtered_images'] += 1
+                        if is_edge_logo:
+                            stats['filtered_edge_logo'] += 1
+                        if is_small:
+                            stats['filtered_small'] += 1
+                        continue
+
+                    image_data = item.get_image(res.document)
+                    if image_data:
+                        image_counter += 1
+                        stats['image'] += 1
+                        placeholder = f"IMAGE_PLACEHOLDER_{image_counter}"
+                        image_task = {
+                            'placeholder': placeholder,
+                            'image_data': image_data,
+                            'position': len(all_text_items),
+                            'page': page,
+                            'coordinates': (l, t, r, b)
+                        }
+                        image_tasks.append(image_task)
+                        all_text_items.append(('image', placeholder))
+                except Exception:
+                    continue
+            elif isinstance(item, CodeItem):
+                text_content = f"Code::\n{item.text}\n::Code"
+                all_text_items.append(('text', text_content))
+            else:
+                continue
+
+        # 构建初始 Markdown
+        initial_md_parts = [content for (_t, content) in all_text_items]
+        initial_md = "\n\n".join(initial_md_parts)
+
+        # 图片处理
+        if self.enable_image_caption and image_tasks:
+            image_tasks_with_context = self._add_image_context(image_tasks, all_text_items)
+            processed_images = self._process_images_parallel(image_tasks_with_context)
+            final_md = initial_md
+            for placeholder, description in processed_images.items():
+                final_md = final_md.replace(placeholder, f"Image::\n{description}\n::Image")
+            return final_md, image_counter
+        else:
+            if not self.enable_image_caption:
+                for task in image_tasks:
+                    initial_md = initial_md.replace(task['placeholder'], "[图片]")
+            return initial_md, image_counter
+
+    def _handle_poor_quality_batch(self, batch_bytes: bytes, bidx: int, image_counter_global: int, device_mode: str) -> Tuple[str, int]:
+        """处理低质量批次：先尝试 PyMuPDF 回退提取；若无有效文本，再清理并尝试强制 full-page OCR。"""
+        # 1) PyMuPDF 回退优先
+        try:
+            pymupdf_text = self._fallback_extract_pymupdf(batch_bytes)
+        except Exception:
+            pymupdf_text = None
+
+        if pymupdf_text:
+            frag = f"RawText::\n{pymupdf_text}\n::RawText"
+            return frag, image_counter_global
+
+        # 2) PyMuPDF 未命中，清理内存并尝试强制 full-page OCR
+        try:
+            gc.collect()
+            if device_mode in ("cuda", "gpu"):
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        frag = ""
+        try:
+            from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+            from docling.datamodel.base_models import InputFormat
+            from docling.document_converter import PdfFormatOption, DocumentConverter, ImageFormatOption, \
+                PowerpointFormatOption, WordFormatOption, ExcelFormatOption, HTMLFormatOption
+
+            easyocr_options = EasyOcrOptions()
+            # model storage path - try multiple possible attribute names
+            for _attr in ('model_storage_directory', 'model_storage_dir', 'model_storage_path'):
+                try:
+                    setattr(easyocr_options, _attr, self.model_path)
+                    break
+                except Exception:
+                    pass
+
+            # force full page OCR - multiple possible attribute names
+            for _attr in ('force_full_page_ocr', 'force_fullpage', 'force_fullpage_ocr'):
+                try:
+                    setattr(easyocr_options, _attr, True)
+                    break
+                except Exception:
+                    pass
+
+            # set OCR languages: accept config or default; normalize common chinese codes
+            try:
+                langs_raw = get_config().get('OCR_LANGUAGES', None)
+                if isinstance(langs_raw, str):
+                    langs = [s.strip() for s in langs_raw.split(',') if s.strip()]
+                else:
+                    langs = list(langs_raw) if langs_raw else None
+
+                if not langs:
+                    langs = ['ch', 'en']
+
+                mapped = []
+                for l in langs:
+                    if not isinstance(l, str):
+                        continue
+                    ll = l.lower()
+                    if ll in ('ch', 'zh', 'zh-cn', 'zh_cn'):
+                        mapped.append('ch_sim')
+                    elif ll in ('zh-tw', 'zh_tw', 'cht'):
+                        mapped.append('ch_tra')
+                    else:
+                        mapped.append(l)
+
+                # try several field names that different versions may expect
+                for _attr in ('lang', 'language', 'languages', 'langs'):
+                    try:
+                        setattr(easyocr_options, _attr, mapped)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # GPU / use flag - try common attribute names
+            for _attr in ('use_gpu', 'gpu', 'enable_gpu'):
+                try:
+                    setattr(easyocr_options, _attr, True if device_mode in ("cuda", "gpu") else False)
+                    break
+                except Exception:
+                    pass
+
+            pdf_pipeline_options = PdfPipelineOptions(artifacts_path=self.model_path)
+            pdf_pipeline_options.ocr_options = easyocr_options
+            pdf_pipeline_options.do_ocr = True
+            pdf_pipeline_options.do_formula_enrichment = False
+            pdf_pipeline_options.do_code_enrichment = True
+            pdf_pipeline_options.do_table_structure = True
+            pdf_pipeline_options.generate_page_images = True
+            pdf_pipeline_options.generate_picture_images = True
+            # For forced OCR retry we want a fresh run: disable pipeline caching
+            try:
+                pdf_pipeline_options.enable_caching = False
+            except Exception:
+                pass
+
+            converter_ocr = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_pipeline_options),
+                    InputFormat.IMAGE: ImageFormatOption(pipeline_options=pdf_pipeline_options),
+                    InputFormat.PPTX: PowerpointFormatOption(pipeline_options=pdf_pipeline_options),
+                    InputFormat.DOCX: WordFormatOption(pipeline_options=pdf_pipeline_options),
+                    InputFormat.XLSX: ExcelFormatOption(pipeline_options=pdf_pipeline_options),
+                    InputFormat.HTML: HTMLFormatOption(pipeline_options=pdf_pipeline_options)
+                }
+            )
+
+            doc_stream_ocr = DocumentStream(name=self.original_filename or f"batch_{bidx}_ocr", stream=BytesIO(batch_bytes))
+            try:
+                res_ocr = converter_ocr.convert(doc_stream_ocr)
+            except Exception as e:
+                logging.warning(f"强制 OCR 处理失败: {e}")
+                res_ocr = None
+
+            # Diagnostic: log few TextItem samples from res_ocr to help debug noise
+            if res_ocr is not None:
+                try:
+                    sample_texts = []
+                    from docling_core.types.doc import TextItem
+                    for i, (item, _lv) in enumerate(res_ocr.document.iterate_items()):
+                        if i >= 6:
+                            break
+                        try:
+                            if isinstance(item, TextItem) and getattr(item, 'text', None):
+                                sample_texts.append(item.text.strip())
+                        except Exception:
+                            continue
+                    logging.info(f"强制 OCR 原始片段样例 (前6项): {sample_texts}")
+                except Exception:
+                    pass
+
+            if res_ocr is not None and self.result_contains_text(res_ocr):
+                try:
+                    frag, image_counter_global = self._render_result_to_markdown(res_ocr, image_counter_global)
+                except Exception:
+                    frag = ""
+
+        except Exception as e:
+            logging.debug(f"尝试强制 OCR 时出错: {e}")
+            frag = ""
+        finally:
+            try:
+                if 'res_ocr' in locals():
+                    try:
+                        if hasattr(res_ocr, 'document') and hasattr(res_ocr.document, 'close'):
+                            res_ocr.document.close()
+                    except Exception:
+                        pass
+                    try:
+                        del res_ocr
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                if 'converter_ocr' in locals() and converter_ocr is not None and hasattr(converter_ocr, 'close'):
+                    try:
+                        converter_ocr.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            try:
+                del converter_ocr
+            except Exception:
+                pass
+            gc.collect()
+            if device_mode in ("cuda", "gpu"):
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+
+        return frag, image_counter_global
+
     def _fallback_extract_pymupdf(self, pdf_bytes: bytes) -> Optional[str]:
         """使用 PyMuPDF 提取文本（流式按页），若不可用或提取很少则返回 None"""
         if fitz is None:
@@ -812,18 +1098,39 @@ class Document2Markdown:
                 return result  # 成功则返回结果并退出重试循环
 
             except Exception as e:
+                # Detect non-retriable external service errors (e.g., account arrears)
+                non_retriable = False
+                try:
+                    import litellm
+                    if hasattr(litellm, 'BadRequestError') and isinstance(e, getattr(litellm, 'BadRequestError')):
+                        non_retriable = True
+                except Exception:
+                    pass
+
+                msg = str(e) or ''
+                if 'Access denied' in msg or 'Arrearage' in msg or 'overdue' in msg.lower():
+                    non_retriable = True
+
+                # Log and immediate fallback for non-retriable errors
+                if non_retriable:
+                    import traceback
+                    logging.error(
+                        f"图片模型不可用（非重试错误），返回占位文本。异常类型: {type(e).__name__}，错误: {msg}\n完整堆栈:\n{traceback.format_exc()}"
+                    )
+                    return "图片处理失败（外部模型不可用）"
+
                 # 增强错误日志：显示异常类型和详细堆栈（仅在首次失败时显示完整堆栈）
                 if attempt == 0:
                     import traceback
                     logging.error(
                         f"图片处理首次尝试失败（将重试{self.max_retries}次）\n"
                         f"  异常类型: {type(e).__name__}\n"
-                        f"  错误详情: {str(e)}\n"
+                        f"  错误详情: {msg}\n"
                         f"  完整堆栈:\n{traceback.format_exc()}"
                     )
                 else:
                     logging.warning(f"图片处理尝试 {attempt + 1}/{self.max_retries + 1} 失败: {type(e).__name__}: {e}")
-                
+
                 if attempt < self.max_retries:
                     time.sleep(1)  # 重试前等待1秒，避免API限流
                 else:

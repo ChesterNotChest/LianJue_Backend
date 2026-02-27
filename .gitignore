@@ -19,3 +19,6 @@ triples/*
 
 knowledge/*
 !knowledge/.gitkeep
+
+logs/*
+!logs/.gitkeep

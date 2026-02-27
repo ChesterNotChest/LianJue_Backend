@@ -33,6 +33,11 @@ def get_progress_index_by_job_id(job_id):
 ###################
 # 创建新任务
 def create_job(file_id: int, graph_id: str, end_stage: str = JobStage.KNOWLEDGE_TO_SAVE.value):
+    # If a job for this file already exists in the same graph, return it instead of creating a duplicate
+    existing = Jobs.query.filter_by(file_id=file_id, graph_id=graph_id).first()
+    if existing:
+        return existing
+
     new_job = Jobs(file_id=file_id, graph_id=graph_id, status="pending", stage="pdf_to_md", end_stage=end_stage)
     db.session.add(new_job)
     db.session.commit()
