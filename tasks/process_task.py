@@ -24,7 +24,9 @@ model_path = str(Path(proc_cfg.get("MODEL_PATH", "./model")).resolve())
 
 
 def file_to_md(knowlion: KnowLion,  job_id: str, process_index: int = 0):
-    """只执行耗资源的 doc_parsing（转换为 Markdown），返回 (file_path, md_content)
+    """
+    含有partial循环逻辑（convert_to_markdown纵深调用）
+    只执行耗资源的 doc_parsing（转换为 Markdown），返回 (file_path, md_content)
     在此阶段完成后会触发显式 GC 和可选的 GPU 缓存清理。
     """
 
@@ -48,35 +50,33 @@ def file_to_md(knowlion: KnowLion,  job_id: str, process_index: int = 0):
 
     print(f"\n📄 [DOC_PARSE] 开始: {file_path}")
     try:
-        md_res = knowlion.convert_to_markdown(model_path, str(file_path), job_id=job_id, process_index=process_index)
-        # convert_to_markdown may return (md_content, partial_files) or (md_content, partial_files, total_batches)
-        total_batches = None
-        if isinstance(md_res, tuple):
-            if len(md_res) >= 3:
-                md_content, partial_files, total_batches = md_res[0], md_res[1], md_res[2]
-            elif len(md_res) >= 2:
-                md_content, partial_files = md_res[0], md_res[1]
-            else:
-                md_content = md_res[0]
-                partial_files = []
-        else:
-            md_content = md_res
-            partial_files = []
-        print(f"   ✅ [DOC_PARSE] Markdown 长度: {len(md_content)} 字符，partial files: {len(partial_files)}")
-
-        # doc_parsing 阶段完成后，显式释放内存并在需要时清理 GPU 缓存
+        # Call convert_to_markdown and capture any returned metadata for diagnostics.
         try:
-            gc.collect()
-            device_mode = str(PROCESSING_CONFIG.get("device_mode", "cpu")).lower()
-            if device_mode in ("cuda", "gpu"):
-                try:
-                    import torch
-                    if getattr(torch, "cuda", None) is not None:
-                        torch.cuda.empty_cache()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+            ret = knowlion.convert_to_markdown(model_path, str(file_path), job_id=job_id, process_index=process_index)
+        except Exception as e:
+            print(f"   ⚠️ [DOC_PARSE] convert_to_markdown 抛出异常: {e}")
+            ret = None
+
+        # convert_to_markdown may return (md_content, partial_files) or
+        # (md_content, partial_files, total_batches). We'll log the return value.
+        print(f"   🔍 [DOC_PARSE] convert_to_markdown 返回: {type(ret)} {ret if isinstance(ret, (str, tuple, list, dict)) else ''}")
+
+        # debug 文件读取partial_files的数量
+        partial_path = job.partial_md_path
+        md_content = ""
+        if partial_path and Path(partial_path).exists():
+            with open(partial_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+
+        print(f"   ✅ [DOC_PARSE] 最终 Markdown 长度: {len(md_content)} 字符 | partial_path exists: {bool(partial_path and Path(partial_path).exists())}")
+
+        # If convert_to_markdown returned total_batches, include it in return for callers
+        total_batches = None
+        if isinstance(ret, (list, tuple)) and len(ret) >= 3:
+            try:
+                total_batches = int(ret[2])
+            except Exception:
+                total_batches = None
 
         # 根据配置保存 Markdown（避免覆盖通过时间戳）
         try:
@@ -94,7 +94,9 @@ def file_to_md(knowlion: KnowLion,  job_id: str, process_index: int = 0):
         except Exception as e:
             print(f"   ⚠️ [DOC_PARSE] 保存 Markdown 失败: {e}")
 
-        return str(file_path), md_content, partial_files, total_batches
+        # 改变stage
+
+        return str(file_path), md_content, [], total_batches
     except Exception as exc:
         print(f"   ❌ [DOC_PARSE] 失败: {exc}")
         traceback.print_exc()

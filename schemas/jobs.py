@@ -11,7 +11,9 @@ class Jobs(db.Model):
 
     partial_md_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # 分批处理中间结果的markdown文件路径，便于中断续处理和前端展示下载
     markdown_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # 生成的markdown文件路径，便于中断续处理和前端展示下载
+    split_markdown_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # 存储切分后的段落待处理文件路径（to_process）
     triples_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # 生成的三元组文件路径，便于中断续处理和前端展示下载
+    partial_triples_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # 存储增量三元组部分文件路径（例如: {job_id}_partial.json）
     knowledge_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # 生成的知识对象文件路径，便于前端展示下载
     error_message: str = db.Column(db.Text, default="") # 错误信息
 

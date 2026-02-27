@@ -12,6 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from abutionpy import abution
 from abutionpy.abution_core import Knowledge
 from knowlion.multi_model_litellm import LitellmMultiModel
+from repositories.jobs_repo import get_job_by_id, update_partial_triples_path
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -42,8 +43,7 @@ class Markdown2Triples:
         """
         self.model_instance = model_instance
         self.md_content = md_content
-        self.file_name = file_name
-        #self.classify = classify if classify and classify != "PUBLIC" else None
+        self.file_name = file_name        #self.classify = classify if classify and classify != "PUBLIC" else None
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
         self.max_chunk_limit = max_chunk_limit
@@ -560,51 +560,79 @@ class Markdown2Triples:
             "original_content": paragraph["content"]
         }
 
-    def process_paragraphs_parallel(self, paragraphs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """并行处理所有段落（处理主题列表）"""
-        all_themes = []
+    def process_paragraphs_parallel(self, to_process: List[Dict[str, Any]], job_id: int, persist_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """处理来自持久化文件的待处理条目（每处理完一条即从文件中删除对应项）。
+        参数:
+          - to_process: 列表，元素为 {"paragraph_index": int, "content_to_process": str}
+          - job_id: 任务ID，用于在保存三元组结果时关联任务信息
+          - persist_path: 可选，指向持久化 JSON 文件路径；如果提供，会在处理后更新该文件，删除已处理项
+        为了保证一致性，此实现采用逐条处理（非并行），并在每条处理后持久化剩余队列。
+        """
 
-        def process_wrapper(paragraph):
+        # Expect `to_process` to be a list of dicts with keys:
+        #   - 'paragraph_index': int
+        #   - 'content_to_process': str
+        total = len(to_process)
+        for idx, item in enumerate(list(to_process)):
+            para = {
+                "content": item.get("content_to_process", ""),
+                "supplement": "",
+                "start_pos": 0,
+                "end_pos": 0,
+                "type": "Text",
+                "index": item.get("paragraph_index")
+            }
             try:
-                themes = self.extract_element_from_paragraph(paragraph)
+                themes = self.extract_element_from_paragraph(para)
                 valid_themes = []
-                for theme in themes:
-                    # 过滤掉无效结果
+                for i, theme in enumerate(themes):
                     if not theme.get("error") and self._validate_knowledge_item(theme):
                         valid_themes.append(theme)
                     else:
-                        logger.warning(f"段落 {paragraph['index']} 的主题 {theme.get('theme_index', 1)} 处理结果无效")
+                        logger.warning(f"段落 {para['index']} 的主题 {theme.get('theme_index', i+1)} 处理结果无效")
 
-                return valid_themes if valid_themes else None
+                if valid_themes:
+                    self._save_triple_results(valid_themes, job_id)
+                    logger.info(f"✅ 已完成段落 {para['index']}/{total}，提取 {len(valid_themes)} 个主题")
+                else:
+                    logger.warning(f"❌ 段落 {para['index']} 处理失败或无有效主题")
+
             except Exception as e:
-                logger.error(f"段落 {paragraph['index']} 处理异常: {e}")
-                return None
+                logger.error(f"段落 {para['index']} 处理异常: {e}")
 
-        with ThreadPoolExecutor(max_workers=min(4, os.cpu_count())) as executor:
-            future_to_para = {
-                executor.submit(process_wrapper, para): para
-                for para in paragraphs
-            }
-
-            for future in as_completed(future_to_para):
-                para = future_to_para[future]
+            # 从持久化文件中移除已处理的条目
+            if persist_path:
                 try:
-                    themes = future.result(timeout=300)
-                    if themes:
-                        all_themes.extend(themes)
-                        logger.info(f"✅ 已完成段落 {para['index']}/{len(paragraphs)}，提取 {len(themes)} 个主题")
-                    else:
-                        logger.warning(f"❌ 段落 {para['index']} 处理失败")
+                    if os.path.exists(persist_path):
+                        with open(persist_path, 'r', encoding='utf-8') as f:
+                            current = json.load(f)
+                        # filter out entries with same paragraph_index
+                        remaining = [x for x in current if x.get('paragraph_index') != item.get('paragraph_index')]
+                        with open(persist_path, 'w', encoding='utf-8') as f:
+                            json.dump(remaining, f, ensure_ascii=False, indent=2)
                 except Exception as e:
-                    logger.error(f"⏰ 段落 {para['index']} 处理超时或失败: {e}")
+                    logger.warning(f"更新 persist_path 失败 ({persist_path}): {e}")
 
         # 按原始顺序排序（段落索引 + 主题索引）
+        # 从文件partial中读取所有结果进行排序和过滤
+
+        all_themes = []
+        results_dir = "../triples"
+        partial_file = os.path.join(results_dir, f"{job_id}_partial.json")
+        if os.path.exists(partial_file):
+            try:
+                with open(partial_file, 'r', encoding='utf-8') as f:
+                    all_themes = json.load(f) or []
+            except Exception as e:
+                logger.warning(f"读取 partial 文件失败 ({partial_file}): {e}")
+                all_themes = []
+
         all_themes.sort(key=lambda x: (x["paragraph_index"], x["theme_index"]))
 
         # 过滤脏数据
         clean_themes = self._filter_dirty_data(all_themes)
 
-        logger.info(f"处理完成: {len(clean_themes)} 个主题（来自 {len(paragraphs)} 个段落）")
+        logger.info(f"处理完成: {len(clean_themes)} 个主题（来自 {total} 个段落）")
         return clean_themes
 
     def _filter_dirty_data(self, themes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -643,7 +671,13 @@ class Markdown2Triples:
 
 
     def execute(self) -> List[Dict[str, Any]]:
-        """执行完整的处理流程"""
+        """
+        ！不要采用此方法！
+        TODO SCHEDULED FOR DEPRECATION -
+        XXXXXXXXXXXXXXXXXXXXXXX
+        这是一个被 *弃用* 的执行方法，保留仅供参考。
+        请使用 `process_paragraphs_parallel` 方法来处理段落并保存结果。
+        """
         logger.info("开始处理Markdown文档")
 
         try:
@@ -652,16 +686,18 @@ class Markdown2Triples:
             paragraphs = self.split_markdown_intelligently()
             logger.info(f"切分得到 {len(paragraphs)} 个段落")
 
-            # 2. 并行处理所有段落
-            logger.info("步骤2: 并行提取知识")
-            processed_paragraphs = self.process_paragraphs_parallel(paragraphs)
+            # 2. 转换为持久化处理格式并处理
+            logger.info("步骤2: 转换为 to_process 并提取知识")
+            to_process = [{
+                "paragraph_index": p.get("index"),
+                "content_to_process": p.get("content")
+            } for p in paragraphs]
+            # For deprecated execute path we call processing with a sentinel job_id=0
+            processed_paragraphs = self.process_paragraphs_parallel(to_process, job_id=0)
 
             if not processed_paragraphs:
                 logger.error("没有有效的处理结果，流程终止")
                 return []
-
-            # # 4. 保存处理结果
-            self._save_triple_results(processed_paragraphs)
 
             logger.info("✅ 处理完成")
             return processed_paragraphs
@@ -670,33 +706,54 @@ class Markdown2Triples:
             logger.error(f"❌ 处理过程发生错误: {e}")
             return []
 
-    def _save_triple_results(self, processed_paragraphs: List[Dict[str, Any]]):
-        """保存处理结果"""
+    def _save_triple_results(self, processed_paragraphs: List[Dict[str, Any]], job_id: int):
+        """增量追加保存处理结果到 ../triples/{job_id}_partial.json
+
+        约束:
+        - `job_id` 必须为大于0的整数。
+        - 仅使用 `{job_id}_partial.json` 文件名，严格禁止其它命名。
+        - 仅追加语义（将新主题追加到文件中保存），不进行覆盖写入除非目标文件损坏需重建。
+        """
         try:
-            # 创建结果目录
-            results_dir = f"../triples"
-            os.makedirs(results_dir, exist_ok=True)
+            if not isinstance(job_id, int) or job_id <= 0:
+                raise ValueError("job_id 必须为大于0的整数以执行增量保存")
 
-            with open(f"{results_dir}/{self.file_name}.json", 'w', encoding='utf-8') as f:
-                json.dump(processed_paragraphs, f, ensure_ascii=False, indent=2)
+            if not processed_paragraphs:
+                logger.info("没有要保存的处理结果，跳过保存")
+                return
 
-            # 保存处理后的段落（精简版）
-            simplified_paragraphs = []
-            for para in processed_paragraphs:
-                simplified = {
-                    "title": para.get("title"),
-                    "type": para.get("type"),
-                    "paragraph_index": para.get("paragraph_index"),
-                    "content_keys": list(para.get("content", {}).keys()) if para.get("content") else [],
-                    "entities_count": len(para.get("graph", {}).get("entities", [])),
-                    "relations_count": len(para.get("graph", {}).get("relation", []))
-                }
-                simplified_paragraphs.append(simplified)
+            job = get_job_by_id(job_id)
+            if not job:
+                logger.warning(f"未找到 job_id={job_id} 的任务信息，无法关联保存路径")
+            
+            partial_triples_path = job.partial_triples_path
 
-            with open(f"{results_dir}/processed_paragraphs.json", 'w', encoding='utf-8') as f:
-                json.dump(simplified_paragraphs, f, ensure_ascii=False, indent=2)
+            target_file = ''
 
-            logger.info(f"结果已保存到: {results_dir}")
+            if partial_triples_path == '' or partial_triples_path is None:
+                logger.info(f"第一次保存三元组结果，创建新的 partial 文件 job_id={job_id}")
+                triples_dir = os.path.join(os.path.dirname(__file__), "../triples")
+                os.makedirs(triples_dir, exist_ok=True)
+                target_file = os.path.join(triples_dir, f"{job_id}_partial.json")
+                update_partial_triples_path(job_id, f"triples/{job_id}_partial.json")
+            else:
+                target_file = os.path.join(os.path.dirname(partial_triples_path), os.path.basename(partial_triples_path))
+
+            existing = []
+            if os.path.exists(target_file):
+                try:
+                    with open(target_file, 'r', encoding='utf-8') as f:
+                        existing = json.load(f) or []
+                except Exception as e:
+                    logger.warning(f"读取已存在 partial 文件失败，将重建: {e}")
+                    existing = []
+
+            existing.extend(processed_paragraphs)
+
+            with open(target_file, 'w', encoding='utf-8') as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+
+            logger.info(f"增量追加保存 {len(processed_paragraphs)} 个主题到: {target_file}")
 
         except Exception as e:
             logger.warning(f"保存处理结果失败: {e}")

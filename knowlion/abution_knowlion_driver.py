@@ -265,34 +265,59 @@ class KnowLion:
 
 
     # 生成三元组
-    def markdown_to_triple(self, md_content) -> List[Dict[str, Any]]:
+    def markdown_to_triple(self, job_id: int) -> List[Dict[str, Any]]:
+        """从 `job.split_markdown_path` 指定的持久化文件中逐条处理待处理段落。
+        每处理完一条，会从持久化文件中删除对应条目以便断点继续。
+        """
+        from repositories.jobs_repo import get_job_by_id
+
+        job = get_job_by_id(job_id)
+        if not job:
+            logger.error(f"无效的 job_id: {job_id}")
+            return []
+
+        split_path = job.split_markdown_path
+        if not split_path or not os.path.exists(split_path):
+            logger.error(f"split_markdown_path 不存在: {split_path}")
+            return []
+
+        try:
+            with open(split_path, 'r', encoding='utf-8') as f:
+                to_process = json.load(f)
+        except Exception as e:
+            logger.error(f"读取 split_markdown_path 失败: {e}")
+            return []
+
+        extractor = Markdown2Triples(
+            model_instance=self.model,
+            md_content="",
+            file_name=self.file_name,
+            chunk_size=5000,
+            overlap_size=600,
+            max_chunk_limit=8000
+        )
+
+        logger.info(f"从持久化文件处理待处理段落数: {len(to_process)}")
+        processed = extractor.process_paragraphs_parallel(to_process, job_id, persist_path=split_path)
+        return processed
+
+    def markdown_split_paragraphs(self, md_content) -> List[Dict[str, Any]]:
+        """只做智能切分并返回段落列表（用于外部保存 to_process 列表）。"""
         extractor = Markdown2Triples(
             model_instance=self.model,
             md_content=md_content,
             file_name=self.file_name,
-            # file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
-            #classify=None,
-            chunk_size=5000,  # 减小块大小以提高处理质量
+            chunk_size=5000,
             overlap_size=600,
             max_chunk_limit=8000
-            # additional_prompt=additional_prompt,
-            # examples=examples
         )
-
         try:
-            # 1. 智能切分Markdown
-            logger.info("智能切分Markdown文档")
+            logger.info("智能切分Markdown文档（仅切分）")
             paragraphs = extractor.split_markdown_intelligently()
-            logger.info(f"切分得到 {len(paragraphs)} 个段落")
-
-            # 2. 并行处理所有段落
-            logger.info("并行提取知识")
-            processed_paragraphs = extractor.process_paragraphs_parallel(paragraphs)
-
-            return processed_paragraphs
-
+            logger.info(f"切分得到 {len(paragraphs)} 个段落（仅切分）")
+            return paragraphs
         except Exception as e:
-            logger.error(f"❌ Markdown并行提取段落处理过程发生错误: {e}")
+            logger.error(f"❌ Markdown 切分失败: {e}")
             return []
 
 

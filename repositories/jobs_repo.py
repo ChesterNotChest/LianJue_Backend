@@ -76,6 +76,13 @@ def update_partial_md_path(job_id: int, partial_md_path: str = ""):
         db.session.commit()
     return job
 
+def update_split_markdown_path(job_id: int, split_markdown_path: str = ""):
+    job = get_job_by_id(job_id)
+    if job:
+        job.split_markdown_path = split_markdown_path
+        db.session.commit()
+    return job
+
 def update_markdown_path(job_id: int, markdown_path: str = ""):
     job = get_job_by_id(job_id)
     if job:
@@ -87,6 +94,13 @@ def update_triples_path(job_id: int, triples_path: str = ""):
     job = get_job_by_id(job_id)
     if job:
         job.triples_path = triples_path
+        db.session.commit()
+    return job
+
+def update_partial_triples_path(job_id: int, partial_triples_path: str = ""):
+    job = get_job_by_id(job_id)
+    if job:
+        job.partial_triples_path = partial_triples_path
         db.session.commit()
     return job
 

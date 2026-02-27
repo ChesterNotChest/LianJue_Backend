@@ -74,6 +74,7 @@ class JobChecker:
 
                     needs_heavy = not getattr(job_obj, 'markdown_path', None)
                     needs_light = bool(getattr(job_obj, 'markdown_path', None)) and not getattr(job_obj, 'knowledge_path', None)
+                    #print(f"\n👀 检查 Job {job_id} - needs_heavy: {needs_heavy}, needs_light: {needs_light}, already_heavy: {already_heavy}, already_light: {already_light}")
 
                     if getattr(job_obj, 'status', None) == 'in_progress':
                         # resume without changing status
@@ -136,38 +137,38 @@ class JobChecker:
 
     # wrapper that runs heavy work
     def _heavy_wrapper(self, job_id: str):
+        # Delegate partial-batch looping to `file_to_md` (it will handle resume and
+        # repeated partial writes). Call it once and return; JobChecker should not
+        # maintain an internal loop here.
+
         try:
-            if self.app:
-                with self.app.app_context():
-                    return self._heavy_work_loop(job_id)
-            else:
-                return self._heavy_work_loop(job_id)
+            with self.app.app_context():
+                if self._stop_event.is_set():
+                    logger.info(f"Stop event set; skipping heavy work for job {job_id}")
+                    return job_id
+
+                # pass current progress index to file_to_md so it can resume from that batch
+                cur_progress = get_progress_index_by_job_id(job_id) or 0
+                print(f"   🔄 [HEAVY] 单次调用 file_to_md - job_id {job_id} | 进度 - progress_index {cur_progress}")
+                _file_path, _md_content, _partial_files, total_batches = file_to_md(self.knowlion, job_id, process_index=cur_progress)
+                job = get_job_by_id(job_id)
+                if not job:
+                    return job_id
+
+                # Log final status after `file_to_md` returns; `file_to_md` is responsible for
+                # updating `progress_index` and managing any partial-file loops.
+                cur_progress = get_progress_index_by_job_id(job_id) or 0
+                try:
+                    
+                    logger.info(f"任务 {job_id} 完成: {cur_progress}/{total_batches}")
+                    update_job_stage(job_id, 'md_to_triples')  # 直接更新阶段，light任务会根据这个阶段来判断下一步执行什么
+                except Exception:
+                    logger.debug(f"Finished heavy call for job {job_id}; progress read failed")
+                return job_id
         except Exception as e:
-            print(f"   ❌ [HEAVY] 工作开展出现异常 - job_id {job_id}: {e}")
+            logger.error(f"   ❌ [HEAVY] 工作开展出现异常 - job_id {job_id}: {e}")
             raise
 
-    def _heavy_work_loop(self, job_id: str):
-        # file_to_md may produce partials and update job.progress_index.
-        # Keep calling it until progress_index >= total_batches.
-        while True:
-            if self._stop_event.is_set():
-                logger.info(f"Stop event set; breaking heavy loop for job {job_id}")
-                break
-            # pass current progress index to file_to_md so it can resume from that batch
-            cur_progress = get_progress_index_by_job_id(job_id) or 0
-            print(f"   🔄 [HEAVY] 开展工作 file_to_md - job_id {job_id} | 进度 - progress_index {cur_progress}")
-            _file_path, _md_content, _partial_files, total_batches = file_to_md(self.knowlion, job_id, process_index=cur_progress)
-            job = get_job_by_id(job_id)
-            if not job:
-                break
-
-            # Strict termination: only stop when progress_index >= total_batches
-            cur_progress = get_progress_index_by_job_id(job_id) or 0
-            if total_batches is not None and int(total_batches) > 0 and int(cur_progress) >= int(total_batches):
-                break
-
-            # otherwise, continue looping and let file_to_md update progress_index
-        return job_id
 
     def _light_wrapper(self, job_id: str):
         try:
@@ -219,6 +220,21 @@ class JobChecker:
         # called in worker thread when heavy future completes
         with self._lock:
             self.running_heavy.discard(job_id)
+        # Fetch job record inside app context if available to avoid "working outside"
+        try:
+            if self.app:
+                with self.app.app_context():
+                    job = get_job_by_id(job_id)
+            else:
+                job = get_job_by_id(job_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch job {job_id} in heavy done callback: {e}")
+            return
+
+        if not job:
+            logger.error(f"Job {job_id} not found in heavy done callback")
+            return
+
         try:
             # run callback under app context as it updates DB
             if self.app:
@@ -229,8 +245,11 @@ class JobChecker:
                         update_error_message(job_id, str(exc))
                         update_job_status(job_id, 'failed')
                     else:
-                        # 标记为pending，等待light任务接手
-                        update_job_status(job_id, 'pending')
+                        if job.stage == job.end_stage and job.markdown_path != None and job.markdown_path != "":
+                            update_job_status(job_id, 'completed')
+                        else:
+                            # 标记为pending，等待light任务接手
+                            update_job_status(job_id, 'pending')
             else:
                 exc = fut.exception()
                 if exc:

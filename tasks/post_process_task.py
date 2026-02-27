@@ -14,6 +14,7 @@ from repositories.file_repo import get_file_by_id
 from repositories.jobs_repo import (
     get_job_by_id,
     update_job_stage,
+    update_split_markdown_path,
     update_triples_path,
     update_knowledge_path,
     update_partial_md_path,
@@ -50,7 +51,36 @@ def md_to_triples(knowlion, job_id):
         return []
     
 
-    triples = knowlion.markdown_to_triple(md_content)
+    # 首先持久化待处理列表（to_process） — 仅在 job.split_markdown_path 不存在时执行一次
+    try:
+        if not job.split_markdown_path:
+            paragraphs = knowlion.markdown_split_paragraphs(md_content)
+            print(f"   ℹ️ [POST] 切分得到 {len(paragraphs)} 个段落")
+            # 构建 to_process 结构并写入文件：[{"paragraph_index":xxx,"content_to_process": "..."}, ...]
+            to_process = []
+            for p in paragraphs:
+                to_process.append({
+                    "paragraph_index": p.get("index"),
+                    "content_to_process": p.get("content")
+                })
+            # persist to triples dir using job_id prefix
+            try:
+                triples_dir = Path("./triples")
+                triples_dir.mkdir(parents=True, exist_ok=True)
+                to_process_path = triples_dir / f"{job_id}_to_process.json"
+                with open(to_process_path, 'w', encoding='utf-8') as f:
+                    json.dump(to_process, f, ensure_ascii=False, indent=2)
+                update_split_markdown_path(job_id, str(to_process_path))
+                print(f"   💾 [POST] to_process 已保存: {to_process_path}")
+            except Exception as e:
+                print(f"   ⚠️ [POST] 保存 to_process 失败: {e}")
+        else:
+            print(f"   ℹ️ [POST] job 已存在 split_markdown_path: {job.split_markdown_path}，跳过切分持久化")
+    except Exception as e:
+        print(f"   ⚠️ [POST] 切分并保存 to_process 失败: {e}")
+
+    # 使用 job_id 驱动后续处理，driver 将从 job.split_markdown_path 中读取待处理条目
+    triples = knowlion.markdown_to_triple(job_id)
     print(f"   ✅ [POST] 三元组数量: {len(triples)}")
 
         # 根据配置保存 triples
