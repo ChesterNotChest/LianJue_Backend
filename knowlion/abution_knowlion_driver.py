@@ -141,9 +141,10 @@ class KnowLion:
                     logger.warning("无法注入到 session.headers（非致命）")
         except Exception:
             logger.warning("注入认证 header 发生错误（非致命）")
-        self.graph = self.gdb_client.Graph(graph_name)
-
-        self.advanced_retriever = AdvancedHyperGraphRAG(self.graph, self.model)
+        # 延迟创建 Graph 对象：不要在初始化时强绑定 graph，这样即便图服务不可用
+        # 也不会阻塞后续处理（OCR/MD/三元组流程）。在需要写入/读取图时再尝试创建。
+        self._graph = None
+        self._advanced_retriever = None
 
     def init_graph(self, agent:bool=False, agent_sim_threshold=0.8):
         # 选择使用的模型
@@ -154,7 +155,48 @@ class KnowLion:
             monitor = Agg.FloatArrayAdd()
         print(monitor)
 
-        self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
+        # Attempt to create graph, but do not fail the whole process if graph service is down.
+        try:
+            self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
+        except Exception as e:
+            logger.warning(f"无法在 init_graph 中创建图（服务可能离线）: {e}")
+            try:
+                from utils.graph_outbox import enqueue_graph_creation
+                schema = get_knowlion_schema(monitor)
+                path = enqueue_graph_creation(self.graph_name, schema, {"reason": "init_graph_failed"})
+                logger.info(f"图创建请求已写入 outbox: {path}")
+            except Exception:
+                logger.debug("写入 outbox 以延迟创建图失败（非致命）")
+
+    def _ensure_graph(self, raise_on_fail: bool = False):
+        """Lazily create and return Graph instance. If creation fails, return None
+        (or raise if raise_on_fail=True)."""
+        if getattr(self, '_graph', None) is not None:
+            return self._graph
+        try:
+            self._graph = self.gdb_client.Graph(self.graph_name)
+            return self._graph
+        except Exception as e:
+            logger.warning(f"无法创建图对象 ({self.graph_name}): {e}")
+            if raise_on_fail:
+                raise
+            return None
+
+    def _get_advanced_retriever(self):
+        if getattr(self, '_advanced_retriever', None) is not None:
+            return self._advanced_retriever
+        g = self._ensure_graph(raise_on_fail=False)
+        if g is None:
+            logger.warning("高级检索器未初始化：图服务不可用")
+            self._advanced_retriever = None
+            return None
+        try:
+            self._advanced_retriever = AdvancedHyperGraphRAG(g, self.model)
+            return self._advanced_retriever
+        except Exception as e:
+            logger.warning(f"初始化高级检索器失败: {e}")
+            self._advanced_retriever = None
+            return None
 
     def delete_graph(self):
         self.gdb_client.delete_graph(self.graph_name)
@@ -301,29 +343,41 @@ class KnowLion:
         retry_delay = float(cfg.get("batch_retry_delay", 0.5))
 
         total = len(knowledge_list)
-        failures = []
         logger.info(f"开始分批保存知识对象，共 {total} 条，批大小 {batch_size}")
+
+        from utils.graph_outbox import enqueue_batch
 
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             batch = knowledge_list[start:end]
             attempt = 0
+            saved = False
+
+            # Try to get/create Graph lazily
+            graph = self._ensure_graph(raise_on_fail=False)
+            if graph is None:
+                logger.warning("图服务暂不可用：将批次写入本地 outbox 并继续")
+                meta = {"start": start, "end": end}
+                path = enqueue_batch(self.graph_name, batch, meta)
+                logger.info(f"已写入 outbox: {path}")
+                continue
+
             while True:
                 try:
-                    self.graph.add_knowledge(batch)
+                    graph.add_knowledge(batch)
                     logger.info(f"已保存批次: {start}-{end-1}，数量: {len(batch)}")
+                    saved = True
                     break
                 except Exception as e:
                     attempt += 1
                     logger.warning(f"保存批次 {start}-{end-1} 失败 (尝试 {attempt}/{max_retries}): {e}")
                     if attempt > max_retries:
-                        failures.append({"start": start, "end": end, "error": str(e)})
+                        # On repeated failure, enqueue to outbox to avoid blocking
+                        meta = {"start": start, "end": end, "error": str(e)}
+                        path = enqueue_batch(self.graph_name, batch, meta)
+                        logger.error(f"保存失败，已写入 outbox: {path}")
                         break
                     time.sleep(retry_delay)
-
-        if failures:
-            logger.error(f"部分批次保存失败: {failures}")
-            raise RuntimeError(f"部分批次保存失败: {failures}")
 
 
     def search(self, text: str, top_k: int = 10, # TODO: 如果我们用自己的模型，可以只执行此函数

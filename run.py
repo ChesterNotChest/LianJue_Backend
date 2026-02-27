@@ -43,7 +43,6 @@ def main():
 
     # run the processing inside the Flask app context so models and `db` are available
     with app.app_context():
-        knowlion.init_graph()
 
         pdf_dir = Path(args.input or "./pdfs")
 
