@@ -83,7 +83,7 @@ def md_to_triples(knowlion, job_id):
     triples = knowlion.markdown_to_triple(job_id)
     print(f"   ✅ [POST] 三元组数量: {len(triples)}")
 
-        # 根据配置保存 triples
+    # 根据配置保存 triples
     try:
         proc_cfg = PROCESSING_CONFIG or {}
         if proc_cfg.get("save_triples", True):

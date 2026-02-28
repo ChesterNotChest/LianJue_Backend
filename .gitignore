@@ -22,3 +22,7 @@ knowledge/*
 
 logs/*
 !logs/.gitkeep
+
+outbox/graphs/*
+
+!outbox/graphs/.gitkeep

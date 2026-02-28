@@ -297,6 +297,16 @@ class KnowLion:
             max_chunk_limit=8000
         )
 
+        # If called under a Flask app context, attach the app object to the extractor
+        try:
+            from flask import current_app
+            try:
+                extractor.app = current_app._get_current_object()
+            except Exception:
+                extractor.app = None
+        except Exception:
+            extractor.app = None
+
         logger.info(f"从持久化文件处理待处理段落数: {len(to_process)}")
         processed = extractor.process_paragraphs_parallel(to_process, job_id, persist_path=split_path)
         return processed

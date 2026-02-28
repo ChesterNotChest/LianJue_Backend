@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Tuple
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential
+import threading
 
 from abutionpy import abution
 from abutionpy.abution_core import Knowledge
@@ -56,6 +57,8 @@ class Markdown2Triples:
             (r'Image::\n(.*?)::Image', 'Image'),
             (r'Code::\n(.*?)::Code', 'Code')
         ]
+        # 用于保护对 partial 文件与增量保存的并发访问
+        self._file_lock = threading.Lock()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def call_llm_with_retry(self, prompt: str, query: str) -> str:
@@ -573,7 +576,22 @@ class Markdown2Triples:
         #   - 'paragraph_index': int
         #   - 'content_to_process': str
         total = len(to_process)
-        for idx, item in enumerate(list(to_process)):
+
+        all_themes = []
+
+        # capture Flask app from current context (if any) so we can push app_context in worker threads
+        flask_app = None
+        try:
+            from flask import current_app
+            try:
+                flask_app = current_app._get_current_object()
+            except Exception:
+                print("无法获取当前 Flask app 对象，可能不在 Flask 上下文中")
+                flask_app = None
+        except Exception:
+            flask_app = None
+
+        def process_wrapper(item: Dict[str, Any]) -> List[Dict[str, Any]]:
             para = {
                 "content": item.get("content_to_process", ""),
                 "supplement": "",
@@ -592,34 +610,76 @@ class Markdown2Triples:
                         logger.warning(f"段落 {para['index']} 的主题 {theme.get('theme_index', i+1)} 处理结果无效")
 
                 if valid_themes:
-                    self._save_triple_results(valid_themes, job_id)
+                    # 使用文件锁保护增量保存，避免竞态
+                    with self._file_lock:
+                        if flask_app is not None:
+                            try:
+                                with flask_app.app_context():
+                                    self._save_triple_results(valid_themes, job_id)
+                            except Exception as e:
+                                logger.warning(f"在传递的 app context 内保存失败: {e}")
+                                # 尝试不使用 app context 保存（降级）
+                                try:
+                                    self._save_triple_results(valid_themes, job_id)
+                                except Exception as e2:
+                                    logger.warning(f"降级保存也失败: {e2}")
+                        else:
+                            # 没有可用的 Flask app，上下文不可用，直接保存（可能会触发工作上下文错误）
+                            try:
+                                self._save_triple_results(valid_themes, job_id)
+                            except Exception as e:
+                                logger.warning(f"直接保存失败: {e}")
+
                     logger.info(f"✅ 已完成段落 {para['index']}/{total}，提取 {len(valid_themes)} 个主题")
                 else:
                     logger.warning(f"❌ 段落 {para['index']} 处理失败或无有效主题")
 
+                return valid_themes
+
             except Exception as e:
                 logger.error(f"段落 {para['index']} 处理异常: {e}")
+                return []
 
-            # 从持久化文件中移除已处理的条目
-            if persist_path:
+            finally:
+                # 从持久化文件中移除已处理的条目（同样需要锁保护）
+                if persist_path:
+                    try:
+                        with self._file_lock:
+                            if os.path.exists(persist_path):
+                                with open(persist_path, 'r', encoding='utf-8') as f:
+                                    current = json.load(f)
+                                # filter out entries with same paragraph_index
+                                remaining = [x for x in current if x.get('paragraph_index') != item.get('paragraph_index')]
+                                with open(persist_path, 'w', encoding='utf-8') as f:
+                                    json.dump(remaining, f, ensure_ascii=False, indent=2)
+                    except Exception as e:
+                        logger.warning(f"更新 persist_path 失败 ({persist_path}): {e}")
+
+        # 并发执行处理器
+        with ThreadPoolExecutor(max_workers=min(4, (os.cpu_count() or 1))) as executor:
+            future_to_item = {executor.submit(process_wrapper, item): item for item in list(to_process)}
+
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
                 try:
-                    if os.path.exists(persist_path):
-                        with open(persist_path, 'r', encoding='utf-8') as f:
-                            current = json.load(f)
-                        # filter out entries with same paragraph_index
-                        remaining = [x for x in current if x.get('paragraph_index') != item.get('paragraph_index')]
-                        with open(persist_path, 'w', encoding='utf-8') as f:
-                            json.dump(remaining, f, ensure_ascii=False, indent=2)
+                    themes = future.result(timeout=300)
+                    if themes:
+                        all_themes.extend(themes)
+                        logger.info(f"✅ 已完成段落 {item.get('paragraph_index')}/{total}，提取 {len(themes)} 个主题")
+                    else:
+                        logger.warning(f"❌ 段落 {item.get('paragraph_index')} 处理失败")
                 except Exception as e:
-                    logger.warning(f"更新 persist_path 失败 ({persist_path}): {e}")
+                    logger.error(f"段落 {item.get('paragraph_index')} 异常: {e}")
 
         # 按原始顺序排序（段落索引 + 主题索引）
         # 从文件partial中读取所有结果进行排序和过滤
 
         all_themes = []
-        results_dir = "../triples"
+        results_dir = "./triples"
         partial_file = os.path.join(results_dir, f"{job_id}_partial.json")
+        print(f"从 partial 文件读取结果进行最终排序和过滤: {partial_file}")
         if os.path.exists(partial_file):
+            print(f"找到 partial 文件，正在读取: {partial_file}")
             try:
                 with open(partial_file, 'r', encoding='utf-8') as f:
                     all_themes = json.load(f) or []
@@ -628,7 +688,7 @@ class Markdown2Triples:
                 all_themes = []
 
         all_themes.sort(key=lambda x: (x["paragraph_index"], x["theme_index"]))
-
+        logger.info(f"从 partial 文件读取 {len(all_themes)} 个主题，准备过滤脏数据")
         # 过滤脏数据
         clean_themes = self._filter_dirty_data(all_themes)
 
@@ -721,40 +781,47 @@ class Markdown2Triples:
             if not processed_paragraphs:
                 logger.info("没有要保存的处理结果，跳过保存")
                 return
-
-            job = get_job_by_id(job_id)
-            if not job:
-                logger.warning(f"未找到 job_id={job_id} 的任务信息，无法关联保存路径")
-            
-            partial_triples_path = job.partial_triples_path
-
-            target_file = ''
-
-            if partial_triples_path == '' or partial_triples_path is None:
-                logger.info(f"第一次保存三元组结果，创建新的 partial 文件 job_id={job_id}")
-                triples_dir = os.path.join(os.path.dirname(__file__), "../triples")
-                os.makedirs(triples_dir, exist_ok=True)
-                target_file = os.path.join(triples_dir, f"{job_id}_partial.json")
-                update_partial_triples_path(job_id, f"triples/{job_id}_partial.json")
-            else:
-                target_file = os.path.join(os.path.dirname(partial_triples_path), os.path.basename(partial_triples_path))
-
-            existing = []
-            if os.path.exists(target_file):
+            if getattr(self, 'app', None):
                 try:
-                    with open(target_file, 'r', encoding='utf-8') as f:
-                        existing = json.load(f) or []
+                    with self.app.app_context():
+                        job = get_job_by_id(job_id)
+                        if not job:
+                            logger.warning(f"未找到 job_id={job_id} 的任务信息，无法关联保存路径")
+            
+                        partial_triples_path = job.partial_triples_path
+
+                        target_file = ''
+
+                        if partial_triples_path == '' or partial_triples_path is None:
+                            logger.info(f"第一次保存三元组结果，创建新的 partial 文件 job_id={job_id}")
+                            triples_dir = os.path.join(os.path.dirname(__file__), "../triples")
+                            os.makedirs(triples_dir, exist_ok=True)
+                            target_file = os.path.join(triples_dir, f"{job_id}_partial.json")
+                            update_partial_triples_path(job_id, f"triples/{job_id}_partial.json")
+                        else:
+                            target_file = os.path.join(os.path.dirname(partial_triples_path), os.path.basename(partial_triples_path))
+
+                        existing = []
+                        if os.path.exists(target_file):
+                            try:
+                                with open(target_file, 'r', encoding='utf-8') as f:
+                                    existing = json.load(f) or []
+                            except Exception as e:
+                                logger.warning(f"读取已存在 partial 文件失败，将重建: {e}")
+                                existing = []
+
+                        existing.extend(processed_paragraphs)
+
+                        with open(target_file, 'w', encoding='utf-8') as f:
+                            json.dump(existing, f, ensure_ascii=False, indent=2)
+
+                        logger.info(f"增量追加保存 {len(processed_paragraphs)} 个主题到: {target_file}")
                 except Exception as e:
-                    logger.warning(f"读取已存在 partial 文件失败，将重建: {e}")
-                    existing = []
-
-            existing.extend(processed_paragraphs)
-
-            with open(target_file, 'w', encoding='utf-8') as f:
-                json.dump(existing, f, ensure_ascii=False, indent=2)
-
-            logger.info(f"增量追加保存 {len(processed_paragraphs)} 个主题到: {target_file}")
-
+                    logger.warning(f"使用 Flask app_context 保存三元组失败 {e}")
+                    raise e  # 继续执行直接保存的逻辑
+            else:
+                logger.warning(f"没有 Flask app 可用，直接保存失败: {e}")
+                raise Exception("没有 Flask app 可用，无法执行保存操作")
         except Exception as e:
             logger.warning(f"保存处理结果失败: {e}")
 
