@@ -9,6 +9,7 @@ import requests
 import base64
 
 from abutionpy.abution_connector import AbutionConnector
+from abutionpy import abution as g
 from abutionpy.abution_core import Knowledge
 from abutionpy.abution_schema import Agg
 from abutionpy.abution_traversal import Graph
@@ -23,6 +24,7 @@ from knowlion.markdown_to_triples import Markdown2Triples
 from config import ABUTION_CONFIG, PROCESSING_CONFIG
 import time
 import utils.network_utils as netutils
+import inspect
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -155,18 +157,72 @@ class KnowLion:
             monitor = Agg.FloatArrayAdd()
         print(monitor)
 
-        # Attempt to create graph, but do not fail the whole process if graph service is down.
+        # 在创建图前后，检查并确保 root 的权限标签存在并设置为图的 owner
         try:
-            self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
-        except Exception as e:
-            logger.warning(f"无法在 init_graph 中创建图（服务可能离线）: {e}")
             try:
-                from utils.graph_outbox import enqueue_graph_creation
-                schema = get_knowlion_schema(monitor)
-                path = enqueue_graph_creation(self.graph_name, schema, {"reason": "init_graph_failed"})
-                logger.info(f"图创建请求已写入 outbox: {path}")
-            except Exception:
-                logger.debug("写入 outbox 以延迟创建图失败（非致命）")
+                print("   ℹ️ [init_graph] 当前权限标签:")
+                auths_before = self.gdb_client.list_auths()
+                print(auths_before)
+            except Exception as e:
+                logger.debug(f"无法列出现有权限标签: {e}")
+
+            # 确保权限标签 root 存在（如果服务端以标签模型管理权限）
+            try:
+                add_auths_res = self.gdb_client.add_auths('private')
+                print(f"   ℹ️ [init_graph] add_auths('private') 返回: {add_auths_res}")
+                add_auths_res = self.gdb_client.add_auths('public')
+                print(f"   ℹ️ [init_graph] add_auths('public') 返回: {add_auths_res}")
+            except Exception as e:
+                logger.debug(f"add_auths 失败（非致命）: {e}")
+
+            # Attempt to create graph, but do not fail the whole process if graph service is down.
+            created = False
+            try:
+                self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
+                created = True
+            except Exception as e:
+                logger.warning(f"无法在 init_graph 中创建图（服务可能离线）: {e}")
+                try:
+                    from utils.graph_outbox import enqueue_graph_creation
+                    schema = get_knowlion_schema(monitor)
+                    path = enqueue_graph_creation(self.graph_name, schema, {"reason": "init_graph_failed"})
+                    logger.info(f"图创建请求已写入 outbox: {path}")
+                except Exception:
+                    logger.debug("写入 outbox 以延迟创建图失败（非致命）")
+
+            # 如果创建成功，显式将 owner 设为 root（使用 ChangeGraphAccess 操作）
+            if created:
+                try:
+                    # Some generated APIs expose different ChangeGraphAccess signatures
+                    # Try to construct using the available parameter names.
+                    ChangeCls = g.ChangeGraphAccess
+                    init_params = inspect.signature(ChangeCls.__init__).parameters
+                    if 'owner' in init_params:
+                        change_access = ChangeCls(owner='root', graph_id=self.graph_name)
+                    elif 'owner_user_id' in init_params:
+                        change_access = ChangeCls(graph_id=self.graph_name, owner_user_id='root')
+                    else:
+                        # Fallback: try positional then keyword attempts
+                        try:
+                            change_access = ChangeCls(self.graph_name, 'root')
+                        except Exception:
+                            change_access = ChangeCls(graph_id=self.graph_name)
+                    # 使用与 add_graph 相同的 headers 指定 graphId
+                    headers = {
+                        "Content-Type": "application/json",
+                        "abution.graphId": self.graph_name
+                    }
+                    self.gdb_client.execute_operation(change_access, headers)
+                    try:
+                        print("   ℹ️ [init_graph] 更改图访问成功，当前权限标签:")
+                        auths_after = self.gdb_client.list_auths()
+                        print(auths_after)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"为图设置 owner='root' 失败: {e}")
+        except Exception as e:
+            logger.debug(f"init_graph 中权限/创建流程异常（非致命）: {e}")
 
     def _ensure_graph(self, raise_on_fail: bool = False):
         """Lazily create and return Graph instance. If creation fails, return None
@@ -331,7 +387,7 @@ class KnowLion:
             return []
 
 
-    def triple_to_knowledge(self, para_triples:List[Dict[str, Any]], classify_id=None) -> List[Knowledge]:
+    def triple_to_knowledge(self, para_triples:List[Dict[str, Any]], classify_id=None, job_id: int = None) -> List[Knowledge]:
         """
         步骤2: 从Markdown内容提取知识
 
@@ -342,11 +398,28 @@ class KnowLion:
         if para_triples is None:
             raise ValueError("请先执行提取知识程序！")
 
+        # Ensure file_name is derived from DB record for this job when available
+        job_file_name = self.file_name
+        if job_id is not None:
+            try:
+                from repositories.jobs_repo import get_job_by_id
+                from repositories.file_repo import get_file_by_id
+                job = get_job_by_id(job_id)
+                if job and getattr(job, 'file_id', None):
+                    file_rec = get_file_by_id(job.file_id)
+                    if file_rec and getattr(file_rec, 'path', None):
+                        try:
+                            job_file_name = self.extract_file_name(file_rec.path)
+                        except Exception:
+                            job_file_name = os.path.splitext(os.path.basename(file_rec.path))[0]
+            except Exception:
+                # best-effort only; keep existing self.file_name on failure
+                job_file_name = job_file_name
+
         extractor = Triples2Knowledge(
             model_instance=self.model,
             para_triples=para_triples,
-            file_name=self.file_name,
-            #file_name="中印度洋盆岩心沉殖物中稀土元素赋存特征",
+            file_name=job_file_name,
             classify=classify_id
         )
 
@@ -421,7 +494,11 @@ class KnowLion:
         先进的混合检索方法
         """
         try:
-            results = self.advanced_retriever.hybrid_retrieval(text, top_k, classify_list)
+            self._get_advanced_retriever()
+        except Exception as e:            
+            logger.error(f"初始化高级检索器失败: {e}")
+        try:
+            results = self._advanced_retriever.hybrid_retrieval(text, top_k, classify_list)
             return results
         except Exception as e:
             logger.error(f"高级检索失败: {e}")

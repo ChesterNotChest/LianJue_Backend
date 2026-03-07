@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import tenacity
 from html5lib.constants import entities
 from tenacity import retry, stop_after_attempt, wait_exponential
+from pathlib import Path
 
 from abutionpy import abution
 from abutionpy.abution_core import Knowledge
@@ -341,6 +342,60 @@ class Triples2Knowledge:
             "original_content": paragraph["content"]
         }
 
+    def _normalize_relation_id(self, val: Any) -> Optional[str]:
+        """Attempt to normalize a relation endpoint to a string ID.
+
+        Return a string ID on success, or None if it cannot be normalized.
+        """
+        if val is None:
+            return None
+        # Accept simple types
+        if isinstance(val, (str, int)):
+            return str(val)
+        # Dicts often contain vertex/id/name fields
+        if isinstance(val, dict):
+            for k in ("vertex", "vertex_id", "id", "name", "vertexName"):
+                v = val.get(k)
+                if v is not None and (isinstance(v, (str, int)) and str(v).strip()):
+                    return str(v)
+            # If properties nested under 'properties' or 'vertex' as dict
+            nested = val.get("properties") or val.get("vertex")
+            if isinstance(nested, dict):
+                for k in ("vertex", "id", "name"):
+                    v = nested.get(k)
+                    if v is not None and (isinstance(v, (str, int)) and str(v).strip()):
+                        return str(v)
+            return None
+        # Lists - try to find the first usable element
+        if isinstance(val, (list, tuple)):
+            for it in val:
+                nid = self._normalize_relation_id(it)
+                if nid:
+                    return nid
+            return None
+        # Fallback: try to stringify
+        try:
+            s = str(val)
+            return s if s.strip() else None
+        except Exception:
+            return None
+
+    def _record_bad_relation(self, paragraph_title: str, relation: Dict[str, Any]):
+        """Append a bad relation sample to a JSONL diagnostics file for later inspection."""
+        try:
+            triples_dir = Path("./triples")
+            triples_dir.mkdir(parents=True, exist_ok=True)
+            out = triples_dir / "bad_relations_samples.jsonl"
+            rec = {
+                "timestamp": int(time.time() * 1000),
+                "paragraph": paragraph_title,
+                "relation": relation
+            }
+            with open(out, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.error("无法写入 bad_relations_samples.jsonl: %s", e)
+
     def process_paragraphs_parallel(self, paragraphs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """并行处理所有段落（处理主题列表）"""
         all_themes = []
@@ -461,22 +516,56 @@ class Triples2Knowledge:
         # 处理每个段落 + 段落中的实体关系
         for i, para in enumerate(self.para_triples):
             # 创建文档到段落的边
-            doc_to_para_edge = (Knowledge.labelE("Doc2Para")
-                                .edge(self.file_name, para["title"], True)
-                                .property("user_id", self.user_id)
-                                .property("classify", self.classify or None)
-                                .build())
-            knowledge_objects.append(doc_to_para_edge)
+            # 创建文档到段落的边（规范化并捕获异常）
+            src_doc = self._normalize_relation_id(self.file_name)
+            tgt_para = self._normalize_relation_id(para.get("title"))
+            if not src_doc or not tgt_para:
+                logger.warning(f"跳过无效 Doc2Para 边（段落: {para.get('title')}）: doc={self.file_name} para={para.get('title')}")
+                try:
+                    self._record_bad_relation(para.get('title', ''), {"label": "Doc2Para", "source": self.file_name, "target": para.get('title')})
+                except Exception:
+                    pass
+            else:
+                try:
+                    doc_to_para_edge = (Knowledge.labelE("Doc2Para")
+                                        .edge(src_doc, tgt_para, True)
+                                        .property("user_id", self.user_id)
+                                        .property("classify", self.classify or None)
+                                        .build())
+                    knowledge_objects.append(doc_to_para_edge)
+                except Exception as e:
+                    logger.error(f"创建 Doc2Para 边失败: doc={src_doc} para={tgt_para} error={e}")
+                    try:
+                        self._record_bad_relation(para.get('title', ''), {"label": "Doc2Para", "source": self.file_name, "target": para.get('title'), "error": str(e)})
+                    except Exception:
+                        pass
 
             # 创建段落间的上下文关系
             if i > 0:
                 prev_para = self.para_triples[i - 1]
-                para_to_para_edge = (Knowledge.labelE("Para2Para")
-                                     .edge(prev_para["title"], para["title"], True)
-                                     .property("user_id", self.user_id)
-                                     .property("classify", self.classify or None)
-                                     .build())
-                knowledge_objects.append(para_to_para_edge)
+                # 创建段落间的上下文关系（规范化并捕获异常）
+                src_prev = self._normalize_relation_id(prev_para.get("title"))
+                tgt_curr = self._normalize_relation_id(para.get("title"))
+                if not src_prev or not tgt_curr:
+                    logger.warning(f"跳过无效 Para2Para 边: prev={prev_para.get('title')} curr={para.get('title')}")
+                    try:
+                        self._record_bad_relation(para.get('title', ''), {"label": "Para2Para", "source": prev_para.get('title'), "target": para.get('title')})
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        para_to_para_edge = (Knowledge.labelE("Para2Para")
+                                             .edge(src_prev, tgt_curr, True)
+                                             .property("user_id", self.user_id)
+                                             .property("classify", self.classify or None)
+                                             .build())
+                        knowledge_objects.append(para_to_para_edge)
+                    except Exception as e:
+                        logger.error(f"创建 Para2Para 边失败: src={src_prev} tgt={tgt_curr} error={e}")
+                        try:
+                            self._record_bad_relation(para.get('title', ''), {"label": "Para2Para", "source": prev_para.get('title'), "target": para.get('title'), "error": str(e)})
+                        except Exception:
+                            pass
 
             # 处理实体关系和bm25索引
             knowledge_elements, bm25_elements = self._process_entities_and_relations(para, vec_index)
@@ -657,26 +746,36 @@ class Triples2Knowledge:
 
         # 1.1 记录实体间的关系以便后续处理邻居信息
         for relation in graph.get("relation", []):
-            source = relation.get("source")
-            target = relation.get("target")
+            raw_source = relation.get("source")
+            raw_target = relation.get("target")
             fact = relation.get("fact", "")
 
-            if source and target:
-                # 添加到source的关联关系
-                if source in entity_info_map:
-                    entity_info_map[source]["relations"].append({
-                        "neighbor": target,
-                        "fact": fact,
-                        "direction": "out"
-                    })
+            src = self._normalize_relation_id(raw_source)
+            tgt = self._normalize_relation_id(raw_target)
 
-                # 添加到target的关联关系
-                if target in entity_info_map:
-                    entity_info_map[target]["relations"].append({
-                        "neighbor": source,
-                        "fact": fact,
-                        "direction": "in"
-                    })
+            if not src or not tgt:
+                logger.warning(f"跳过无效关系（段落: {title}）: source={raw_source} target={raw_target}")
+                try:
+                    self._record_bad_relation(title, relation)
+                except Exception:
+                    pass
+                continue
+
+            # 添加到source的关联关系（如果实体存在于实体映射中）
+            if src in entity_info_map:
+                entity_info_map[src]["relations"].append({
+                    "neighbor": tgt,
+                    "fact": fact,
+                    "direction": "out"
+                })
+
+            # 添加到target的关联关系
+            if tgt in entity_info_map:
+                entity_info_map[tgt]["relations"].append({
+                    "neighbor": src,
+                    "fact": fact,
+                    "direction": "in"
+                })
 
         # 1.2 处理实体及其邻居信息，生成最终的语义字符串用于向量化
         entity_vectors = {}
@@ -763,26 +862,63 @@ class Triples2Knowledge:
             knowledge_objects.append(entity_vertex)
 
             # 3）创建段落到实体的边 --------------------------------------------------------------
-            para_to_entity_edge = (Knowledge.labelE("Para2Entity")
-                                   .edge(para["title"], entity["vertex"], True)
-                                   .property("user_id", self.user_id)
-                                   .property("classify", self.classify or None)
-                                   .build())
-            knowledge_objects.append(para_to_entity_edge)
+            # 3）创建段落到实体的边（规范化并捕获异常）
+            raw_src = para.get("title")
+            raw_tgt = entity.get("vertex")
+            src_id = self._normalize_relation_id(raw_src)
+            tgt_id = self._normalize_relation_id(raw_tgt)
+            if not src_id or not tgt_id:
+                logger.warning(f"跳过无效 Para2Entity 边（段落: {para.get('title')}）: source={raw_src} target={raw_tgt}")
+                try:
+                    self._record_bad_relation(para.get('title', ''), {"label": "Para2Entity", "source": raw_src, "target": raw_tgt})
+                except Exception:
+                    pass
+            else:
+                try:
+                    para_to_entity_edge = (Knowledge.labelE("Para2Entity")
+                                           .edge(src_id, tgt_id, True)
+                                           .property("user_id", self.user_id)
+                                           .property("classify", self.classify or None)
+                                           .build())
+                    knowledge_objects.append(para_to_entity_edge)
+                except Exception as e:
+                    logger.error(f"创建 Para2Entity 边失败（段落: {para.get('title')}）: src={src_id} tgt={tgt_id} error={e}")
+                    try:
+                        self._record_bad_relation(para.get('title', ''), {"label": "Para2Entity", "source": raw_src, "target": raw_tgt, "error": str(e)})
+                    except Exception:
+                        pass
 
-        # 处理关系
+        # 处理关系 — 在创建边之前做严格的规范化与检测，避免因L L M输出异常而抛错
         for relation in graph.get("relation", []):
-            if not relation.get("source") or not relation.get("target"):
+            raw_source = relation.get("source")
+            raw_target = relation.get("target")
+
+            src = self._normalize_relation_id(raw_source)
+            tgt = self._normalize_relation_id(raw_target)
+
+            if not src or not tgt:
+                logger.warning(f"跳过无效关系（段落: {title}）: source={raw_source} target={raw_target}")
+                try:
+                    self._record_bad_relation(title, relation)
+                except Exception:
+                    pass
                 continue
 
-            entity_to_entity_edge = (Knowledge.labelE("Entity2Entity")
-                                     .edge(relation["source"], relation["target"], True)
-                                     .property("fact", abution.tree_set(relation.get("fact", None)))
-                                     .property("occur_count", 1)
-                                     .property("user_id", self.user_id)
-                                     .property("classify", self.classify or None)
-                                     .build())
-            knowledge_objects.append(entity_to_entity_edge)
+            try:
+                entity_to_entity_edge = (Knowledge.labelE("Entity2Entity")
+                                         .edge(src, tgt, True)
+                                         .property("fact", abution.tree_set(relation.get("fact", None)))
+                                         .property("occur_count", 1)
+                                         .property("user_id", self.user_id)
+                                         .property("classify", self.classify or None)
+                                         .build())
+                knowledge_objects.append(entity_to_entity_edge)
+            except Exception as e:
+                logger.error(f"创建实体-实体边失败（段落: {title}）: src={src} tgt={tgt} error={e}")
+                try:
+                    self._record_bad_relation(title, {"source": raw_source, "target": raw_target, "error": str(e)})
+                except Exception:
+                    pass
 
         return knowledge_objects, bm25_elements
 

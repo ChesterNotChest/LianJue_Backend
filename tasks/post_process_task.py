@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 import time
+import pickle
 from datetime import datetime
 
 from config import PROCESSING_CONFIG
@@ -125,22 +126,20 @@ def triples_to_knowledge(knowlion, job_id: int):
         return []
 
     # list of knowledge objects
-    knowledge = knowlion.triple_to_knowledge(triples)
+    knowledge = knowlion.triple_to_knowledge(triples, job_id=job_id)
     print(f"   ✅ [POST] 知识对象数量: {len(knowledge)}")
 
-    # 对象序列化保存
+    # 保存为 pickle（二进制），不再使用 JSON 序列化回退
     try:
         knowledge_dir = Path("./knowledge")
         knowledge_dir.mkdir(parents=True, exist_ok=True)
 
-        
-
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        knowledge_fname = f"{Path(file_path).stem}_{ts}.json"
+        knowledge_fname = f"{Path(file_path).stem}_{ts}.pkl"
         knowledge_path = knowledge_dir / knowledge_fname
-        with open(knowledge_path, 'w', encoding='utf-8') as f:
-            json.dump(knowledge, f, ensure_ascii=False, indent=2)
-        print(f"   💾 [POST] 知识对象已保存: {knowledge_path}")
+        with open(knowledge_path, 'wb') as f:
+            pickle.dump(knowledge, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"   💾 [POST] 知识对象已以 pickle 存储: {knowledge_path}")
         update_knowledge_path(job_id, str(knowledge_path))
     except Exception as e:
         print(f"   ⚠️ [POST] 保存知识对象失败: {e}")
@@ -154,10 +153,10 @@ def knowledge_to_save(knowlion, job_id: int):
 
     knowledge_path = job.knowledge_path
 
-    # 读取知识对象文件
+    # 读取 pickle 格式的知识对象文件
     try:
-        with open(knowledge_path, 'r', encoding='utf-8') as f:
-            knowledge = json.load(f)
+        with open(knowledge_path, 'rb') as f:
+            knowledge = pickle.load(f)
     except Exception as e:
         print(f"   ❌ [POST] 读取知识对象文件失败: {e}")
         return []

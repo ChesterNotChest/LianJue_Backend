@@ -15,6 +15,7 @@ from repositories.jobs_repo import (
     update_job_stage,
     get_end_status_by_job_id,
 )
+from extensions import db
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,11 @@ class JobChecker:
                     logger.info("JobChecker stop event set; exiting main loop")
                     break
                 # fetch jobs that are either in_progress or pending; prioritize in_progress
+                # expire SQLAlchemy session to avoid returning stale objects from previous commits
+                try:
+                    db.session.expire_all()
+                except Exception:
+                    pass
                 all_jobs = list_all_jobs()
                 jobs_to_consider = [j for j in all_jobs if getattr(j, 'status', None) in ('in_progress', 'pending')]
                 if not jobs_to_consider:
@@ -73,7 +79,7 @@ class JobChecker:
                         continue
 
                     needs_heavy = not getattr(job_obj, 'markdown_path', None)
-                    needs_light = bool(getattr(job_obj, 'markdown_path', None)) and not getattr(job_obj, 'knowledge_path', None)
+                    needs_light = bool(getattr(job_obj, 'markdown_path', None)) and not getattr(job_obj, 'status', None) == 'completed'
                     #print(f"\n👀 检查 Job {job_id} - needs_heavy: {needs_heavy}, needs_light: {needs_light}, already_heavy: {already_heavy}, already_light: {already_light}")
 
                     if getattr(job_obj, 'status', None) == 'in_progress':
@@ -191,25 +197,37 @@ class JobChecker:
             if not job:
                 raise RuntimeError(f"Job {job_id} not found in light wrapper")
             #设置前检查 stage == end_stage 的情况，如果相等说明这个阶段已经完成了，不需要再继续往下走了。
-            if job.stage == job.end_stage:
+            if job.status == 'completed':
+                logger.info(f"Job {job_id} already completed; exiting light loop")
                 break
             ###################
             # 如下设置下一步执行的内容
             if not getattr(job, 'triples_path', None):
                 update_job_stage(job_id, 'md_to_triples')
                 md_to_triples(self.knowlion, job_id)
-                # loop and re-evaluate
+                # 若是终止步，则标记完成；否则继续循环
+                if job.stage == job.end_stage:
+                    update_job_status(job_id, 'completed')
+                    logger.info(f"Job {job_id} reached end stage; marking as completed and exiting light loop")
                 continue
 
             if not getattr(job, 'knowledge_path', None):
                 update_job_stage(job_id, 'triples_to_knowledge')
                 triples_to_knowledge(self.knowlion, job_id)
+                # 若是终止步，则标记完成；否则继续循环
+                if job.stage == job.end_stage:
+                    update_job_status(job_id, 'completed')
+                    logger.info(f"Job {job_id} reached end stage; marking as completed and exiting light loop")
                 continue
 
             # if knowledge exists but not saved to graph, call knowledge_to_save
             if getattr(job, 'knowledge_path', None):
                 update_job_stage(job_id, 'knowledge_to_save')
                 knowledge_to_save(self.knowlion, job_id)
+                # 防止二次进入这个流程，直接标记完成；否则继续循环
+                if job.stage == job.end_stage:
+                    update_job_status(job_id, 'completed')
+                    logger.info(f"Job {job_id} reached end stage; marking as completed and exiting light loop")
                 break
 
             # nothing to do
