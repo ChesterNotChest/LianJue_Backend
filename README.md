@@ -100,13 +100,6 @@ OCR模型下载：https://www.modelscope.cn/AbutionGraph/abution_graph_db_instal
 ```bash
 pip install abutionpy-3.2.0-py2.py3-none-any.whl（模型下载地址中可获取）
 pip install knowlion-0.2.0-py3-none-any.whl （项目内可获取）
-
-安装doc转pdf工具（可选）
-pip install python-docx
-sudo add-apt-repository ppa:libreoffice/ppa
-sudo apt update
-sudo apt install libreoffice
-sudo apt install unoconv
 ```
 
 ## 快速开始
@@ -119,19 +112,19 @@ MODEL_CONFIGS = {
     "text": {
         "model_name": "openai/qwen-max",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a998..."
+        "api_key": "<YOUR_API_KEY_HERE>"
     },
     # 多模态模型（处理文本+图片）
     "visual": {
         "model_name": "openai/qwen-vl-plus",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a998..."
+        "api_key": "<YOUR_API_KEY_HERE>"
     },
     # 向量模型（生成文本嵌入向量）
     "embed": {
         "model_name": "openai/text-embedding-v4",
         "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        "api_key": "sk-09a998..."
+        "api_key": "<YOUR_API_KEY_HERE>"
     }
 }
 # OCR本地模型路径

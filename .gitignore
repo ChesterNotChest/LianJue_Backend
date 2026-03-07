@@ -1,0 +1,28 @@
+# Ignore runtime config that contains API keys
+config.json
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+model/*
+!model/.gitkeep
+
+pdfs/*
+!pdfs/.gitkeep
+
+markdowns/*
+!markdowns/.gitkeep
+
+triples/*
+!triples/.gitkeep
+
+knowledge/*
+!knowledge/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+outbox/graphs/*
+
+!outbox/graphs/.gitkeep

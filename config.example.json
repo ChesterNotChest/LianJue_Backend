@@ -1,0 +1,48 @@
+{
+  "MODEL_CONFIGS": {
+    "text": {
+      "model_name": "openai/qwen-max",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "<YOUR_TEXT_API_KEY_HERE>"
+    },
+    "image": {
+      "model_name": "openai/qwen-vl-plus",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "<YOUR_IMAGE_API_KEY_HERE>"
+    },
+    "embed": {
+      "model_name": "openai/text-embedding-v4",
+      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key": "<YOUR_EMBED_API_KEY_HERE>",
+      "encoding_format": "float"
+    }
+  },
+  "ABUTION_CONFIG": {
+    "abution_url": "localhost:9996",
+    "username": "abution",
+    "password": "abution",
+    "batch_size": 20,
+    "batch_retries": 2,
+    "batch_retry_delay": 0.5,
+    "use_ssl": false,
+    "allow_self_signed": false,
+    "ssl_ca_cert": null
+  },
+  "PROCESSING_CONFIG": {
+    "save_md": true,
+    "save_triples": true,
+    "device_mode": "cpu",
+    "MODEL_PATH": "./model",
+    "pages_per_batch": 0,
+    "page_context_window": 1,
+    "memory_threshold_mb": 1024
+  },
+  "MYSQL": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "",
+    "database": "knowlion"
+  }
+}
+

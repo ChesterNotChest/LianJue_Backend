@@ -8,10 +8,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any, Optional, Tuple
 import tenacity
 from tenacity import retry, stop_after_attempt, wait_exponential
+import threading
 
 from abutionpy import abution
 from abutionpy.abution_core import Knowledge
 from knowlion.multi_model_litellm import LitellmMultiModel
+from repositories.jobs_repo import get_job_by_id, update_partial_triples_path
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -42,8 +44,7 @@ class Markdown2Triples:
         """
         self.model_instance = model_instance
         self.md_content = md_content
-        self.file_name = file_name
-        #self.classify = classify if classify and classify != "PUBLIC" else None
+        self.file_name = file_name        #self.classify = classify if classify and classify != "PUBLIC" else None
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
         self.max_chunk_limit = max_chunk_limit
@@ -56,6 +57,8 @@ class Markdown2Triples:
             (r'Image::\n(.*?)::Image', 'Image'),
             (r'Code::\n(.*?)::Code', 'Code')
         ]
+        # 用于保护对 partial 文件与增量保存的并发访问
+        self._file_lock = threading.Lock()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def call_llm_with_retry(self, prompt: str, query: str) -> str:
@@ -560,51 +563,136 @@ class Markdown2Triples:
             "original_content": paragraph["content"]
         }
 
-    def process_paragraphs_parallel(self, paragraphs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """并行处理所有段落（处理主题列表）"""
+    def process_paragraphs_parallel(self, to_process: List[Dict[str, Any]], job_id: int, persist_path: Optional[str] = None) -> List[Dict[str, Any]]:
+        """处理来自持久化文件的待处理条目（每处理完一条即从文件中删除对应项）。
+        参数:
+          - to_process: 列表，元素为 {"paragraph_index": int, "content_to_process": str}
+          - job_id: 任务ID，用于在保存三元组结果时关联任务信息
+          - persist_path: 可选，指向持久化 JSON 文件路径；如果提供，会在处理后更新该文件，删除已处理项
+        为了保证一致性，此实现采用逐条处理（非并行），并在每条处理后持久化剩余队列。
+        """
+
+        # Expect `to_process` to be a list of dicts with keys:
+        #   - 'paragraph_index': int
+        #   - 'content_to_process': str
+        total = len(to_process)
+
         all_themes = []
 
-        def process_wrapper(paragraph):
+        # capture Flask app from current context (if any) so we can push app_context in worker threads
+        flask_app = None
+        try:
+            from flask import current_app
             try:
-                themes = self.extract_element_from_paragraph(paragraph)
+                flask_app = current_app._get_current_object()
+            except Exception:
+                print("无法获取当前 Flask app 对象，可能不在 Flask 上下文中")
+                flask_app = None
+        except Exception:
+            flask_app = None
+
+        def process_wrapper(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+            para = {
+                "content": item.get("content_to_process", ""),
+                "supplement": "",
+                "start_pos": 0,
+                "end_pos": 0,
+                "type": "Text",
+                "index": item.get("paragraph_index")
+            }
+            try:
+                themes = self.extract_element_from_paragraph(para)
                 valid_themes = []
-                for theme in themes:
-                    # 过滤掉无效结果
+                for i, theme in enumerate(themes):
                     if not theme.get("error") and self._validate_knowledge_item(theme):
                         valid_themes.append(theme)
                     else:
-                        logger.warning(f"段落 {paragraph['index']} 的主题 {theme.get('theme_index', 1)} 处理结果无效")
+                        logger.warning(f"段落 {para['index']} 的主题 {theme.get('theme_index', i+1)} 处理结果无效")
 
-                return valid_themes if valid_themes else None
+                if valid_themes:
+                    # 使用文件锁保护增量保存，避免竞态
+                    with self._file_lock:
+                        if flask_app is not None:
+                            try:
+                                with flask_app.app_context():
+                                    self._save_triple_results(valid_themes, job_id)
+                            except Exception as e:
+                                logger.warning(f"在传递的 app context 内保存失败: {e}")
+                                # 尝试不使用 app context 保存（降级）
+                                try:
+                                    self._save_triple_results(valid_themes, job_id)
+                                except Exception as e2:
+                                    logger.warning(f"降级保存也失败: {e2}")
+                        else:
+                            # 没有可用的 Flask app，上下文不可用，直接保存（可能会触发工作上下文错误）
+                            try:
+                                self._save_triple_results(valid_themes, job_id)
+                            except Exception as e:
+                                logger.warning(f"直接保存失败: {e}")
+
+                    logger.info(f"✅ 已完成段落 {para['index']}/{total}，提取 {len(valid_themes)} 个主题")
+                else:
+                    logger.warning(f"❌ 段落 {para['index']} 处理失败或无有效主题")
+
+                return valid_themes
+
             except Exception as e:
-                logger.error(f"段落 {paragraph['index']} 处理异常: {e}")
-                return None
+                logger.error(f"段落 {para['index']} 处理异常: {e}")
+                return []
 
-        with ThreadPoolExecutor(max_workers=min(4, os.cpu_count())) as executor:
-            future_to_para = {
-                executor.submit(process_wrapper, para): para
-                for para in paragraphs
-            }
+            finally:
+                # 从持久化文件中移除已处理的条目（同样需要锁保护）
+                if persist_path:
+                    try:
+                        with self._file_lock:
+                            if os.path.exists(persist_path):
+                                with open(persist_path, 'r', encoding='utf-8') as f:
+                                    current = json.load(f)
+                                # filter out entries with same paragraph_index
+                                remaining = [x for x in current if x.get('paragraph_index') != item.get('paragraph_index')]
+                                with open(persist_path, 'w', encoding='utf-8') as f:
+                                    json.dump(remaining, f, ensure_ascii=False, indent=2)
+                    except Exception as e:
+                        logger.warning(f"更新 persist_path 失败 ({persist_path}): {e}")
 
-            for future in as_completed(future_to_para):
-                para = future_to_para[future]
+        # 并发执行处理器
+        with ThreadPoolExecutor(max_workers=min(4, (os.cpu_count() or 1))) as executor:
+            future_to_item = {executor.submit(process_wrapper, item): item for item in list(to_process)}
+
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
                 try:
                     themes = future.result(timeout=300)
                     if themes:
                         all_themes.extend(themes)
-                        logger.info(f"✅ 已完成段落 {para['index']}/{len(paragraphs)}，提取 {len(themes)} 个主题")
+                        logger.info(f"✅ 已完成段落 {item.get('paragraph_index')}/{total}，提取 {len(themes)} 个主题")
                     else:
-                        logger.warning(f"❌ 段落 {para['index']} 处理失败")
+                        logger.warning(f"❌ 段落 {item.get('paragraph_index')} 处理失败")
                 except Exception as e:
-                    logger.error(f"⏰ 段落 {para['index']} 处理超时或失败: {e}")
+                    logger.error(f"段落 {item.get('paragraph_index')} 异常: {e}")
 
         # 按原始顺序排序（段落索引 + 主题索引）
-        all_themes.sort(key=lambda x: (x["paragraph_index"], x["theme_index"]))
+        # 从文件partial中读取所有结果进行排序和过滤
 
+        all_themes = []
+        results_dir = "./triples"
+        partial_file = os.path.join(results_dir, f"{job_id}_partial.json")
+        print(f"从 partial 文件读取结果进行最终排序和过滤: {partial_file}")
+        if os.path.exists(partial_file):
+            print(f"找到 partial 文件，正在读取: {partial_file}")
+            try:
+                with open(partial_file, 'r', encoding='utf-8') as f:
+                    all_themes = json.load(f) or []
+            except Exception as e:
+                logger.warning(f"读取 partial 文件失败 ({partial_file}): {e}")
+                all_themes = []
+
+        all_themes.sort(key=lambda x: (x["paragraph_index"], x["theme_index"]))
+        logger.info(f"从 partial 文件读取 {len(all_themes)} 个主题，准备过滤脏数据")
         # 过滤脏数据
         clean_themes = self._filter_dirty_data(all_themes)
 
-        logger.info(f"处理完成: {len(clean_themes)} 个主题（来自 {len(paragraphs)} 个段落）")
+        logger.info(f"处理完成: {len(clean_themes)} 个主题（来自 {total} 个段落）")
         return clean_themes
 
     def _filter_dirty_data(self, themes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -643,7 +731,13 @@ class Markdown2Triples:
 
 
     def execute(self) -> List[Dict[str, Any]]:
-        """执行完整的处理流程"""
+        """
+        ！不要采用此方法！
+        TODO SCHEDULED FOR DEPRECATION -
+        XXXXXXXXXXXXXXXXXXXXXXX
+        这是一个被 *弃用* 的执行方法，保留仅供参考。
+        请使用 `process_paragraphs_parallel` 方法来处理段落并保存结果。
+        """
         logger.info("开始处理Markdown文档")
 
         try:
@@ -652,16 +746,18 @@ class Markdown2Triples:
             paragraphs = self.split_markdown_intelligently()
             logger.info(f"切分得到 {len(paragraphs)} 个段落")
 
-            # 2. 并行处理所有段落
-            logger.info("步骤2: 并行提取知识")
-            processed_paragraphs = self.process_paragraphs_parallel(paragraphs)
+            # 2. 转换为持久化处理格式并处理
+            logger.info("步骤2: 转换为 to_process 并提取知识")
+            to_process = [{
+                "paragraph_index": p.get("index"),
+                "content_to_process": p.get("content")
+            } for p in paragraphs]
+            # For deprecated execute path we call processing with a sentinel job_id=0
+            processed_paragraphs = self.process_paragraphs_parallel(to_process, job_id=0)
 
             if not processed_paragraphs:
                 logger.error("没有有效的处理结果，流程终止")
                 return []
-
-            # # 4. 保存处理结果
-            # self._save_processing_results(processed_paragraphs)
 
             logger.info("✅ 处理完成")
             return processed_paragraphs
@@ -670,61 +766,75 @@ class Markdown2Triples:
             logger.error(f"❌ 处理过程发生错误: {e}")
             return []
 
-    def _save_triple_results(self, processed_paragraphs: List[Dict[str, Any]]):
-        """保存处理结果"""
+    def _save_triple_results(self, processed_paragraphs: List[Dict[str, Any]], job_id: int):
+        """增量追加保存处理结果到 ../triples/{job_id}_partial.json
+
+        约束:
+        - `job_id` 必须为大于0的整数。
+        - 仅使用 `{job_id}_partial.json` 文件名，严格禁止其它命名。
+        - 仅追加语义（将新主题追加到文件中保存），不进行覆盖写入除非目标文件损坏需重建。
+        """
         try:
-            # 创建结果目录
-            results_dir = f"../test/knowlion/processing_results/{self.file_name}"
-            os.makedirs(results_dir, exist_ok=True)
+            if not isinstance(job_id, int) or job_id <= 0:
+                raise ValueError("job_id 必须为大于0的整数以执行增量保存")
 
-            with open(f"{results_dir}/processed_result.json", 'w', encoding='utf-8') as f:
-                json.dump(processed_paragraphs, f, ensure_ascii=False, indent=2)
+            if not processed_paragraphs:
+                logger.info("没有要保存的处理结果，跳过保存")
+                return
+            if getattr(self, 'app', None):
+                try:
+                    with self.app.app_context():
+                        job = get_job_by_id(job_id)
+                        if not job:
+                            logger.warning(f"未找到 job_id={job_id} 的任务信息，无法关联保存路径")
+            
+                        partial_triples_path = job.partial_triples_path
 
-            # 保存处理后的段落（精简版）
-            simplified_paragraphs = []
-            for para in processed_paragraphs:
-                simplified = {
-                    "title": para.get("title"),
-                    "type": para.get("type"),
-                    "paragraph_index": para.get("paragraph_index"),
-                    "content_keys": list(para.get("content", {}).keys()) if para.get("content") else [],
-                    "entities_count": len(para.get("graph", {}).get("entities", [])),
-                    "relations_count": len(para.get("graph", {}).get("relation", []))
-                }
-                simplified_paragraphs.append(simplified)
+                        target_file = ''
 
-            with open(f"{results_dir}/processed_paragraphs.json", 'w', encoding='utf-8') as f:
-                json.dump(simplified_paragraphs, f, ensure_ascii=False, indent=2)
+                        if partial_triples_path == '' or partial_triples_path is None:
+                            logger.info(f"第一次保存三元组结果，创建新的 partial 文件 job_id={job_id}")
+                            triples_dir = os.path.join(os.path.dirname(__file__), "../triples")
+                            os.makedirs(triples_dir, exist_ok=True)
+                            target_file = os.path.join(triples_dir, f"{job_id}_partial.json")
+                            update_partial_triples_path(job_id, f"triples/{job_id}_partial.json")
+                        else:
+                            target_file = os.path.join(os.path.dirname(partial_triples_path), os.path.basename(partial_triples_path))
 
-            logger.info(f"结果已保存到: {results_dir}")
+                        existing = []
+                        if os.path.exists(target_file):
+                            try:
+                                with open(target_file, 'r', encoding='utf-8') as f:
+                                    existing = json.load(f) or []
+                            except Exception as e:
+                                logger.warning(f"读取已存在 partial 文件失败，将重建: {e}")
+                                existing = []
 
+                        existing.extend(processed_paragraphs)
+
+                        with open(target_file, 'w', encoding='utf-8') as f:
+                            json.dump(existing, f, ensure_ascii=False, indent=2)
+
+                        logger.info(f"增量追加保存 {len(processed_paragraphs)} 个主题到: {target_file}")
+                except Exception as e:
+                    logger.warning(f"使用 Flask app_context 保存三元组失败 {e}")
+                    raise e  # 继续执行直接保存的逻辑
+            else:
+                logger.warning(f"没有 Flask app 可用，直接保存失败: {e}")
+                raise Exception("没有 Flask app 可用，无法执行保存操作")
         except Exception as e:
             logger.warning(f"保存处理结果失败: {e}")
 
 # 使用示例
 if __name__ == "__main__":
     # 初始化模型
-    MODEL_CONFIGS = {
-        "text": {
-            "model_name": "openai/qwen-max",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        "image": {
-            "model_name": "openai/qwen-vl-plus",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        },
-        "embed": {
-            "model_name": "openai/text-embedding-v4",
-            "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "api_key": "sk-09a9980300ad40e0978eefe0f3bbb4f2"
-        }
-    }
+    from config import MODEL_CONFIGS
+
     model_instance = LitellmMultiModel(MODEL_CONFIGS)
 
     # 读取Markdown内容
-    md_file_path = "/media/raini/新加卷12/Abution-3.0/GDB/AbutionRag/test/storage/稀土论文/中印度洋盆岩心沉积物中稀土元素赋存特征/extract_marked.md"
+    # md_file_path = "/root/knowlion/markdowns/基于RAG的维修手册智能问答系统研究与应用_郭超.md"
+    md_file_path = "/root/knowlion/markdowns/第1章+绪论.md"
     try:
         with open(md_file_path, "r", encoding="utf-8") as f:
             md_content = f.read()
@@ -737,7 +847,7 @@ if __name__ == "__main__":
     processor = Markdown2Triples(
         model_instance=model_instance,
         md_content=md_content,
-        # file_name="中印度洋盆岩心沉积物中稀土元素赋存特征",
+        file_name="第1章+绪论",
         # classify="地质研究",
         chunk_size=5000,  # 减小块大小以提高处理质量
         overlap_size=600,
@@ -745,8 +855,8 @@ if __name__ == "__main__":
     )
 
     # 执行处理
-    #knowledge_objects = processor.execute()
-    #print(knowledge_objects)
+    knowledge_objects = processor.execute()
+    print(knowledge_objects)
 
     # with open("/media/raini/新加卷12/Abution-3.0/GDB/AbutionRag/knowlion/processing_results/中印度洋盆岩心沉积物中稀土元素赋存特征/processed_result.json", "r", encoding="utf-8") as f:
     #     processed_paragraphs = json.load(f)
