@@ -177,12 +177,12 @@ def knowledge_to_save(knowlion, job_id: int):
         try:
             knowlion.init_graph()
         except Exception as e:
-            print(f"   ⚠️ [POST] init_graph 失败（已记录 outbox），继续执行：{e}")
+            print(f"   ⚠️ [POST] init_graph 失败（outbox 已弃用），继续执行：{e}")
 
     except Exception as e:
         print(f"   ⚠️ [POST] 检查/创建 graph 记录时发生错误: {e}")
 
     knowlion.knowledge_to_save(knowledge)
-    print(f"   ✅ [POST] 已写入图数据库（或已入 outbox）")
+    print(f"   ✅ [POST] 已写入图数据库")
     
 

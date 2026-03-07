@@ -23,6 +23,4 @@ knowledge/*
 logs/*
 !logs/.gitkeep
 
-outbox/graphs/*
-
-!outbox/graphs/.gitkeep
+# outbox feature removed; no local queue files

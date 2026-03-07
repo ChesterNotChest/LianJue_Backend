@@ -67,8 +67,13 @@ class JobChecker:
                 for job in jobs_to_consider:
                     job_id = job.job_id
                     with self._lock:
-                        already_heavy = job_id in self.running_heavy
-                        already_light = job_id in self.running_light
+                        # Prefer reliable DB-derived indicators from the `job` object returned
+                        # by `list_all_jobs`, but keep local sets as an additional guard.
+                        needs_heavy_db = not getattr(job, 'markdown_path', None)
+                        needs_light_db = bool(getattr(job, 'markdown_path', None)) and not getattr(job, 'status', None) == 'completed'
+
+                        already_heavy = (job_id in self.running_heavy) or (getattr(job, 'status', None) == 'in_progress' and needs_heavy_db)
+                        already_light = (job_id in self.running_light) or (getattr(job, 'status', None) == 'in_progress' and needs_light_db)
 
                     try:
                         job_obj = get_job_by_id(job_id)

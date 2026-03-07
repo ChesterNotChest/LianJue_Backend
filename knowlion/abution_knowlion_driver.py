@@ -183,12 +183,11 @@ class KnowLion:
             except Exception as e:
                 logger.warning(f"无法在 init_graph 中创建图（服务可能离线）: {e}")
                 try:
-                    from utils.graph_outbox import enqueue_graph_creation
+                    # outbox has been deprecated. Do not write requests to disk.
                     schema = get_knowlion_schema(monitor)
-                    path = enqueue_graph_creation(self.graph_name, schema, {"reason": "init_graph_failed"})
-                    logger.info(f"图创建请求已写入 outbox: {path}")
+                    logger.info("图创建失败且 outbox 已弃用，已跳过写入本地 outbox（请确保图服务可用以继续创建）")
                 except Exception:
-                    logger.debug("写入 outbox 以延迟创建图失败（非致命）")
+                    logger.debug("跳过本地 outbox 写入（outbox 已弃用）")
 
             # 如果创建成功，显式将 owner 设为 root（使用 ChangeGraphAccess 操作）
             if created:
@@ -453,8 +452,6 @@ class KnowLion:
         total = len(knowledge_list)
         logger.info(f"开始分批保存知识对象，共 {total} 条，批大小 {batch_size}")
 
-        from utils.graph_outbox import enqueue_batch
-
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             batch = knowledge_list[start:end]
@@ -464,10 +461,7 @@ class KnowLion:
             # Try to get/create Graph lazily
             graph = self._ensure_graph(raise_on_fail=False)
             if graph is None:
-                logger.warning("图服务暂不可用：将批次写入本地 outbox 并继续")
-                meta = {"start": start, "end": end}
-                path = enqueue_batch(self.graph_name, batch, meta)
-                logger.info(f"已写入 outbox: {path}")
+                logger.error("图服务暂不可用：outbox 已弃用，跳过该批次保存（请稍后重试或手动重放）")
                 continue
 
             while True:
@@ -480,10 +474,8 @@ class KnowLion:
                     attempt += 1
                     logger.warning(f"保存批次 {start}-{end-1} 失败 (尝试 {attempt}/{max_retries}): {e}")
                     if attempt > max_retries:
-                        # On repeated failure, enqueue to outbox to avoid blocking
-                        meta = {"start": start, "end": end, "error": str(e)}
-                        path = enqueue_batch(self.graph_name, batch, meta)
-                        logger.error(f"保存失败，已写入 outbox: {path}")
+                        # On repeated failure, outbox is deprecated — log and give up on this batch
+                        logger.error(f"保存批次 {start}-{end-1} 多次失败，放弃该批次（outbox 已弃用）: {e}")
                         break
                     time.sleep(retry_delay)
 
