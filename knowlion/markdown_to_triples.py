@@ -36,7 +36,7 @@ class Markdown2Triples:
                  #classify: str = "PUBLIC",
                  chunk_size: int = 4000,
                  overlap_size: int = 500,
-                 max_chunk_limit: int = 10000,
+                 max_chunk_limit: int = 7500,
                  #user_id: str = "default_user"
                  ):
         """
@@ -850,8 +850,8 @@ if __name__ == "__main__":
         file_name="第1章+绪论",
         # classify="地质研究",
         chunk_size=5000,  # 减小块大小以提高处理质量
-        overlap_size=600,
-        max_chunk_limit=8000
+        overlap_size=500,
+        max_chunk_limit=7500
     )
 
     # 执行处理

@@ -371,10 +371,24 @@ class Document2Markdown:
                     stats = { 'chars': 0, 'pages': 0, 'cjk_ratio': 0.0 }
 
                 poor_quality = False
-                if stats.get('chars', 0) < 200:
+                chars = int(stats.get('chars', 0) or 0)
+                pages = int(stats.get('pages', 0) or 0)
+                cjk_ratio = float(stats.get('cjk_ratio', 0.0) or 0.0)
+
+                # Very small amount of text -> poor
+                if chars < 200:
                     poor_quality = True
-                if stats.get('pages', 0) > 0 and stats.get('cjk_ratio', 0.0) < 0.02:
-                    poor_quality = True
+
+                # If CJK ratio is very low on a multi-page doc, it may be an English PDF.
+                # Before treating as poor, check whether the result contains substantial
+                # English/Latin text; if so, do NOT mark as poor.
+                if pages > 0 and cjk_ratio < 0.02:
+                    try:
+                        is_english = self._contains_english_text(res)
+                    except Exception:
+                        is_english = False
+                    if not is_english:
+                        poor_quality = True
 
                 if poor_quality:
                     logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，使用回退策略（PyMuPDF -> full-page OCR）。")
@@ -677,6 +691,34 @@ class Document2Markdown:
         cjk_ratio = (cjk_chars / total_chars) if total_chars > 0 else 0.0
         return { 'chars': total_chars, 'pages': pages, 'cjk_ratio': cjk_ratio }
 
+    def _contains_english_text(self, res, min_words: int = 50, min_ascii_ratio: float = 0.3) -> bool:
+        """Rough heuristic: determine if `res` contains substantial English/Latin text.
+        Returns True if there are at least `min_words` Latin words and ascii-letter ratio
+        across text exceeds `min_ascii_ratio`.
+        """
+        try:
+            total_chars = 0
+            ascii_chars = 0
+            word_count = 0
+            for item, _ in getattr(res.document, 'iterate_items')():
+                try:
+                    text = getattr(item, 'text', None)
+                    if not text or not isinstance(text, str):
+                        continue
+                    total_chars += len(text)
+                    ascii_chars += len(re.findall(r'[A-Za-z]', text))
+                    # count English-like words of length>=2
+                    word_count += len(re.findall(r"[A-Za-z]{2,}", text))
+                except Exception:
+                    continue
+
+            if total_chars <= 0:
+                return False
+            ascii_ratio = ascii_chars / total_chars
+            return (word_count >= min_words) and (ascii_ratio >= min_ascii_ratio)
+        except Exception:
+            return False
+
     def result_contains_text(self, result) -> bool:
         """检查 Docling 转换结果中是否包含可用的文本项（TextItem）。
         返回 True 表示存在至少一个非空文本块。
@@ -748,12 +790,34 @@ class Document2Markdown:
                 all_text_items.append(('text', text_content))
             elif isinstance(item, TableItem):
                 try:
-                    table_df = item.export_to_dataframe()
-                    table_md = table_df.to_markdown()
+                    # Newer versions of docling TableItem.export_to_dataframe may
+                    # require the parent document as first arg; prefer passing it
+                    # to avoid deprecation/warning and ensure correct behavior.
+                    try:
+                        table_df = item.export_to_dataframe(res.document)
+                    except TypeError:
+                        table_df = item.export_to_dataframe()
+
+                    if table_df is None:
+                        logging.debug("TableItem.export_to_dataframe returned None, skipping table")
+                        continue
+
+                    # Convert to markdown; if DataFrame-like object doesn't support
+                    # to_markdown, fall back to string conversion.
+                    try:
+                        table_md = table_df.to_markdown()
+                    except Exception:
+                        try:
+                            import pandas as _pd  # noqa: F401
+                            table_md = table_df.to_markdown()
+                        except Exception:
+                            table_md = str(table_df)
+
                     text_content = f"Table::\n{table_md}\n::Table"
                     all_text_items.append(('text', text_content))
                     stats['table'] += 1
-                except Exception:
+                except Exception as e:
+                    logging.debug(f"处理 TableItem 时出错，跳过表格: {e}")
                     continue
             elif isinstance(item, PictureItem):
                 try:
