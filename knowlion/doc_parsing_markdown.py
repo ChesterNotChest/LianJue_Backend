@@ -883,54 +883,11 @@ class Document2Markdown:
 
     def _handle_poor_quality_batch(self, batch_bytes: bytes, bidx: int, image_counter_global: int, device_mode: str) -> Tuple[str, int]:
         """处理低质量批次：先尝试 PyMuPDF 回退提取；若无有效文本，再清理并尝试强制 full-page OCR。"""
-        # 1) PyMuPDF 回退优先
+
+
+        # 尝试强制 full-page OCR
         try:
-            print(f"批次 {bidx+1}: 尝试 PyMuPDF 回退提取...")
-            pymupdf_text = self._fallback_extract_pymupdf(batch_bytes)
-        except Exception:
-            pymupdf_text = None
-
-        if pymupdf_text:
-            # pymupdf may also return extracted images; integrate them with LLM image handling
-            text, images = pymupdf_text
-            frag = f"RawText::\n{text}\n::RawText"
-
-            # If images were extracted, create image tasks and call the VL pipeline
-            if images:
-                try:
-                    # Build minimal all_text_items from the plain text (paragraphs)
-                    paragraphs = [p.strip() for p in (text or "").split('\n\n') if p.strip()]
-                    all_text_items = [('text', p) for p in paragraphs]
-
-                    image_tasks = []
-                    for idx, img in enumerate(images, start=1):
-                        placeholder = f"IMAGE_PLACEHOLDER_PYMUPDF_{idx}"
-                        image_task = {
-                            'placeholder': placeholder,
-                            'image_data': img.get('image_bytes'),
-                            'position': len(all_text_items),
-                            'page': img.get('page', 0),
-                            'coordinates': tuple(img.get('bbox', (0, 0, 0, 0)))
-                        }
-                        image_tasks.append(image_task)
-                        # append placeholder to fragment so replacement will occur
-                        frag += f"\n\n{placeholder}"
-
-                    # add context and process images through existing pipeline
-                    image_tasks_with_context = self._add_image_context(image_tasks, all_text_items)
-                    processed_images = self._process_images_parallel(image_tasks_with_context)
-                    for ph, desc in processed_images.items():
-                        frag = frag.replace(ph, f"Image::\n{desc}\n::Image")
-                        image_counter_global += 1
-                except Exception:
-                    # fall back to returning text-only fragment on any image-processing error
-                    pass
-
-            return frag, image_counter_global
-
-        # 2) PyMuPDF 未命中，清理内存并尝试强制 full-page OCR
-        try:
-            print(f"批次 {bidx+1}: PyMuPDF 无有效文本，尝试强制 full-page OCR...")
+            print(f"批次 {bidx+1}: 尝试强制 full-page OCR...")
             gc.collect()
             if device_mode in ("cuda", "gpu"):
                 try:
@@ -1099,67 +1056,7 @@ class Document2Markdown:
 
         return frag, image_counter_global
 
-    def _fallback_extract_pymupdf(self, pdf_bytes: bytes) -> Optional[str]:
-        """使用 PyMuPDF 提取文本与图片（流式按页）。
 
-        返回 (text, images) 或 None。images 为列表，每项包含:
-        { 'page': int, 'bbox': (l,t,r,b), 'image_bytes': bytes }
-        当无法提取足够文本且无图片时返回 None。
-        """
-        if fitz is None:
-            logging.info("PyMuPDF (fitz) 未安装，跳过该回退")
-            return None
-        try:
-            doc = fitz.open(stream=pdf_bytes, filetype='pdf')
-            texts = []
-            images = []
-            for p in range(len(doc)):
-                page = doc.load_page(p)
-                # extract text for this page
-                try:
-                    t = page.get_text("text") or ""
-                except Exception:
-                    t = ""
-                texts.append(t)
-
-                # extract image blocks (from page text dict blocks)
-                try:
-                    blocks = page.get_text("dict").get('blocks', [])
-                    for b in blocks:
-                        if b.get('type') == 1:
-                            # image block
-                            bbox = b.get('bbox') or [0, 0, 0, 0]
-                            # block may contain 'image' dict with 'xref'
-                            img_info = b.get('image') or {}
-                            xref = img_info.get('xref')
-                            img_bytes = None
-                            if xref:
-                                try:
-                                    extracted = doc.extract_image(xref)
-                                    img_bytes = extracted.get('image')
-                                except Exception:
-                                    img_bytes = None
-                            # fallback: attempt to render the block region to an image
-                            if img_bytes is None:
-                                try:
-                                    pix = page.get_pixmap(clip=fitz.Rect(bbox))
-                                    img_bytes = pix.tobytes("png")
-                                except Exception:
-                                    img_bytes = None
-
-                            if img_bytes:
-                                images.append({'page': p, 'bbox': bbox, 'image_bytes': img_bytes})
-                except Exception:
-                    pass
-
-            merged = "\n\n".join(texts)
-            # Consider extraction successful if we have text or at least one image
-            if (not merged or len(merged.strip()) < 50) and not images:
-                return None
-            return (merged, images)
-        except Exception as e:
-            logging.warning(f"PyMuPDF 回退提取失败: {e}")
-            return None
 
     def _process_images_parallel(self, image_tasks: List[Dict]) -> Dict[str, str]:
         """并行处理图片 - 使用多线程池同时调用视觉语言模型API"""
