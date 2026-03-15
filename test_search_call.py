@@ -8,6 +8,8 @@ This script injects a mock `model` and a mock `search` result to avoid network/L
 """
 import argparse
 
+import json
+
 from knowlion.abution_knowlion_driver import KnowLion
 from config import MODEL_CONFIGS
 import sys
@@ -40,9 +42,15 @@ def main():
             print('--- SEARCH RESULT ---')
             try:
                 search_result = kl.search(q, top_k=args.top_k)
-                print(search_result)
+                para = json.dumps(search_result.get('paragraphs', []), ensure_ascii=False, indent=2)
+                print(para)
+                print('--- reasoning_path ---')
+                print(json.dumps(search_result.get('reasoning_paths', []), ensure_ascii=False, indent=2))
             except Exception as e:
                 print('Search failed:', e)
+
+            # DEBUG EARLY CONTINUE
+            continue
 
             print('Calling KnowLion.search_call...')
             try:
@@ -59,9 +67,15 @@ def main():
         print('--- SEARCH RESULT ---')
         try:
             search_result = kl.search(args.text, top_k=args.top_k)
-            print(search_result)
+            para = json.dumps(search_result.get('paragraphs', []), ensure_ascii=False, indent=2)
+            print(para)
+            print('--- reasoning_path ---')
+            print(json.dumps(search_result.get('reasoning_paths', []), ensure_ascii=False, indent=2))
         except Exception as e:
             print('Search failed:', e)
+        
+        # DEBUG EARLY EXIT
+        return
 
         print('Calling KnowLion.search_call...')
         try:

@@ -81,7 +81,7 @@ def get_document_converter(easyocr_model_path, pdf_artifacts_path):
     pdf_pipeline_options.ocr_options = easyocr_options
     pdf_pipeline_options.do_ocr = True  # 启用 OCR
     ## 识别公式内容（默认调用模型ds4sd--CodeFormula
-    pdf_pipeline_options.do_formula_enrichment = False
+    pdf_pipeline_options.do_formula_enrichment = True
     pdf_pipeline_options.do_code_enrichment = True
     pdf_pipeline_options.do_table_structure = True
     # 设置文档变为图片的保存选项
