@@ -2,6 +2,7 @@ from repositories.file_repo import get_file_by_id
 
 from constant import JobStatus, JobStage
 from extensions import db
+from repositories.graph_repo import get_graph_by_id
 from schemas.jobs import Jobs
 
 ###################
@@ -14,6 +15,13 @@ def get_jobs_by_file_id(file_id):
 
 def get_jobs_by_graph_id(graph_id):
     return Jobs.query.filter_by(graph_id=graph_id).all()
+
+def get_graphId_by_job_id(job_id):
+    job = get_job_by_id(job_id)
+    if job:
+        graph = get_graph_by_id(job.graph_id)
+        return graph.graphId if graph else None
+    return None
 
 ###################
 # 状态getter
@@ -32,7 +40,7 @@ def get_progress_index_by_job_id(job_id):
 
 ###################
 # 创建新任务
-def create_job(file_id: int, graph_id: str, end_stage: str = JobStage.KNOWLEDGE_TO_SAVE.value):
+def create_job(file_id: int, graph_id: int, end_stage: str = JobStage.KNOWLEDGE_TO_SAVE.value):
     # If a job for this file already exists in the same graph, return it instead of creating a duplicate
     existing = Jobs.query.filter_by(file_id=file_id, graph_id=graph_id).first()
     if existing:

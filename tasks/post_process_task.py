@@ -13,6 +13,7 @@ from repositories.graph_repo import get_graph_by_graphId, create_graph
 from repositories.filegraph_repo import list_graphs_by_file
 from repositories.file_repo import get_file_by_id
 from repositories.jobs_repo import (
+    get_graphId_by_job_id,
     get_job_by_id,
     update_job_stage,
     update_split_markdown_path,
@@ -161,21 +162,11 @@ def knowledge_to_save(knowlion, job_id: int):
         print(f"   ❌ [POST] 读取知识对象文件失败: {e}")
         return []
 
-    # Ensure a graph record exists in MySQL and initialize graph lazily if needed.
     try:
-        graphId = knowlion.graph_name
-        existing = get_graph_by_graphId(graphId)
-        if not existing:
-            # create a DB record so callers/ops can see this graph
-            try:
-                created = create_graph(graphId)
-                print(f"   ℹ️ [POST] 已在 MySQL 中创建 graph 记录: {graphId}")
-            except Exception as e:
-                print(f"   ⚠️ [POST] 创建 graph 记录失败: {e}")
-
         # Attempt to initialize graph on KnowLion instance (will be tolerant to failures)
         try:
-            knowlion.init_graph()
+            graph_name = get_graphId_by_job_id(job_id)
+            knowlion.init_graph(graph_name)
         except Exception as e:
             print(f"   ⚠️ [POST] init_graph 失败（outbox 已弃用），继续执行：{e}")
 

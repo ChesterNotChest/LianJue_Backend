@@ -18,7 +18,7 @@ class Jobs(db.Model):
     error_message: str = db.Column(db.Text, default="") # 错误信息
 
     file_id: int = db.Column(db.Integer) # 关联的文件ID，便于前端展示
-    graph_id: str = db.Column(db.String(255)) # 关联的图谱ID，便于前端展示和后续查询使用
+    graph_id: int = db.Column(db.Integer) # 关联的图谱ID，便于前端展示和后续查询使用
 
     def __repr__(self):
         return f"<Job {self.job_id} - Stage: {self.stage} - Progress: {self.progress_index}>"

@@ -66,6 +66,8 @@ class KnowLion:
         self.model = LitellmMultiModel(model_configs)
         # 在初始化 AbutionConnector 前，先尝试一次独立的授权请求（pre-auth），
         # 以让代理/认证层建立会话状态，避免后续请求在认证流程中被拒绝或导致头部丢失。
+
+        ## 不做pre auth
         try:
             cfg = ABUTION_CONFIG or {}
             # Global SSL config (for urllib/stdlib usage)
@@ -74,27 +76,29 @@ class KnowLion:
             # assemble base URL respecting whether config provided a scheme
             provided_url = abution_url or cfg.get("abution_url", "localhost:9996")
             base = netutils.build_base_url(provided_url, cfg)
+        except Exception as e:            
+            logger.warning(f"构建 AbutionConnector base URL 失败: {e}")
 
-            base_url = base + "/rest"
-            sess = requests.Session()
-            sess.auth = (username, password)
-            _scheme, verify_val = netutils.configure_ssl_session(cfg, sess)
+        #     base_url = base + "/rest"
+        #     sess = requests.Session()
+        #     sess.auth = (username, password)
+        #     _scheme, verify_val = netutils.configure_ssl_session(cfg, sess)
 
-            try:
-                resp = sess.get(base_url, timeout=5, verify=sess.verify)
-                if resp.status_code == 200:
-                    logger.info("Pre-auth successful to %s", base_url)
-                else:
-                    logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
-            except Exception as e:
-                logger.warning(f"Pre-auth request failed: {e}")
+        #     try:
+        #         resp = sess.get(base_url, timeout=5, verify=sess.verify)
+        #         if resp.status_code == 200:
+        #             logger.info("Pre-auth successful to %s", base_url)
+        #         else:
+        #             logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
+        #     except Exception as e:
+        #         logger.warning(f"Pre-auth request failed: {e}")
 
-            try:
-                sess.close()
-            except Exception:
-                pass
-        except Exception as e:
-            logger.warning(f"Pre-auth setup failed: {e}")
+        #     try:
+        #         sess.close()
+        #     except Exception:
+        #         pass
+        # except Exception as e:
+        #     logger.warning(f"Pre-auth setup failed: {e}")
 
         # 初始化 AbutionConnector，优先使用配置的 scheme
         try:
@@ -166,20 +170,20 @@ class KnowLion:
             except Exception as e:
                 logger.debug(f"无法列出现有权限标签: {e}")
 
-            # 确保权限标签 root 存在（如果服务端以标签模型管理权限）
-            try:
-                add_auths_res = self.gdb_client.add_auths('private')
-                print(f"   ℹ️ [init_graph] add_auths('private') 返回: {add_auths_res}")
-                add_auths_res = self.gdb_client.add_auths('public')
-                print(f"   ℹ️ [init_graph] add_auths('public') 返回: {add_auths_res}")
-            except Exception as e:
-                logger.debug(f"add_auths 失败（非致命）: {e}")
+            # # 确保权限标签 root 存在（如果服务端以标签模型管理权限）
+            # try:
+            #     add_auths_res = self.gdb_client.add_auths('private')
+            #     print(f"   ℹ️ [init_graph] add_auths('private') 返回: {add_auths_res}")
+            #     add_auths_res = self.gdb_client.add_auths('public')
+            #     print(f"   ℹ️ [init_graph] add_auths('public') 返回: {add_auths_res}")
+            # except Exception as e:
+            #     logger.debug(f"add_auths 失败（非致命）: {e}")
 
             # Attempt to create graph, but do not fail the whole process if graph service is down.
-            created = False
+            # created = False
             try:
                 self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
-                created = True
+                # created = True
             except Exception as e:
                 logger.warning(f"无法在 init_graph 中创建图（服务可能离线）: {e}")
                 try:
@@ -189,39 +193,39 @@ class KnowLion:
                 except Exception:
                     logger.debug("跳过本地 outbox 写入（outbox 已弃用）")
 
-            # 如果创建成功，显式将 owner 设为 root（使用 ChangeGraphAccess 操作）
-            if created:
-                try:
-                    # Some generated APIs expose different ChangeGraphAccess signatures
-                    # Try to construct using the available parameter names.
-                    ChangeCls = g.ChangeGraphAccess
-                    init_params = inspect.signature(ChangeCls.__init__).parameters
-                    if 'owner' in init_params:
-                        change_access = ChangeCls(owner='root', graph_id=self.graph_name)
-                    elif 'owner_user_id' in init_params:
-                        change_access = ChangeCls(graph_id=self.graph_name, owner_user_id='root')
-                    else:
-                        # Fallback: try positional then keyword attempts
-                        try:
-                            change_access = ChangeCls(self.graph_name, 'root')
-                        except Exception:
-                            change_access = ChangeCls(graph_id=self.graph_name)
-                    # 使用与 add_graph 相同的 headers 指定 graphId
-                    headers = {
-                        "Content-Type": "application/json",
-                        "abution.graphId": self.graph_name
-                    }
-                    self.gdb_client.execute_operation(change_access, headers)
-                    try:
-                        print("   ℹ️ [init_graph] 更改图访问成功，当前权限标签:")
-                        auths_after = self.gdb_client.list_auths()
-                        print(auths_after)
-                    except Exception:
-                        pass
-                except Exception as e:
-                    logger.warning(f"为图设置 owner='root' 失败: {e}")
+            # # 如果创建成功，显式将 owner 设为 root（使用 ChangeGraphAccess 操作）
+            # if created:
+            #     try:
+            #         # Some generated APIs expose different ChangeGraphAccess signatures
+            #         # Try to construct using the available parameter names.
+            #         ChangeCls = g.ChangeGraphAccess
+            #         init_params = inspect.signature(ChangeCls.__init__).parameters
+            #         if 'owner' in init_params:
+            #             change_access = ChangeCls(owner='root', graph_id=self.graph_name)
+            #         elif 'owner_user_id' in init_params:
+            #             change_access = ChangeCls(graph_id=self.graph_name, owner_user_id='root')
+            #         else:
+            #             # Fallback: try positional then keyword attempts
+            #             try:
+            #                 change_access = ChangeCls(self.graph_name, 'root')
+            #             except Exception:
+            #                 change_access = ChangeCls(graph_id=self.graph_name)
+            #         # 使用与 add_graph 相同的 headers 指定 graphId
+            #         headers = {
+            #             "Content-Type": "application/json",
+            #             "abution.graphId": self.graph_name
+            #         }
+            #         self.gdb_client.execute_operation(change_access, headers)
+            #         try:
+            #             print("   ℹ️ [init_graph] 更改图访问成功，当前权限标签:")
+            #             auths_after = self.gdb_client.list_auths()
+            #             print(auths_after)
+            #         except Exception:
+            #             pass
+            #     except Exception as e:
+            #         logger.warning(f"为图设置 owner='root' 失败: {e}")
         except Exception as e:
-            logger.debug(f"init_graph 中权限/创建流程异常（非致命）: {e}")
+            logger.debug(f"init_graph 中创建流程异常（非致命）: {e}")
 
     def _ensure_graph(self, raise_on_fail: bool = False):
         """Lazily create and return Graph instance. If creation fails, return None
