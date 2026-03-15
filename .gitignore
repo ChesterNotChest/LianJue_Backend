@@ -23,4 +23,14 @@ knowledge/*
 logs/*
 !logs/.gitkeep
 
-# outbox feature removed; no local queue files
+schedule/calendar/*
+!schedule/calendar/.gitkeep
+
+schedule/calendar_md/*
+!schedule/calendar_md/.gitkeep
+
+schedule/syllabus/*
+!schedule/syllabus/.gitkeep
+
+schedule/syllabus_draft/*
+!schedule/syllabus_draft/.gitkeep
