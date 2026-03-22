@@ -29,9 +29,13 @@ def get_status_by_job_id(job_id):
     job = get_job_by_id(job_id)
     return job.status if job else None
 
-def get_end_status_by_job_id(job_id):
+def get_end_stage_by_job_id(job_id):
     job = get_job_by_id(job_id)
-    return job.end_status if job else None
+    return job.end_stage if job else None
+
+def get_job_stage_by_job_id(job_id):
+    job = get_job_by_id(job_id)
+    return job.stage if job else None
 
 def get_progress_index_by_job_id(job_id):
     job = get_job_by_id(job_id)

@@ -1,8 +1,9 @@
 from extensions import db
 from schemas.syllabus import Syllabus
 
-def create_syllabus(graph_id: int, edu_calendar_path:str = None, file_id: int = None):
-    syllabus = Syllabus(graph_id=graph_id, edu_calendar_path=edu_calendar_path, file_id=file_id)
+def create_syllabus(edu_calendar_path: str = None, file_id: int = None):
+    """Create a syllabus record. Graph associations are handled by syllabus_graph_repo."""
+    syllabus = Syllabus(edu_calendar_path=edu_calendar_path, file_id=file_id)
     db.session.add(syllabus)
     db.session.commit()
     return syllabus
