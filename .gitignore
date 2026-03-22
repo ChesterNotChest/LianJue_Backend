@@ -10,7 +10,9 @@ model/*
 
 *.pdf
 整体设计思路.md
+build_syllabus_description.md
 EasyOcrOptionsSchema.json
+*.sql
 
 pdfs/*
 !pdfs/.gitkeep

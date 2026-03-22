@@ -1,14 +1,18 @@
 from datetime import datetime
+import re
 from pathlib import Path
 import os
 import json
 import time
 from repositories.file_repo import create_file
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
-from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path
+from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
+from repositories.syllabus_graph_repo import create_syllabus_graph
 from schemas.syllabus import Syllabus
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from utils.llm_utils import get_model_instance
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tenacity import retry, stop_after_attempt, wait_exponential
 from extensions import db
 
 
@@ -179,13 +183,19 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
         # save path to syllabus and commit
         set_syllabus_draft_path(syllabus_id, str(draft_path))
         print(f"   💾 [POST] Syllabus 草稿已保存: {draft_path}")
+        # establish syllabus <-> graph association (many-to-many) via repo
+        try:
+            create_syllabus_graph(syllabus_id=syllabus_id, graph_id=graph_id)
+            print(f"   🔗 [POST] Syllabus 与 graph_id={graph_id} 的关联已保存。")
+        except Exception as e:
+            print(f"   ⚠️ [POST] 保存 Syllabus-Graph 关联失败: {e}")
     except Exception as e:
         print(f"   ❌ 保存 syllabus 草稿失败: {e}")
 
     return syllabus
 
 
-def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None, new_content: str = None, new_importance: str = None) -> Syllabus:
+def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None, new_content: str = None, new_importance: str = None, new_title: str = None) -> Syllabus:
     """Update an existing syllabus draft JSON for a given `syllabus_id`.
 
     - Only updates fields that already exist in the matched week entry.
@@ -196,9 +206,9 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None
 
     Returns the `Syllabus` object on success, or None on failure.
     """
-    # validate inputs
-    if new_content is None and new_importance is None:
-        print("   ⚠️ [POST] 没有要更新的字段（content 或 importance）。")
+    # validate inputs (allow updating title or day_one even if content/importance absent)
+    if new_content is None and new_importance is None and new_title is None and (day_one is None or (isinstance(day_one, str) and day_one.strip() == "")):
+        print("   ⚠️ [POST] 没有要更新的字段（content/importances/title/day_one）。")
         return None
 
     if new_importance is not None:
@@ -263,16 +273,71 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None
     elif new_importance is not None:
         print("   ⚠️ [POST] 条目中不存在 'importance' 字段，已跳过 importance 更新。")
 
-    if not updated:
+    # allow updates that only change title or day_one even if content/importance weren't updated
+    if not updated and new_title is None and (day_one is None or (isinstance(day_one, str) and day_one.strip() == "")):
         print("   ⚠️ [POST] 未执行任何更新（没有匹配到可修改的字段）。")
         return None
-    
-    # 增写 day_one 字段（如果存在的话），以便前端定位学期开始
-    if 'day_one' in matched:
-        matched['day_one'] = day_one
-    else:        
-        print("   ⚠️ [POST] 条目中不存在 'day_one' 字段，默认填3-2为学期开始。")
-        matched['day_one'] = "3-2"
+    elif not updated:
+        print("   ⚠️ [POST] 未执行 content/importance 更新，但将处理 title/day_one 提交。")
+
+    # If new_title provided, update the draft JSON title only (do NOT modify DB)
+    if new_title is not None:
+        try:
+            data['title'] = new_title
+            updated = True
+        except Exception as e:
+            print(f"   ⚠️ [POST] 更新 JSON 中的 title 失败: {e}")
+
+    # Determine and persist day_one handling per rules:
+    # - if day_one param is empty/None: read DB value; if DB missing -> default to '3-2' and save to DB
+    # - if day_one param provided (non-empty), set JSON and attempt to persist parsed date to DB
+    desired_day_one = None
+    if day_one is None or (isinstance(day_one, str) and day_one.strip() == ""):
+        # use DB value if present
+        db_day = getattr(syllabus, 'day_one_time', None)
+        if db_day:
+            desired_day_one = db_day.strftime('%Y-%m-%d')
+        else:
+            desired_day_one = '3-2'
+            # try to parse '3-2' into a date (current year)
+            try:
+                parts = desired_day_one.split('-')
+                month = int(parts[0])
+                day = int(parts[1])
+                year = datetime.utcnow().year
+                set_syllabus_day_one(syllabus_id, datetime(year, month, day))
+            except Exception:
+                pass
+    else:
+        # user provided a value -> set JSON and attempt to persist parsed date to DB
+        desired_day_one = day_one
+        parsed_dt = None
+        try:
+            if re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', day_one):
+                parsed_dt = datetime.strptime(day_one, '%Y-%m-%d')
+            elif re.match(r'^\d{1,2}-\d{1,2}$', day_one):
+                parts = day_one.split('-')
+                month = int(parts[0])
+                d = int(parts[1])
+                year = datetime.utcnow().year
+                parsed_dt = datetime(year, month, d)
+            else:
+                try:
+                    parsed_dt = datetime.fromisoformat(day_one)
+                except Exception:
+                    parsed_dt = None
+        except Exception:
+            parsed_dt = None
+
+        if parsed_dt is not None:
+            try:
+                set_syllabus_day_one(syllabus_id, parsed_dt)
+            except Exception:
+                pass
+
+    # write desired_day_one into matched entry
+    if desired_day_one is not None:
+        matched['day_one'] = desired_day_one
 
     # write back
     try:
@@ -284,7 +349,7 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None
 
     return syllabus
 
-def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None) -> Syllabus:
+def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
     """Build final syllabus by enriching each `period` entry.
 
     Steps:
@@ -296,7 +361,6 @@ def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None
     Arguments:
     - syllabus_id: id of the syllabus record to process.
     - graph_name: optional graph override (falls back to draft's graph_name).
-    - day_one: optional day_one string to include in final syllabus metadata.
     """
     # load syllabus record and draft
     syllabus = get_syllabus_by_id(syllabus_id)
@@ -348,51 +412,100 @@ def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None
 
     # prompts
     system_prompt = (
-        "你是教学设计专家。请基于原始教学周内容与检索到的相关参考资料，生成一段50-120字的增强描述（enhanced_content），" 
+        "你是教学设计专家。请基于原始教学周内容与检索到的相关参考资料，生成一段100-200字的增强描述（enhanced_content）用于后续知识匹配，" 
         "只返回增强后的纯文本描述，不要包含JSON或额外说明。"
     )
 
-    # iterate and enrich
+    # iterate and enrich concurrently using a thread pool and retry on LLM failures
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=8))
+    def call_model_with_retry(sys_prompt: str, usr_prompt: str) -> str:
+        return model_instance.call_text_model(sys_prompt, usr_prompt)
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=6))
+    def search_with_retry(text: str, top_k: int = 6):
+        if kl is None:
+            raise RuntimeError("KnowLion not initialized")
+        return kl.search(text, top_k=top_k)
+
+
+    # First: perform retrievals sequentially to avoid overloading the retrieval service
+    retrieval_texts = [""] * len(period)
     for idx, entry in enumerate(period):
         try:
             orig = entry.get('content') or entry.get('original_content') or ""
             entry['original_content'] = orig
-
             retrieval_text = ''
-            retrieval_results = None
             if kl is not None:
                 try:
-                    retrieval_results = kl.search(orig, top_k=6)
-                    retrieval_text = json.dumps(retrieval_results.get('reasoning_paths', []) or retrieval_results.get('paragraphs', []), ensure_ascii=False, indent=2)
+                    try:
+                        retrieval_results = search_with_retry(orig, top_k=6)
+                    except Exception:
+                        # fallback attempt with smaller top_k before giving up
+                        retrieval_results = None
+                        try:
+                            retrieval_results = search_with_retry(orig, top_k=3)
+                        except Exception as e:
+                            print(f"   ⚠️ [BUILD] 第 {idx+1} 条检索连续失败，跳过检索: {e}")
+                            retrieval_results = None
+
+                    if retrieval_results:
+                        retrieval_text = json.dumps(retrieval_results.get('reasoning_paths', []) or retrieval_results.get('paragraphs', []), ensure_ascii=False, indent=2)
                 except Exception as e:
                     print(f"   ⚠️ [BUILD] 第 {idx+1} 条检索失败，跳过检索: {e}")
-                    retrieval_results = None
 
-            user_prompt = f"原始周内容:\n{orig}\n\n检索到的参考资料（如有）:\n{retrieval_text}\n\n请根据上述内容生成增强描述："
-
-            try:
-                raw = model_instance.call_text_model(system_prompt, user_prompt)
-                enhanced = clean_llm_response(raw)
-            except Exception as e:
-                print(f"   ⚠️ [BUILD] 第 {idx+1} 条调用大模型失败: {e}")
-                enhanced = None
-
-            # fallback: if model returned None or empty, keep empty string
-            entry['enhanced_content'] = enhanced or ""
-
-            # ensure importance preserved
-            if 'importance' not in entry:
-                entry['importance'] = entry.get('importance', 'medium')
-
-            # small throttle to avoid bursting model/graph
-            time.sleep(0.5)
+            retrieval_texts[idx] = retrieval_text
+            # small pause between retrievals to be polite to the service
+            time.sleep(0.2)
         except Exception as e:
-            print(f"   ⚠️ [BUILD] 处理第 {idx+1} 条期望失败: {e}")
+            print(f"   ⚠️ [BUILD] 检索阶段第 {idx+1} 条发生异常: {e}")
+
+    # Then: call the LLM concurrently using prepared retrieval_texts
+    def call_for_idx(i: int, entry: dict, retrieval_text: str) -> tuple:
+        try:
+            orig = entry.get('original_content', '')
+            user_prompt = f"原始周内容:\n{orig}\n\n检索到的参考资料（如有）:\n{retrieval_text}\n\n请根据上述内容生成增强描述："
+            raw = call_model_with_retry(system_prompt, user_prompt)
+            enhanced = clean_llm_response(raw)
+            return i, enhanced or ""
+        except Exception as e:
+            print(f"   ⚠️ [BUILD] 第 {i+1} 条调用大模型失败: {e}")
+            return i, ""
+
+    max_workers = min(4, max(1, len(period)))
+    with ThreadPoolExecutor(max_workers=max_workers) as exc:
+        futures = {exc.submit(call_for_idx, idx, entry, retrieval_texts[idx]): idx for idx, entry in enumerate(period)}
+        for fut in as_completed(futures):
+            try:
+                _idx, enhanced_text = fut.result()
+                if 0 <= _idx < len(period):
+                    period[_idx]['enhanced_content'] = enhanced_text
+                    if 'importance' not in period[_idx]:
+                        period[_idx]['importance'] = period[_idx].get('importance', 'medium')
+            except Exception as e:
+                print(f"   ⚠️ [BUILD] 并发任务处理失败: {e}")
 
     # finalize metadata
+    # Determine day_one for final JSON (do not modify DB here)
+    db_day = getattr(syllabus, 'day_one_time', None)
+    if data.get('day_one'):
+        final_day_one = data.get('day_one')
+    elif db_day:
+        try:
+            final_day_one = db_day.strftime('%Y-%m-%d')
+        except Exception:
+            final_day_one = str(db_day)
+    else:
+        final_day_one = '3-2'
+
+    # Title MUST come from the draft JSON; do not fallback to external names
+    title_in_json = data.get('title')
+    if not title_in_json or not isinstance(title_in_json, str) or title_in_json.strip() == "":
+        print("   ❌ [BUILD] 草稿 JSON 中缺少有效的 'title' 字段，无法构建最终 syllabus。（要求：title 必须来自草稿）")
+        return None
+
     final_obj = {
-        'title': data.get('title') or os.path.basename(getattr(syllabus, 'edu_calendar_path', '') or f"syllabus_{syllabus.syllabus_id}"),
-        'day_one': day_one or data.get('day_one') or getattr(syllabus, 'day_one_time', None),
+        'title': title_in_json,
+        'day_one': final_day_one,
         'graph_name': graph_name,
         'period': period
     }
@@ -402,8 +515,10 @@ def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None
         finals_dir = Path('./schedule/syllabus')
         finals_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime('%Y%m%d%H%M%S')
-        base_name = Path(getattr(syllabus, 'edu_calendar_path', '') or f"syllabus_{syllabus.syllabus_id}").stem
-        fname = f"{base_name}_{ts}.json"
+        # sanitize title for filename: remove problematic chars, replace spaces with underscore
+        safe_title = re.sub(r'[^A-Za-z0-9\u4e00-\u9fff\-_ ]', '', title_in_json).strip()
+        safe_title = safe_title.replace(' ', '_') or f"syllabus_{syllabus.syllabus_id}"
+        fname = f"{safe_title}_{ts}.json"
         final_path = finals_dir / fname
         with final_path.open('w', encoding='utf-8') as f:
             json.dump(final_obj, f, ensure_ascii=False, indent=2)
@@ -415,6 +530,12 @@ def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None
             # best-effort: ignore DB write failures but inform
             print(f"   ⚠️ [BUILD] 无法保存 syllabus_path 到 DB（请检查 DB 连接）")
 
+        # also persist the title into DB (final title comes from draft JSON)
+        try:
+            set_syllabus_title(syllabus_id, title_in_json)
+        except Exception:
+            print(f"   ⚠️ [BUILD] 无法保存 title 到 DB（非致命）")
+
         print(f"   💾 [BUILD] 最终 syllabus 已保存: {final_path}")
     except Exception as e:
         print(f"   ❌ [BUILD] 保存最终 syllabus 失败: {e}")
@@ -422,4 +543,124 @@ def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None
 
     return syllabus
 
-# get_syllabus()
+# update_syllabus()
+def update_syllabus(syllabus_id: int, *, title: str = None, day_one: str = None, syllabus_path: str = None) -> Syllabus:
+    """Update syllabus record fields (title/day_one/syllabus_path).
+
+    - `title`: will update the DB title field if provided (best-effort).
+    - `day_one`: attempts to parse and persist a datetime to DB using `set_syllabus_day_one`.
+    - `syllabus_path`: set the final syllabus JSON path in DB via `set_syllabus_path`.
+
+    Returns the updated `Syllabus` object or None on failure.
+    """
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [UPDATE] 无效的 syllabus_id: {syllabus_id}")
+        return None
+
+    # update day_one if provided
+    if day_one:
+        parsed_dt = None
+        try:
+            if re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', day_one):
+                parsed_dt = datetime.strptime(day_one, '%Y-%m-%d')
+            elif re.match(r'^\d{1,2}-\d{1,2}$', day_one):
+                parts = day_one.split('-')
+                month = int(parts[0]); d = int(parts[1])
+                year = datetime.utcnow().year
+                parsed_dt = datetime(year, month, d)
+            else:
+                try:
+                    parsed_dt = datetime.fromisoformat(day_one)
+                except Exception:
+                    parsed_dt = None
+        except Exception:
+            parsed_dt = None
+
+        if parsed_dt is not None:
+            try:
+                set_syllabus_day_one(syllabus_id, parsed_dt)
+                print(f"   💾 [UPDATE] 已更新 syllabus.day_one: {parsed_dt}")
+            except Exception as e:
+                print(f"   ⚠️ [UPDATE] 保存 day_one 到 DB 失败: {e}")
+        else:
+            print("   ⚠️ [UPDATE] 无法解析 day_one 字符串，已跳过 DB 保存。")
+
+    # update syllabus_path if provided
+    if syllabus_path:
+        try:
+            set_syllabus_path(syllabus_id, str(syllabus_path))
+            print(f"   💾 [UPDATE] 已更新 syllabus_path: {syllabus_path}")
+        except Exception as e:
+            print(f"   ⚠️ [UPDATE] 保存 syllabus_path 到 DB 失败: {e}")
+
+    # update title in draft JSON only is handled elsewhere; attempt DB title if provided
+    if title:
+        try:
+            set_syllabus_title(syllabus_id, title)
+            print(f"   💾 [UPDATE] 已更新 DB 中的 title: {title}")
+        except Exception as e:
+            print(f"   ⚠️ [UPDATE] 保存 title 到 DB 失败: {e}")
+
+    # return fresh object
+    try:
+        return get_syllabus_by_id(syllabus_id)
+    except Exception:
+        return syllabus
+
+
+def get_syllabus_detail_info(syllabus_id: int) -> dict:
+    """Return detailed syllabus info including draft and final JSON contents.
+
+    Returns a dict with keys: `syllabus` (DB object), `draft` (parsed JSON or None),
+    `final` (parsed JSON or None). None returned on invalid id.
+    """
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [GET] 无效的 syllabus_id: {syllabus_id}")
+        return None
+
+    result = {'syllabus': syllabus, 'draft': None, 'final': None}
+
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    if draft_path:
+        p = Path(draft_path)
+        if p.exists():
+            try:
+                result['draft'] = json.loads(p.read_text(encoding='utf-8'))
+            except Exception as e:
+                print(f"   ⚠️ [GET] 读取 draft JSON 失败: {e}")
+
+    final_path = getattr(syllabus, 'syllabus_path', None)
+    if final_path:
+        p2 = Path(final_path)
+        if p2.exists():
+            try:
+                result['final'] = json.loads(p2.read_text(encoding='utf-8'))
+            except Exception as e:
+                print(f"   ⚠️ [GET] 读取 final JSON 失败: {e}")
+
+    return result
+
+
+def list_all_syllabus_brief_info() -> list:
+    """Return a brief list of existing syllabus records.
+
+    Each item contains: syllabus_id, edu_calendar_path, syllabus_draft_path, syllabus_path, day_one_time
+    """
+    items = []
+    try:
+        rows = list_all_syllabuses()
+        for s in rows:
+            items.append({
+                'syllabus_id': getattr(s, 'syllabus_id', None),
+                'title': getattr(s, 'title', None),
+                'edu_calendar_path': getattr(s, 'edu_calendar_path', None),
+                'syllabus_draft_path': getattr(s, 'syllabus_draft_path', None),
+                'syllabus_path': getattr(s, 'syllabus_path', None),
+                'day_one_time': getattr(s, 'day_one_time', None)
+            })
+        return items
+    except Exception as e:
+        print(f"   ⚠️ [LIST] 无法通过 repo 列出 syllabus 列表: {e}")
+        return []

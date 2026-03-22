@@ -53,6 +53,18 @@ def main():
         if new_importance == "":
             new_importance = None
 
+    new_title = prompt_input("new_title (optional, write into draft JSON only, leave empty to skip): ", required=False, cast=str, default=None)
+    if new_title is not None:
+        new_title = new_title.strip()
+        if new_title == "":
+            new_title = None
+
+    day_one = prompt_input("day_one (optional, formats: YYYY-MM-DD or M-D, leave empty to skip): ", required=False, cast=str, default=None)
+    if day_one is not None:
+        day_one = day_one.strip()
+        if day_one == "":
+            day_one = None
+
     # perform call inside Flask application context
     print("\nCalling update_syllabus_draft(...) inside app context...")
     try:
@@ -72,11 +84,11 @@ def main():
                 return
 
             try:
-                res = update_syllabus_draft(syllabus_id=syllabus_id, week_index=week_index, new_content=new_content, new_importance=new_importance)
+                res = update_syllabus_draft(syllabus_id=syllabus_id, week_index=week_index, day_one=day_one, new_content=new_content, new_importance=new_importance, new_title=new_title)
                 if res is None:
                     print("update_syllabus_draft returned None (failure or no-op). Check logs/messages above.")
                 else:
-                    print("update_syllabus_draft completed. Check syllabus draft file or DB for changes.")
+                    print("update_syllabus_draft completed. Check syllabus draft JSON file for title/day_one/content changes; DB day_one may also be updated if applicable.")
             except Exception as e:
                 print(f"Exception during update_syllabus_draft: {e}")
     except Exception as e:

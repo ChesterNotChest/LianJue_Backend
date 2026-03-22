@@ -35,7 +35,6 @@ def main():
 
     syllabus_id = prompt("syllabus_id (int): ", required=True, cast=int)
     graph_name = prompt("graph_name (optional, leave empty to use draft): ", required=False, default=None)
-    day_one = prompt("day_one (optional, leave empty to send None): ", required=False, default=None)
 
     print("\nCreating Flask app and calling build_syllabus inside app context...")
     try:
@@ -54,11 +53,11 @@ def main():
                 return
 
             try:
-                res = build_syllabus(syllabus_id=syllabus_id, graph_name=graph_name, day_one=day_one)
+                res = build_syllabus(syllabus_id=syllabus_id, graph_name=graph_name)
                 if res is None:
                     print("build_syllabus returned None (failure). Check logs above.")
                 else:
-                    print("build_syllabus completed. Check schedule/syllabus_final/ and DB record.")
+                    print("build_syllabus completed. Check schedule/syllabus/ and DB record.")
             except Exception as e:
                 print(f"Exception during build_syllabus: {e}")
     except Exception as e:

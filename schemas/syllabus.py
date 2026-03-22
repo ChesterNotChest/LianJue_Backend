@@ -4,6 +4,7 @@ class Syllabus(db.Model):
     __tablename__ = 'syllabus'
 
     syllabus_id: int = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title: str = db.Column(db.String(255), nullable=True, default=None)
     edu_calendar_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None)
     syllabus_draft_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None)
     syllabus_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None)
