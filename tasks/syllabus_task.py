@@ -5,7 +5,7 @@ import json
 import time
 from repositories.file_repo import create_file
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
-from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path
+from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path
 from schemas.syllabus import Syllabus
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from utils.llm_utils import get_model_instance
@@ -185,13 +185,14 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     return syllabus
 
 
-def update_syllabus_draft(syllabus_id: int, week_index: str, new_content: str = None, new_importance: str = None) -> Syllabus:
+def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None, new_content: str = None, new_importance: str = None) -> Syllabus:
     """Update an existing syllabus draft JSON for a given `syllabus_id`.
 
     - Only updates fields that already exist in the matched week entry.
     - `week_index` is used for matching and will not be modified.
     - `new_importance` must be one of: 'low', 'medium', 'high' (case-insensitive accepted).
     - `new_content` must be a string.
+    - `day_one` is mandatory and is used for positioning the begin of semester, it will not be updated but is required for locating the correct week entry in the draft.
 
     Returns the `Syllabus` object on success, or None on failure.
     """
@@ -265,6 +266,13 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, new_content: str = 
     if not updated:
         print("   ⚠️ [POST] 未执行任何更新（没有匹配到可修改的字段）。")
         return None
+    
+    # 增写 day_one 字段（如果存在的话），以便前端定位学期开始
+    if 'day_one' in matched:
+        matched['day_one'] = day_one
+    else:        
+        print("   ⚠️ [POST] 条目中不存在 'day_one' 字段，默认填3-2为学期开始。")
+        matched['day_one'] = "3-2"
 
     # write back
     try:
@@ -276,6 +284,142 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, new_content: str = 
 
     return syllabus
 
-# build_syllabus()
+def build_syllabus(syllabus_id: int, graph_name: str = None, day_one: str = None) -> Syllabus:
+    """Build final syllabus by enriching each `period` entry.
+
+    Steps:
+    - Load existing syllabus draft (must contain 'period' list).
+    - For each week entry: keep `original_content`, run `KnowLion.search()` to retrieve context,
+      then call the text model to produce `enhanced_content`.
+    - Save final syllabus JSON (set `syllabus_path`) and return the Syllabus record.
+
+    Arguments:
+    - syllabus_id: id of the syllabus record to process.
+    - graph_name: optional graph override (falls back to draft's graph_name).
+    - day_one: optional day_one string to include in final syllabus metadata.
+    """
+    # load syllabus record and draft
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [BUILD] 无效的 syllabus_id: {syllabus_id}")
+        return None
+
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    if not draft_path:
+        print(f"   ❌ [BUILD] syllabus {syllabus_id} 未配置 draft 路径。")
+        return None
+
+    p = Path(draft_path)
+    if not p.exists():
+        print(f"   ❌ [BUILD] 草稿文件不存在: {draft_path}")
+        return None
+
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"   ❌ [BUILD] 读取或解析草稿文件失败: {e}")
+        return None
+
+    period = data.get('period')
+    if not isinstance(period, list) or len(period) == 0:
+        print("   ❌ [BUILD] 草稿中不包含有效的 'period' 列表，无法构建最终 syllabus。")
+        return None
+
+    # determine graph_name
+    draft_graph = data.get('graph_name')
+    graph_name = graph_name or draft_graph
+
+    # Prepare model instance
+    model_instance = get_model_instance()
+
+    # Try to initialize KnowLion for retrieval; if it fails, proceed with LLM-only enrichment
+    kl = None
+    try:
+        from config import MODEL_CONFIGS
+        from knowlion.abution_knowlion_driver import KnowLion
+        if graph_name:
+            kl = KnowLion(MODEL_CONFIGS, graph_name=str(graph_name))
+        else:
+            # instantiate with a dummy graph id to allow model-only fallback
+            kl = None
+    except Exception as e:
+        print(f"   ⚠️ [BUILD] 无法初始化 KnowLion 检索器（将使用 LLM-only 模式）: {e}")
+        kl = None
+
+    # prompts
+    system_prompt = (
+        "你是教学设计专家。请基于原始教学周内容与检索到的相关参考资料，生成一段50-120字的增强描述（enhanced_content），" 
+        "只返回增强后的纯文本描述，不要包含JSON或额外说明。"
+    )
+
+    # iterate and enrich
+    for idx, entry in enumerate(period):
+        try:
+            orig = entry.get('content') or entry.get('original_content') or ""
+            entry['original_content'] = orig
+
+            retrieval_text = ''
+            retrieval_results = None
+            if kl is not None:
+                try:
+                    retrieval_results = kl.search(orig, top_k=6)
+                    retrieval_text = json.dumps(retrieval_results.get('reasoning_paths', []) or retrieval_results.get('paragraphs', []), ensure_ascii=False, indent=2)
+                except Exception as e:
+                    print(f"   ⚠️ [BUILD] 第 {idx+1} 条检索失败，跳过检索: {e}")
+                    retrieval_results = None
+
+            user_prompt = f"原始周内容:\n{orig}\n\n检索到的参考资料（如有）:\n{retrieval_text}\n\n请根据上述内容生成增强描述："
+
+            try:
+                raw = model_instance.call_text_model(system_prompt, user_prompt)
+                enhanced = clean_llm_response(raw)
+            except Exception as e:
+                print(f"   ⚠️ [BUILD] 第 {idx+1} 条调用大模型失败: {e}")
+                enhanced = None
+
+            # fallback: if model returned None or empty, keep empty string
+            entry['enhanced_content'] = enhanced or ""
+
+            # ensure importance preserved
+            if 'importance' not in entry:
+                entry['importance'] = entry.get('importance', 'medium')
+
+            # small throttle to avoid bursting model/graph
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"   ⚠️ [BUILD] 处理第 {idx+1} 条期望失败: {e}")
+
+    # finalize metadata
+    final_obj = {
+        'title': data.get('title') or os.path.basename(getattr(syllabus, 'edu_calendar_path', '') or f"syllabus_{syllabus.syllabus_id}"),
+        'day_one': day_one or data.get('day_one') or getattr(syllabus, 'day_one_time', None),
+        'graph_name': graph_name,
+        'period': period
+    }
+
+    # persist final syllabus
+    try:
+        finals_dir = Path('./schedule/syllabus')
+        finals_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime('%Y%m%d%H%M%S')
+        base_name = Path(getattr(syllabus, 'edu_calendar_path', '') or f"syllabus_{syllabus.syllabus_id}").stem
+        fname = f"{base_name}_{ts}.json"
+        final_path = finals_dir / fname
+        with final_path.open('w', encoding='utf-8') as f:
+            json.dump(final_obj, f, ensure_ascii=False, indent=2)
+
+        # update syllabus record
+        try:
+            set_syllabus_path(syllabus_id, str(final_path))
+        except Exception:
+            # best-effort: ignore DB write failures but inform
+            print(f"   ⚠️ [BUILD] 无法保存 syllabus_path 到 DB（请检查 DB 连接）")
+
+        print(f"   💾 [BUILD] 最终 syllabus 已保存: {final_path}")
+    except Exception as e:
+        print(f"   ❌ [BUILD] 保存最终 syllabus 失败: {e}")
+        return None
+
+    return syllabus
 
 # get_syllabus()
