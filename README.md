@@ -1,4 +1,4 @@
-# KnowLion：基于动态图数据库的动态超图知识检索系统（更新中）
+# 联觉 - 基于KnowLion的教学辅助系统
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
