@@ -165,8 +165,7 @@ def knowledge_to_save(knowlion, job_id: int):
     try:
         # Attempt to initialize graph on KnowLion instance (will be tolerant to failures)
         try:
-            graph_name = get_graphId_by_job_id(job_id)
-            knowlion.init_graph(graph_name)
+            knowlion.init_graph()
         except Exception as e:
             print(f"   ⚠️ [POST] init_graph 失败（outbox 已弃用），继续执行：{e}")
 
