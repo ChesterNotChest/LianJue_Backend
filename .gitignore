@@ -8,6 +8,10 @@ __pycache__/
 model/*
 !model/.gitkeep
 
+*.pdf
+整体设计思路.md
+EasyOcrOptionsSchema.json
+
 pdfs/*
 !pdfs/.gitkeep
 
