@@ -2,8 +2,9 @@ from datetime import datetime
 from pathlib import Path
 import os
 import json
+import time
 from repositories.file_repo import create_file
-from repositories.jobs_repo import create_job, get_job_by_id
+from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path
 from schemas.syllabus import Syllabus
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
@@ -17,7 +18,7 @@ def upload_calendar(file_path, upload_time: str = None) -> Syllabus:
         upload_time = datetime.utcnow().isoformat()
     file = create_file(file_path=file_path, upload_time=upload_time)
     file_id = file.file_id if file else None
-    syllabus = create_syllabus(graph_id=None, edu_calendar_path=file_path, file_id=file_id)
+    syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
     
     return syllabus
 
@@ -41,14 +42,14 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     file_id = syllabus.file_id
     job = create_job(file_id=file_id, end_stage="pdf_to_md", graph_id=graph_id)
 
-    while job.status != "completed":
-        # 等待任务完成，获取解析结果
-        job = get_job_by_id(job.job_id)
+    while get_status_by_job_id(job.job_id) != "completed":
+        print(f"   ⏳ [POST] 等待 pdf_to_md 任务完成... 当前状态: {get_status_by_job_id(job.job_id)}")
+        time.sleep(5)  # 每5秒检查一次状态，直到pdf_to_md阶段完成
 
     # 2. 读取解析出来的markdown内容
     md_path = job.markdown_path
     if not md_path:
-        print(f"   ❌ [POST] Job {job_id} 没有 markdown_path，无法进行 md_to_triples")
+        print(f"   ❌ [POST] Job {job.job_id} 没有 markdown_path，无法进行 md_to_triples")
         return []
     
     # 读取md文件
@@ -60,7 +61,7 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
         return []
     
     # 3. 基于initial_prompt和md_content，构建syllabus草稿内容
-    system_prompt = f"""
+    system_prompt = """
 你是一个教学设计专家，负责根据教学日历内容生成结构化的课程大纲草稿。
 
 【任务说明】
@@ -157,7 +158,8 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     else:
         title = f"syllabus_{syllabus.syllabus_id}"
 
-    graph_name = f"graph_{graph_id}"
+    graphId = get_graphId_by_job_id(job.job_id)
+    graph_name = graphId
     draft_obj["title"] = title
     draft_obj["graph_name"] = graph_name
 
@@ -182,7 +184,97 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
 
     return syllabus
 
-# update_syllabus_draft(syllabus_id: int, draft_path: str) -> Syllabus:
+
+def update_syllabus_draft(syllabus_id: int, week_index: str, new_content: str = None, new_importance: str = None) -> Syllabus:
+    """Update an existing syllabus draft JSON for a given `syllabus_id`.
+
+    - Only updates fields that already exist in the matched week entry.
+    - `week_index` is used for matching and will not be modified.
+    - `new_importance` must be one of: 'low', 'medium', 'high' (case-insensitive accepted).
+    - `new_content` must be a string.
+
+    Returns the `Syllabus` object on success, or None on failure.
+    """
+    # validate inputs
+    if new_content is None and new_importance is None:
+        print("   ⚠️ [POST] 没有要更新的字段（content 或 importance）。")
+        return None
+
+    if new_importance is not None:
+        ni = new_importance.lower()
+        if ni not in ("low", "medium", "high"):
+            print("   ❌ [POST] importance 必须是 'low'/'medium'/'high'。")
+            return None
+        new_importance = ni
+
+    if new_content is not None and not isinstance(new_content, str):
+        print("   ❌ [POST] new_content 必须是字符串。")
+        return None
+
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [POST] 无效的 syllabus_id: {syllabus_id}")
+        return None
+
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    if not draft_path:
+        print(f"   ❌ [POST] syllabus {syllabus_id} 未配置 draft 路径。")
+        return None
+
+    p = Path(draft_path)
+    if not p.exists():
+        print(f"   ❌ [POST] 草稿文件不存在: {draft_path}")
+        return None
+
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"   ❌ [POST] 读取或解析草稿文件失败: {e}")
+        return None
+
+    period = data.get('period')
+    if not isinstance(period, list):
+        print("   ❌ [POST] 草稿中不包含有效的 'period' 列表，无法更新。")
+        return None
+
+    # find matching week entry (match as string)
+    matched = None
+    for entry in period:
+        if str(entry.get('week_index')) == str(week_index):
+            matched = entry
+            break
+
+    if not matched:
+        print(f"   ❌ [POST] 未找到 week_index={week_index} 的条目。")
+        return None
+
+    # Only update fields that already exist in the entry
+    updated = False
+    if new_content is not None and 'content' in matched:
+        matched['content'] = new_content
+        updated = True
+    elif new_content is not None:
+        print("   ⚠️ [POST] 条目中不存在 'content' 字段，已跳过 content 更新。")
+
+    if new_importance is not None and 'importance' in matched:
+        matched['importance'] = new_importance
+        updated = True
+    elif new_importance is not None:
+        print("   ⚠️ [POST] 条目中不存在 'importance' 字段，已跳过 importance 更新。")
+
+    if not updated:
+        print("   ⚠️ [POST] 未执行任何更新（没有匹配到可修改的字段）。")
+        return None
+
+    # write back
+    try:
+        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(f"   💾 [POST] 草稿已更新并保存: {draft_path}")
+    except Exception as e:
+        print(f"   ❌ [POST] 保存更新失败: {e}")
+        return None
+
+    return syllabus
 
 # build_syllabus()
 

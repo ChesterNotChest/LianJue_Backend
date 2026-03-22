@@ -7,13 +7,15 @@ from knowlion.abution_knowlion_driver import KnowLion
 from tasks.process_task import file_to_md
 from tasks.post_process_task import md_to_triples, triples_to_knowledge, knowledge_to_save
 from repositories.jobs_repo import (
+    get_end_stage_by_job_id,
     list_all_jobs,
     update_job_status,
     update_error_message,
     get_job_by_id,
     get_progress_index_by_job_id,
     update_job_stage,
-    get_end_status_by_job_id,
+    get_job_stage_by_job_id,
+    get_status_by_job_id
 )
 from extensions import db
 from repositories.jobs_repo import get_graphId_by_job_id
@@ -179,7 +181,10 @@ class JobChecker:
                 try:
                     
                     logger.info(f"任务 {job_id} 完成: {cur_progress}/{total_batches}")
-                    update_job_stage(job_id, 'md_to_triples')  # 直接更新阶段，light任务会根据这个阶段来判断下一步执行什么
+                    if job.end_stage == 'pdf_to_md':
+                        update_job_status(job_id, 'completed')
+                    else:
+                        update_job_stage(job_id, 'md_to_triples')  # 直接更新阶段，light任务会根据这个阶段来判断下一步执行什么
                 except Exception:
                     logger.debug(f"Finished heavy call for job {job_id}; progress read failed")
                 return job_id
