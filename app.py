@@ -42,6 +42,8 @@ def create_app():
             import schemas.jobs  # registers Jobs
             import schemas.graph
             import schemas.filegraph
+            import schemas.syllabus
+            import schemas.syllabusgraph
         except Exception:
             # models may already be imported elsewhere; ignore import errors here
             pass

@@ -7,28 +7,31 @@ from knowlion.abution_knowlion_driver import KnowLion
 from tasks.process_task import file_to_md
 from tasks.post_process_task import md_to_triples, triples_to_knowledge, knowledge_to_save
 from repositories.jobs_repo import (
+    get_end_stage_by_job_id,
     list_all_jobs,
     update_job_status,
     update_error_message,
     get_job_by_id,
     get_progress_index_by_job_id,
     update_job_stage,
-    get_end_status_by_job_id,
+    get_job_stage_by_job_id,
+    get_status_by_job_id
 )
 from extensions import db
+from repositories.jobs_repo import get_graphId_by_job_id
+from repositories.graph_repo import get_graph_by_id
 
 logger = logging.getLogger(__name__)
 
 
 class JobChecker:
-    def __init__(self, graph_name: str = "RAG", app=None):
+    def __init__(self, app=None):
         cfg = PROCESSING_CONFIG or {}
         self.doc_workers = int(cfg.get('doc_workers', 1))
         self.post_workers = int(cfg.get('post_workers', max(2, self.doc_workers)))
         self.poll_interval = int(cfg.get('job_poll_interval', 5))
-        self.graph_name = graph_name
-        # instantiate KnowLion once and reuse
-        self.knowlion = KnowLion(MODEL_CONFIGS, graph_name=graph_name)
+        # Do not instantiate a global KnowLion here; create one per task for isolation.
+        self.default_graph_name = cfg.get('default_graph_name', 'RAG')
         # optional Flask app so threads can push app context when touching DB
         self.app = app
         # track running jobs to avoid double-submission
@@ -67,8 +70,13 @@ class JobChecker:
                 for job in jobs_to_consider:
                     job_id = job.job_id
                     with self._lock:
-                        already_heavy = job_id in self.running_heavy
-                        already_light = job_id in self.running_light
+                        # Prefer reliable DB-derived indicators from the `job` object returned
+                        # by `list_all_jobs`, but keep local sets as an additional guard.
+                        needs_heavy_db = not getattr(job, 'markdown_path', None)
+                        needs_light_db = bool(getattr(job, 'markdown_path', None)) and not getattr(job, 'status', None) == 'completed'
+
+                        already_heavy = (job_id in self.running_heavy) or (getattr(job, 'status', None) == 'in_progress' and needs_heavy_db)
+                        already_light = (job_id in self.running_light) or (getattr(job, 'status', None) == 'in_progress' and needs_light_db)
 
                     try:
                         job_obj = get_job_by_id(job_id)
@@ -156,7 +164,13 @@ class JobChecker:
                 # pass current progress index to file_to_md so it can resume from that batch
                 cur_progress = get_progress_index_by_job_id(job_id) or 0
                 print(f"   🔄 [HEAVY] 单次调用 file_to_md - job_id {job_id} | 进度 - progress_index {cur_progress}")
-                _file_path, _md_content, _partial_files, total_batches = file_to_md(self.knowlion, job_id, process_index=cur_progress)
+                # Create a KnowLion instance per task using the job's configured graph name
+                try:
+                    graph_name = get_graphId_by_job_id(job_id) or self.default_graph_name
+                except Exception:
+                    graph_name = self.default_graph_name
+                knowlion = KnowLion(MODEL_CONFIGS, graph_name=graph_name)
+                _file_path, _md_content, _partial_files, total_batches = file_to_md(knowlion, job_id, process_index=cur_progress)
                 job = get_job_by_id(job_id)
                 if not job:
                     return job_id
@@ -167,7 +181,10 @@ class JobChecker:
                 try:
                     
                     logger.info(f"任务 {job_id} 完成: {cur_progress}/{total_batches}")
-                    update_job_stage(job_id, 'md_to_triples')  # 直接更新阶段，light任务会根据这个阶段来判断下一步执行什么
+                    if job.end_stage == 'pdf_to_md':
+                        update_job_status(job_id, 'completed')
+                    else:
+                        update_job_stage(job_id, 'md_to_triples')  # 直接更新阶段，light任务会根据这个阶段来判断下一步执行什么
                 except Exception:
                     logger.debug(f"Finished heavy call for job {job_id}; progress read failed")
                 return job_id
@@ -202,9 +219,16 @@ class JobChecker:
                 break
             ###################
             # 如下设置下一步执行的内容
+            # Create a KnowLion instance per job for isolation and proper graph scoping
+            try:
+                graph_name = get_graphId_by_job_id(job_id) or self.default_graph_name
+            except Exception:
+                graph_name = self.default_graph_name
+            knowlion = KnowLion(MODEL_CONFIGS, graph_name=graph_name)
+
             if not getattr(job, 'triples_path', None):
                 update_job_stage(job_id, 'md_to_triples')
-                md_to_triples(self.knowlion, job_id)
+                md_to_triples(knowlion, job_id)
                 # 若是终止步，则标记完成；否则继续循环
                 if job.stage == job.end_stage:
                     update_job_status(job_id, 'completed')
@@ -213,7 +237,7 @@ class JobChecker:
 
             if not getattr(job, 'knowledge_path', None):
                 update_job_stage(job_id, 'triples_to_knowledge')
-                triples_to_knowledge(self.knowlion, job_id)
+                triples_to_knowledge(knowlion, job_id)
                 # 若是终止步，则标记完成；否则继续循环
                 if job.stage == job.end_stage:
                     update_job_status(job_id, 'completed')
@@ -223,7 +247,7 @@ class JobChecker:
             # if knowledge exists but not saved to graph, call knowledge_to_save
             if getattr(job, 'knowledge_path', None):
                 update_job_stage(job_id, 'knowledge_to_save')
-                knowledge_to_save(self.knowlion, job_id)
+                knowledge_to_save(knowlion, job_id)
                 # 防止二次进入这个流程，直接标记完成；否则继续循环
                 if job.stage == job.end_stage:
                     update_job_status(job_id, 'completed')

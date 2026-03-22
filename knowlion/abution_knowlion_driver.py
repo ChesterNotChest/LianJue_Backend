@@ -66,6 +66,8 @@ class KnowLion:
         self.model = LitellmMultiModel(model_configs)
         # 在初始化 AbutionConnector 前，先尝试一次独立的授权请求（pre-auth），
         # 以让代理/认证层建立会话状态，避免后续请求在认证流程中被拒绝或导致头部丢失。
+
+        ## 不做pre auth
         try:
             cfg = ABUTION_CONFIG or {}
             # Global SSL config (for urllib/stdlib usage)
@@ -74,27 +76,29 @@ class KnowLion:
             # assemble base URL respecting whether config provided a scheme
             provided_url = abution_url or cfg.get("abution_url", "localhost:9996")
             base = netutils.build_base_url(provided_url, cfg)
+        except Exception as e:            
+            logger.warning(f"构建 AbutionConnector base URL 失败: {e}")
 
-            base_url = base + "/rest"
-            sess = requests.Session()
-            sess.auth = (username, password)
-            _scheme, verify_val = netutils.configure_ssl_session(cfg, sess)
+        #     base_url = base + "/rest"
+        #     sess = requests.Session()
+        #     sess.auth = (username, password)
+        #     _scheme, verify_val = netutils.configure_ssl_session(cfg, sess)
 
-            try:
-                resp = sess.get(base_url, timeout=5, verify=sess.verify)
-                if resp.status_code == 200:
-                    logger.info("Pre-auth successful to %s", base_url)
-                else:
-                    logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
-            except Exception as e:
-                logger.warning(f"Pre-auth request failed: {e}")
+        #     try:
+        #         resp = sess.get(base_url, timeout=5, verify=sess.verify)
+        #         if resp.status_code == 200:
+        #             logger.info("Pre-auth successful to %s", base_url)
+        #         else:
+        #             logger.info("Pre-auth returned %s for %s", resp.status_code, base_url)
+        #     except Exception as e:
+        #         logger.warning(f"Pre-auth request failed: {e}")
 
-            try:
-                sess.close()
-            except Exception:
-                pass
-        except Exception as e:
-            logger.warning(f"Pre-auth setup failed: {e}")
+        #     try:
+        #         sess.close()
+        #     except Exception:
+        #         pass
+        # except Exception as e:
+        #     logger.warning(f"Pre-auth setup failed: {e}")
 
         # 初始化 AbutionConnector，优先使用配置的 scheme
         try:
@@ -166,63 +170,62 @@ class KnowLion:
             except Exception as e:
                 logger.debug(f"无法列出现有权限标签: {e}")
 
-            # 确保权限标签 root 存在（如果服务端以标签模型管理权限）
-            try:
-                add_auths_res = self.gdb_client.add_auths('private')
-                print(f"   ℹ️ [init_graph] add_auths('private') 返回: {add_auths_res}")
-                add_auths_res = self.gdb_client.add_auths('public')
-                print(f"   ℹ️ [init_graph] add_auths('public') 返回: {add_auths_res}")
-            except Exception as e:
-                logger.debug(f"add_auths 失败（非致命）: {e}")
+            # # 确保权限标签 root 存在（如果服务端以标签模型管理权限）
+            # try:
+            #     add_auths_res = self.gdb_client.add_auths('private')
+            #     print(f"   ℹ️ [init_graph] add_auths('private') 返回: {add_auths_res}")
+            #     add_auths_res = self.gdb_client.add_auths('public')
+            #     print(f"   ℹ️ [init_graph] add_auths('public') 返回: {add_auths_res}")
+            # except Exception as e:
+            #     logger.debug(f"add_auths 失败（非致命）: {e}")
 
             # Attempt to create graph, but do not fail the whole process if graph service is down.
-            created = False
+            # created = False
             try:
                 self.gdb_client.add_graph(self.graph_name, get_knowlion_schema(monitor))
-                created = True
+                # created = True
             except Exception as e:
                 logger.warning(f"无法在 init_graph 中创建图（服务可能离线）: {e}")
                 try:
-                    from utils.graph_outbox import enqueue_graph_creation
+                    # outbox has been deprecated. Do not write requests to disk.
                     schema = get_knowlion_schema(monitor)
-                    path = enqueue_graph_creation(self.graph_name, schema, {"reason": "init_graph_failed"})
-                    logger.info(f"图创建请求已写入 outbox: {path}")
+                    logger.info("图创建失败且 outbox 已弃用，已跳过写入本地 outbox（请确保图服务可用以继续创建）")
                 except Exception:
-                    logger.debug("写入 outbox 以延迟创建图失败（非致命）")
+                    logger.debug("跳过本地 outbox 写入（outbox 已弃用）")
 
-            # 如果创建成功，显式将 owner 设为 root（使用 ChangeGraphAccess 操作）
-            if created:
-                try:
-                    # Some generated APIs expose different ChangeGraphAccess signatures
-                    # Try to construct using the available parameter names.
-                    ChangeCls = g.ChangeGraphAccess
-                    init_params = inspect.signature(ChangeCls.__init__).parameters
-                    if 'owner' in init_params:
-                        change_access = ChangeCls(owner='root', graph_id=self.graph_name)
-                    elif 'owner_user_id' in init_params:
-                        change_access = ChangeCls(graph_id=self.graph_name, owner_user_id='root')
-                    else:
-                        # Fallback: try positional then keyword attempts
-                        try:
-                            change_access = ChangeCls(self.graph_name, 'root')
-                        except Exception:
-                            change_access = ChangeCls(graph_id=self.graph_name)
-                    # 使用与 add_graph 相同的 headers 指定 graphId
-                    headers = {
-                        "Content-Type": "application/json",
-                        "abution.graphId": self.graph_name
-                    }
-                    self.gdb_client.execute_operation(change_access, headers)
-                    try:
-                        print("   ℹ️ [init_graph] 更改图访问成功，当前权限标签:")
-                        auths_after = self.gdb_client.list_auths()
-                        print(auths_after)
-                    except Exception:
-                        pass
-                except Exception as e:
-                    logger.warning(f"为图设置 owner='root' 失败: {e}")
+            # # 如果创建成功，显式将 owner 设为 root（使用 ChangeGraphAccess 操作）
+            # if created:
+            #     try:
+            #         # Some generated APIs expose different ChangeGraphAccess signatures
+            #         # Try to construct using the available parameter names.
+            #         ChangeCls = g.ChangeGraphAccess
+            #         init_params = inspect.signature(ChangeCls.__init__).parameters
+            #         if 'owner' in init_params:
+            #             change_access = ChangeCls(owner='root', graph_id=self.graph_name)
+            #         elif 'owner_user_id' in init_params:
+            #             change_access = ChangeCls(graph_id=self.graph_name, owner_user_id='root')
+            #         else:
+            #             # Fallback: try positional then keyword attempts
+            #             try:
+            #                 change_access = ChangeCls(self.graph_name, 'root')
+            #             except Exception:
+            #                 change_access = ChangeCls(graph_id=self.graph_name)
+            #         # 使用与 add_graph 相同的 headers 指定 graphId
+            #         headers = {
+            #             "Content-Type": "application/json",
+            #             "abution.graphId": self.graph_name
+            #         }
+            #         self.gdb_client.execute_operation(change_access, headers)
+            #         try:
+            #             print("   ℹ️ [init_graph] 更改图访问成功，当前权限标签:")
+            #             auths_after = self.gdb_client.list_auths()
+            #             print(auths_after)
+            #         except Exception:
+            #             pass
+            #     except Exception as e:
+            #         logger.warning(f"为图设置 owner='root' 失败: {e}")
         except Exception as e:
-            logger.debug(f"init_graph 中权限/创建流程异常（非致命）: {e}")
+            logger.debug(f"init_graph 中创建流程异常（非致命）: {e}")
 
     def _ensure_graph(self, raise_on_fail: bool = False):
         """Lazily create and return Graph instance. If creation fails, return None
@@ -453,8 +456,6 @@ class KnowLion:
         total = len(knowledge_list)
         logger.info(f"开始分批保存知识对象，共 {total} 条，批大小 {batch_size}")
 
-        from utils.graph_outbox import enqueue_batch
-
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
             batch = knowledge_list[start:end]
@@ -464,10 +465,7 @@ class KnowLion:
             # Try to get/create Graph lazily
             graph = self._ensure_graph(raise_on_fail=False)
             if graph is None:
-                logger.warning("图服务暂不可用：将批次写入本地 outbox 并继续")
-                meta = {"start": start, "end": end}
-                path = enqueue_batch(self.graph_name, batch, meta)
-                logger.info(f"已写入 outbox: {path}")
+                logger.error("图服务暂不可用：outbox 已弃用，跳过该批次保存（请稍后重试或手动重放）")
                 continue
 
             while True:
@@ -480,10 +478,8 @@ class KnowLion:
                     attempt += 1
                     logger.warning(f"保存批次 {start}-{end-1} 失败 (尝试 {attempt}/{max_retries}): {e}")
                     if attempt > max_retries:
-                        # On repeated failure, enqueue to outbox to avoid blocking
-                        meta = {"start": start, "end": end, "error": str(e)}
-                        path = enqueue_batch(self.graph_name, batch, meta)
-                        logger.error(f"保存失败，已写入 outbox: {path}")
+                        # On repeated failure, outbox is deprecated — log and give up on this batch
+                        logger.error(f"保存批次 {start}-{end-1} 多次失败，放弃该批次（outbox 已弃用）: {e}")
                         break
                     time.sleep(retry_delay)
 
@@ -517,13 +513,13 @@ class KnowLion:
             return f"检索失败: {retrieval_results['error']}"
 
         # 构建LLM提示
-        system_prompt = """
-        你是一名专业知识解答助手，基于提供的检索结果回答用户问题。
-        检索结果包含多路召回的综合排名，请优先参考高排名内容。
-        """
+        # system_prompt = """
+        # 你是一名专业知识解答助手，基于提供的检索结果回答用户问题。
+        # 检索结果包含多路召回的综合排名，请优先参考高排名内容。
+        # """
         system_prompt = """
                     "你是一名专业知识解答助手，请通过大模型自主回答用户问题，再将答案与提供的信息结合给出更准确可靠的回答。" +
-                    "如果问题相关的知识图谱数据缺失，则由AI助手根据经验回答。
+                    "如果问题相关的知识图谱数据缺失，则由AI助手根据经验回答。你不应当"开药方"那样过多地列举信息，关键是注重准确性和相关性。" +
                     """
 
         user_prompt = f"""
