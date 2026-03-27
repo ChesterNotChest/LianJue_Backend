@@ -7,8 +7,8 @@ class Material(db.Model):
     title: str = db.Column(db.String(255), nullable=True, default=None)
     draft_material_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # /material/draft_material_json/title_<timestamp>.json
     material_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # /material/material_json/title_<timestamp>.json
-    pdf_path: str = db.Column(db.String(255), nullable=True, unique=True, default=None) # /material/material_pdf/title_<timestamp>.pdf
-    file_id: int = db.Column(db.Integer, nullable=True) # 描述的是教学资源文件的ID，便于前端展示和后续查询使用
+    pdf_path: str = db.Column(db.String(255), db.ForeignKey('files.file_id'), nullable=True, unique=True, default=None) # /material/material_pdf/title_<timestamp>.pdf
+    file_id: int = db.Column(db.Integer, nullable=True, unique=True, default=None) # 描述的是教学资源文件的ID，便于前端展示和后续查询使用
     create_time = db.Column(db.DateTime, default=db.func.current_timestamp())
     syllabus_id = db.Column(db.Integer, db.ForeignKey('syllabus.syllabus_id'), nullable=False) # 外键关联到syllabus表
 

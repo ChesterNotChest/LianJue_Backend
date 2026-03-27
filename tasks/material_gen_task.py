@@ -155,7 +155,7 @@ def generate_material(syllabus_id: int, involved_weeks: List[int], question_type
 
 【处理步骤】
 1. 使用提供的教学大纲片段，从中抽取与每道题匹配的关键知识点。
-2. 为每道题生成一个 `related_knowledge`（短文本）和一个 `query_key`（简要的设问方向）。
+2. 为每道题生成一个 `related_knowledge`（长文本，要求覆盖题干全部内容，包括干扰项信息）和一个 `query_key`（设问方向，错误点、答案要点）。
 3. 严格按照题型数量构造 `questions` 列表；若某类题数量为 0，则该类不应出现在列表中。
 
 【重要】
