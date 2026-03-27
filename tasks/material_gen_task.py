@@ -15,7 +15,7 @@ from knowlion.abution_knowlion_driver import KnowLion
 from config import MODEL_CONFIGS
 import time
 
-def generate_material(syllabus_id: int, involved_weeks: List[int], question_type_distribution: Dict[str, int]):
+def generate_material_draft(syllabus_id: int, involved_weeks: List[int], question_type_distribution: Dict[str, int]):
 	"""
 	1. 选涉及的周次
 	2. 选题量（单选、判断、简答）
@@ -211,14 +211,6 @@ def generate_material(syllabus_id: int, involved_weeks: List[int], question_type
 		return None
 
 	return material
-
-# def generate_material(syllabus_id: int, involved_weeks: List[int], question_type_distribution: Dict[str, int]):
-#1. 选涉及的周次
-#2. 选题量（单选、判断、简答）
-#3. 开始检索（每周的单独做一次content检索）
-#4. 构建草稿提示词（系统提示词：要求只产生json。）（用户提示词：知识+各类题数量）
-#5. 生成草稿（具体 a.知识点内容 b.设问点）（json里question字段包括[]列表。列表内为每道题json子元组，结构为：type（题型）, related_knowledge（LLM选出的知识）, query_key（设问点）。）
-#（剩下描述的字段不由大模型承担生成。json里另一字段为material_title，为syllabus_title+{timestamp}。json里另一字段为involved_week["week_index":,...]，存涉及的周次。）
 
 
 # def update_material_draft(material_id: int, question_updates: List[Dict]):

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Interactive test for tasks.material_gen_task.generate_material.
+"""Interactive test for tasks.material_gen_task.generate_material_draft.
 
 Usage:
 1. Start the app (e.g. `python run.py`) so DB and other services are available.
-2. Run this script: `python test_generate_material.py` and follow prompts.
+2. Run this script: `python test_generate_material_draft.py` and follow prompts.
 
 This test uses real services (no mocking). It calls the RAG/LLM flows and will
 depend on external configuration being available.
@@ -45,7 +45,7 @@ def parse_weeks(s: str):
 
 
 def main():
-    print("Interactive generate_material test (no mocks)")
+    print("Interactive generate_material_draft test (no mocks)")
     print("(Start the app first in another terminal if required)")
 
     syllabus_id = prompt_input("syllabus_id (int): ", required=True, cast=int)
@@ -62,7 +62,7 @@ def main():
 
     distribution = {"single": int(single or 0), "judge": int(judge or 0), "short": int(short or 0)}
 
-    print("\nCalling generate_material(...) inside Flask app context...")
+    print("\nCalling generate_material_draft(...) inside Flask app context...")
     try:
         from app import create_app
         app = create_app()
@@ -74,15 +74,15 @@ def main():
     try:
         with app.app_context():
             try:
-                from tasks.material_gen_task import generate_material
+                from tasks.material_gen_task import generate_material_draft
             except Exception as e:
                 print(f"Failed to import generate_material: {e}")
                 return
 
             try:
-                material = generate_material(syllabus_id=syllabus_id, involved_weeks=involved_weeks, question_type_distribution=distribution)
+                material = generate_material_draft(syllabus_id=syllabus_id, involved_weeks=involved_weeks, question_type_distribution=distribution)
                 if material is None:
-                    print("generate_material returned None (failure). Check logs above.")
+                    print("generate_material_draft returned None (failure). Check logs above.")
                     return
 
                 mid = getattr(material, 'material_id', None)
@@ -95,7 +95,7 @@ def main():
                 else:
                     print("Draft file not found on disk. Check logs.")
             except Exception as e:
-                print(f"Exception during generate_material: {e}")
+                print(f"Exception during generate_material_draft: {e}")
     except Exception as e:
         print(f"Error entering Flask app context: {e}")
 
