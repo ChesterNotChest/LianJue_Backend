@@ -8,6 +8,12 @@ __pycache__/
 model/*
 !model/.gitkeep
 
+*.pdf
+整体设计思路.md
+build_syllabus_description.md
+EasyOcrOptionsSchema.json
+*.sql
+
 pdfs/*
 !pdfs/.gitkeep
 
@@ -26,11 +32,17 @@ logs/*
 schedule/calendar/*
 !schedule/calendar/.gitkeep
 
-schedule/calendar_md/*
-!schedule/calendar_md/.gitkeep
-
 schedule/syllabus/*
 !schedule/syllabus/.gitkeep
 
 schedule/syllabus_draft/*
 !schedule/syllabus_draft/.gitkeep
+
+material/draft_material_json/*
+!material/draft_material_json/.gitkeep
+
+material/material_json/*
+!material/material_json/.gitkeep
+
+material/material_pdf/*
+!material/material_pdf/.gitkeep
