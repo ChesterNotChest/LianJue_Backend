@@ -131,11 +131,11 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 必须严格返回一个 JSON 对象，且不应包含任何额外的自然语言说明或注释。JSON 格式如下：
 {
   "questions": [
-    {
-      "type": "single|judge|short",
-      "related_knowledge": "<string: 列出该题涉及的关键知识点或节选>",
-      "query_key": "<string: 对应的设问要点/考查方向>"
-    }
+	{
+	  "type": "single|judge|short",
+	  "related_knowledge": "<string: 列出该题涉及的知识内容或节选>",
+	  "query_key": "<string: 设问要点，即具体曲解、调换了related_knowledge的哪个短语或概念来出题；或related_knowledge里唯一原话的哪个短语作为正确答案>"
+	}
   ]
 }
 
@@ -301,13 +301,322 @@ def update_material_draft(material_id: int, material_title: str = None, new_rela
 
 
 
-# def generate_final_material(material_id: int):
-#7. 构建正式提示词 （每个小问都单独生成。3种类型的题目提供3种不同的系统提示词。每个小问用户提示词提供对应的type（题型）, related_knowledge（LLM选出的知识）, query_key?（设问点））
-#8. 生成题目。每个题目的结果产生为json，包含："question_content"与"answer"与"reason"。
-# 接下来不再是llm生成内容。加上部分草稿json内容，构建出最终json应有question[{"question_content","answer", "reason", "question_type(来自draft对应问题)"}]和material_title（同草稿）
+def generate_final_material(material_id: int):
+	"""
+	7. 构建正式提示词 （每个小问都单独生成。3种类型的题目提供3种不同的系统提示词。每个小问用户提示词提供对应的type（题型）, related_knowledge（LLM选出的知识）, query_key?（设问点））
+	8. 生成题目。每个题目的结果产生为json，包含："question_content"与"answer"与"reason"。
+	接下来不再是llm生成内容。加上部分草稿json内容，构建出最终json应有question[{"question_content","answer", "reason", "question_type(来自draft对应问题)"}]和material_title（同草稿）
 
-# def update_final_material(material_id: int, question_updates: List[Dict]):
-# 9. 人工审核正式卷（调整 题目内容 与 答案与 解析）
+	Behavior:
+	- Load material record and its draft JSON.
+	- For each draft question, call LLM (per-type system prompt) to produce
+	  `question_content`, `answer`, `reason`.
+	- Keep `type` and `material_title` from the draft (do NOT let LLM change them).
+	- Persist final JSON to `./material/material_json/` and update DB via
+	  `set_material_path(material_id, path)`.
+
+	Returns the updated material DB object on success, or None on failure.
+	"""
+
+	from repositories.material_repo import get_material_by_id, set_material_path
+
+	allowed_types = ("single", "judge", "short")
+
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   ❌ [MATERIAL] 无效的 material_id: {material_id}")
+		return None
+
+	draft_path = getattr(material, 'draft_material_path', None)
+	if not draft_path or not os.path.exists(draft_path):
+		print(f"   ❌ [MATERIAL] 草稿文件不存在: {draft_path}")
+		return None
+
+	try:
+		with open(draft_path, 'r', encoding='utf-8') as f:
+			draft_obj = json.load(f)
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 读取草稿文件失败: {e}")
+		return None
+
+	questions = draft_obj.get('questions')
+	if not isinstance(questions, list):
+		print("   ❌ [MATERIAL] 草稿中没有有效的 questions 列表。")
+		return None
+
+	# perform LLM calls in parallel (up to 10 workers) similar to syllabus_task
+	from concurrent.futures import ThreadPoolExecutor, as_completed
+	from tenacity import retry, stop_after_attempt, wait_exponential
+
+	model = get_model_instance()
+
+	@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
+	def call_model_with_retry(sys_prompt: str, usr_prompt: str) -> str:
+		return model.call_text_model(sys_prompt, usr_prompt)
+
+	def make_prompts(q: dict):
+		qtype = q.get('type')
+		related = q.get('related_knowledge', '')
+		query_key = q.get('query_key', '')
+		if qtype == 'single':
+			system_prompt = '''
+你是试题编写专家。请根据提供的知识要点与设问方向，生成一道标准的单选题。
+严格以 JSON 返回，格式:
+{
+  "question_content": "题干文本",
+  "options": {"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"},
+  "answer": "A|B|C|D",
+  "reason": "解析文本"
+}
+题干 20-60 字；解析 30-80 字；选项四个；仅返回 JSON，不要任何额外说明。
+'''
+			user_prompt = f"知识：{related}\n考点：{query_key}"
+		elif qtype == 'judge':
+			system_prompt = '''
+你是试题编写专家。请根据提供的知识要点与设问方向，生成一道判断题（陈述句）。
+严格以 JSON 返回，格式:
+{
+  "question_content": "判断陈述",
+  "answer": true|false,
+  "reason": "解析文本"
+}
+题干为一句陈述；解析 20-60 字；仅返回 JSON，不要任何额外说明。
+'''
+			user_prompt = f"知识：{related}\n考点：{query_key}"
+		else:
+			system_prompt = '''
+你是试题编写专家。请根据提供的知识要点与设问方向，生成一道简答题（可回答要点）。
+严格以 JSON 返回，格式:
+{
+  "question_content": "问题文本",
+  "answer": "简短答案（1-3句）",
+  "reason": "要点提示"
+}
+问题 10-40 字；答案 1-3 句；解析 20-60 字；仅返回 JSON，不要任何额外说明。
+'''
+			user_prompt = f"知识：{related}\n考点：{query_key}"
+		return system_prompt, user_prompt
+
+	def task_wrapper(q: dict):
+		q_index = q.get('question_index') or None
+		qtype = q.get('type')
+		if qtype not in allowed_types:
+			return (q_index, None, f"非法题型: {qtype}", None)
+		sys_p, usr_p = make_prompts(q)
+		try:
+			raw = call_model_with_retry(sys_p, usr_p)
+			cleaned = clean_llm_response(raw)
+			parsed = json.loads(cleaned)
+		except Exception as e:
+			err_text = None
+			try:
+				err_text = cleaned
+			except Exception:
+				err_text = None
+			return (q_index, None, str(e), err_text)
+
+		# basic validation
+		if not isinstance(parsed, dict):
+			return (q_index, None, "模型返回非对象 JSON", json.dumps(parsed, ensure_ascii=False))
+
+		# required keys
+		if qtype == 'single':
+			required = ("question_content", "options", "answer", "reason")
+		else:
+			required = ("question_content", "answer", "reason")
+		for k in required:
+			if k not in parsed:
+				return (q_index, None, f"缺少字段: {k}", json.dumps(parsed, ensure_ascii=False))
+
+		new_q = {
+			'type': qtype, # 便于回显和后续调整，不计划让update_material这个接口调整这个字段
+			'question_index': q_index,
+			'related_knowledge': q.get('related_knowledge'), # 同上，update_material接口不调整这个字段
+			'query_key': q.get('query_key'), # 同上
+		}
+		new_q.update(parsed)
+		return (q_index, new_q, None, None)
+
+	final_questions_map = {}
+	futures = []
+	max_workers = min(10, max(1, len(questions)))
+	with ThreadPoolExecutor(max_workers=max_workers) as exc:
+		for q in questions:
+			futures.append(exc.submit(task_wrapper, q))
+
+		for fut in as_completed(futures):
+			qi, new_q, err, raw_text = fut.result()
+			if err is not None:
+				print(f"   ❌ [MATERIAL] 题目生成失败 (题 {qi}): {err}")
+				if raw_text is not None:
+					print("   ❗ 原始模型返回:\n" + raw_text)
+				return None
+			final_questions_map[qi] = new_q
+
+	# collect in order of question_index
+	final_questions = [final_questions_map[k] for k in sorted(final_questions_map.keys())]
+
+	# build final object
+	final_obj = {
+		'material_title': draft_obj.get('material_title'),
+		'involved_weeks': draft_obj.get('involved_weeks'),
+		'questions': final_questions
+	}
+
+	# persist final JSON
+	try:
+		finals_dir = Path('./material/material_json')
+		finals_dir.mkdir(parents=True, exist_ok=True)
+		safe_name = (draft_obj.get('material_title') or f"material_{material_id}").replace(' ', '_')
+		fname = f"{safe_name}_{int(time.time())}.json"
+		final_path = finals_dir / fname
+		with final_path.open('w', encoding='utf-8') as f:
+			json.dump(final_obj, f, ensure_ascii=False, indent=2)
+
+		# update DB record
+		set_material_path(material_id, str(final_path))
+		print(f"   💾 [MATERIAL] 最终材料已保存: {final_path}")
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 保存最终材料失败: {e}")
+		return None
+
+	return get_material_by_id(material_id)
+
+def update_final_material(
+	material_id: int,
+	material_title: str = None,
+	question_content: List[Dict] = None,
+	answer: List[Dict] = None,
+	reason: List[Dict] = None,
+	options: List[Dict] = None,
+	involved_weeks: List[int] = None,
+):
+	"""
+	9. 人工审核正式卷（调整 题目内容 与 答案与 解析）。
+
+	参数格式 (与 update_material_draft 对齐):
+	- question_content: [{"question_index": int, "question_content": str}]
+	- answer: [{"question_index": int, "answer": str}]
+	- reason: [{"question_index": int, "reason": str}]
+	- options: [{"question_index": int, "options_index": str(A/B/...), "option": str}] 仅单选题有 options。
+
+	行为与 `update_material_draft` 相似：读取 final JSON（`material.material_path`），按 `question_index` 更新字段，
+	写回同一路径并通过仓库方法更新 DB（`set_material_path` / `set_material_title`）。
+
+	返回更新后的 material DB 对象或在失败时返回 None。
+	"""
+
+	from repositories.material_repo import get_material_by_id, set_material_path, set_material_title
+
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   ❌ [MATERIAL] 无效的 material_id: {material_id}")
+		return None
+
+	final_path = getattr(material, 'material_path', None)
+	if not final_path or not os.path.exists(final_path):
+		print(f"   ❌ [MATERIAL] 最终材料文件不存在: {final_path}")
+		return None
+
+	try:
+		with open(final_path, 'r', encoding='utf-8') as f:
+			final_obj = json.load(f)
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 读取最终材料文件失败: {e}")
+		return None
+
+	questions = final_obj.get('questions')
+	if not isinstance(questions, list):
+		print("   ❌ [MATERIAL] 最终材料中没有有效的 questions 列表。")
+		return None
+
+	# 更新 involved_weeks
+	if involved_weeks is not None:
+		try:
+			final_obj['involved_weeks'] = [int(w) for w in involved_weeks]
+		except Exception:
+			final_obj['involved_weeks'] = involved_weeks
+
+	# helper: apply updates by question_index (1-based)
+	def apply_update(list_of_updates, field_name):
+		if not list_of_updates:
+			return
+		for item in list_of_updates:
+			try:
+				qi = int(item.get('question_index'))
+			except Exception:
+				continue
+			idx = qi - 1
+			if idx < 0 or idx >= len(questions):
+				continue
+			val = item.get(field_name)
+			if val is not None:
+				questions[idx][field_name] = val
+
+	apply_update(question_content, 'question_content')
+	apply_update(answer, 'answer')
+	apply_update(reason, 'reason')
+
+	# 修改选项仅适用于单选题，且更新整个 options 字段（不支持单个选项的局部更新），因此单独处理
+	if options:
+		for item in options:
+			try:
+				qi = int(item.get('question_index'))
+			except Exception:
+				continue
+			idx = qi - 1
+			if idx < 0 or idx >= len(questions):
+				continue
+
+			# 仅允许单选题更新单个选项（按选项编号 A/B/... 修改对应选项文本）
+			if questions[idx].get("type") != "single":
+				continue
+
+			opt_index = item.get('options_index')
+			# accept alternative key names for backward compatibility
+			if opt_index is None:
+				opt_index = item.get('option_index')
+			if not isinstance(opt_index, str):
+				continue
+			opt_index = opt_index.strip()
+
+			new_option_text = item.get('option')
+			if new_option_text is None:
+				continue
+
+			current_opts = questions[idx].get('options')
+			if not isinstance(current_opts, dict):
+				# cannot apply single-option update if options are not a dict
+				continue
+
+			# ensure the specified option key exists
+			if opt_index not in current_opts:
+				print(f"   ⚠️ [MATERIAL] 题 {qi} 不存在选项 {opt_index}，跳过。")
+				continue
+
+			# apply the single-option update
+			current_opts[opt_index] = new_option_text
+	# 更新 material title
+	if material_title:
+		try:
+			set_material_title(material_id, material_title)
+			final_obj['material_title'] = material_title
+		except Exception as e:
+			print(f"   ⚠️ [MATERIAL] 更新 material.title 失败: {e}")
+
+	# persist changes
+	try:
+		with open(final_path, 'w', encoding='utf-8') as f:
+			json.dump(final_obj, f, ensure_ascii=False, indent=2)
+		# ensure DB final path matches (no-op if unchanged)
+		set_material_path(material_id, str(final_path))
+		print(f"   💾 [MATERIAL] 最终材料已更新: {final_path}")
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 保存更新后的最终材料失败: {e}")
+		return None
+
+	return get_material_by_id(material_id)
+
 
 # def publish_material(material_id: int, new_pdf: bool = False, do_publish: bool = False):
 # 10. new_pdf则更新卷子pdf。pdf生成（生成一份卷子。页面末尾附上答案与解析。）
