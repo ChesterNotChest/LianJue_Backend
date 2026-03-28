@@ -38,3 +38,12 @@ def set_material_pdf_path(material_id: int, pdf_path: str, file_id: int = None):
             material.file_id = file_id
         db.session.commit()
     return material
+
+
+def set_material_title(material_id: int, title: str):
+    """Update the material title."""
+    material = get_material_by_id(material_id)
+    if material:
+        material.title = title
+        db.session.commit()
+    return material

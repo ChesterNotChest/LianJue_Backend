@@ -24,13 +24,6 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 	5. 生成草稿（具体 a.知识点内容 b.设问点）（json里question字段包括[]列表。列表内为每道题json子元组，结构为：type（题型）, related_knowledge（LLM选出的知识）, query_key（设问点）。）
 	（剩下描述的字段不由大模型承担生成。json里另一字段为material_title，为syllabus_title+{timestamp}。json里另一字段为involved_week["week_index":,...]，存涉及的周次。）
 
-	Behavior:
-	- Create a `Material` DB record via `repositories.material_repo.create_material`.
-	- Attempt to read the syllabus draft (if exists) to provide context.
-	- Call the text model to request a strict JSON draft describing questions.
-	- Persist the draft JSON to `./material/draft_material_json/` and update the
-	  material record's `draft_material_path` via `set_material_draft_path`.
-
 	Returns the created material DB object on success, or None on failure.
 	"""
 
@@ -186,7 +179,10 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 			draft_obj['involved_weeks'] = [int(w) for w in involved_weeks]
 		except Exception:
 			draft_obj['involved_weeks'] = involved_weeks
-
+		# 编上question_index，方便前端展示和后续处理使用
+		for idx, q in enumerate(draft_obj['questions']):
+			q['question_index'] = idx + 1
+			
 		# persist draft JSON to disk
 		try:
 			drafts_dir = Path('./material/draft_material_json')
@@ -213,8 +209,97 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 	return material
 
 
-# def update_material_draft(material_id: int, question_updates: List[Dict]):
-#6. 人工审核草稿（调整 知识点内容 与 设问点）
+# def update_material_draft(material_id: int, material_title: str, new_related_knowledge: List[Dict] = None, new_query_keys: List[int] = None, involved_weeks: List[int] = None):
+def update_material_draft(material_id: int, material_title: str = None, new_related_knowledge: List[Dict] = None, new_query_keys: List[Dict] = None, involved_weeks: List[int] = None):
+	"""
+	6. 人工审核草稿（调整 知识点内容 与 设问点）
+	 此方法本质就是 编辑json 与 更新数据库对应字段。
+	 material_id: 需要更新的 material 的 ID。
+	 material_title: 可选的新标题，如果提供则更新。
+	 new_related_knowledge: [{"question_index": int, "related_knowledge": str}]
+	 new_query_keys: [{"question_index": int, "query_key": str}]
+
+	Returns the material DB object on success, or None on failure.
+	"""
+	from repositories.material_repo import get_material_by_id, set_material_draft_path, set_material_title
+
+	# 得到 material 记录
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   ❌ [MATERIAL] 无效的 material_id: {material_id}")
+		return None
+
+	# 取出 draft_path，读取草稿 JSON
+	draft_path = getattr(material, 'draft_material_path', None)
+	if not draft_path or not os.path.exists(draft_path):
+		print(f"   ❌ [MATERIAL] 草稿文件不存在: {draft_path}")
+		return None
+
+	try:
+		with open(draft_path, 'r', encoding='utf-8') as f:
+			draft_obj = json.load(f)
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 读取草稿文件失败: {e}")
+		return None
+
+	# 更新 involved_weeks（涉及周次）
+	if involved_weeks is not None:
+		try:
+			draft_obj['involved_weeks'] = [int(w) for w in involved_weeks]
+		except Exception:
+			draft_obj['involved_weeks'] = involved_weeks
+
+	# 更新 related_knowledge （相关知识点）
+	if new_related_knowledge:
+		for item in new_related_knowledge:
+			try:
+				qi = int(item.get('question_index'))
+			except Exception:
+				continue
+			# question_index is 1-based
+			idx = qi - 1
+			if idx < 0 or idx >= len(draft_obj.get('questions', [])):
+				continue
+			val = item.get('related_knowledge')
+			if val is not None:
+				draft_obj['questions'][idx]['related_knowledge'] = val
+
+	# 更新 query_key（设问点）
+	if new_query_keys:
+		for item in new_query_keys:
+			try:
+				qi = int(item.get('question_index'))
+			except Exception:
+				continue
+			idx = qi - 1
+			if idx < 0 or idx >= len(draft_obj.get('questions', [])):
+				continue
+			val = item.get('query_key')
+			if val is not None:
+				draft_obj['questions'][idx]['query_key'] = val
+
+	# 更新 material title（材料标题）
+	if material_title:
+		try:
+			set_material_title(material_id, material_title)
+			draft_obj['material_title'] = material_title
+		except Exception as e:
+			print(f"   ⚠️ [MATERIAL] 更新 material.title 失败: {e}")
+
+	# persist changes back to the same draft path
+	try:
+		with open(draft_path, 'w', encoding='utf-8') as f:
+			json.dump(draft_obj, f, ensure_ascii=False, indent=2)
+		# ensure DB draft path matches (no-op if unchanged)
+		set_material_draft_path(material_id, draft_path)
+		print(f"   💾 [MATERIAL] 草稿已更新: {draft_path}")
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 保存更新后的草稿失败: {e}")
+		return None
+
+	return get_material_by_id(material_id)
+
+
 
 # def generate_final_material(material_id: int):
 #7. 构建正式提示词 （每个小问都单独生成。3种类型的题目提供3种不同的系统提示词。每个小问用户提示词提供对应的type（题型）, related_knowledge（LLM选出的知识）, query_key?（设问点））
