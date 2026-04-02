@@ -126,6 +126,35 @@ def main():
                     print(Path(final_path).read_text(encoding='utf-8')[:2000])
                 else:
                     print("Final file not found on disk. Check logs or DB record.")
+
+                # extra verification: list materials brief and show parsed final JSON
+                try:
+                    from tasks.material_gen_task import get_material_detail_info, list_materials_brief_info
+                    syl_id = getattr(m, 'syllabus_id', None)
+                    print("\nMaterials (brief) for syllabus_id=", syl_id)
+                    rows = list_materials_brief_info(syl_id) if syl_id is not None else []
+                    if rows:
+                        hdr = ["material_id", "title", "final_path", "pdf_path", "create_time"]
+                        widths = [12, 30, 40, 30, 20]
+                        def fmt(cell, w):
+                            s = str(cell) if cell is not None else ""
+                            return (s[:w-1] + '…') if len(s) > w else s.ljust(w)
+                        print(' | '.join(h.ljust(w) for h, w in zip(hdr, widths)))
+                        print('-' * (sum(widths) + 3 * (len(widths)-1)))
+                        for r in rows:
+                            print(' | '.join(fmt(r.get(k), w) for k, w in zip(['material_id','title','final_path','pdf_path','create_time'], widths)))
+                    else:
+                        print('  (no materials found)')
+
+                    print('\nMaterial final (parsed JSON) preview:')
+                    det = get_material_detail_info(material_id)
+                    if det:
+                        import json as _json
+                        print(_json.dumps(det, ensure_ascii=False, indent=2)[:4000])
+                    else:
+                        print('  (no final JSON available)')
+                except Exception as e:
+                    print(f"  ⚠️ 额外验证失败: {e}")
             except Exception as e:
                 print(f"Exception during update_final_material: {e}")
     except Exception as e:

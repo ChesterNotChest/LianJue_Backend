@@ -23,10 +23,6 @@ import psutil
 import re
 from typing import Union
 
-try:
-    import fitz  # PyMuPDF
-except Exception:
-    fitz = None
 
 try:
     from PIL import Image
@@ -364,7 +360,7 @@ class Document2Markdown:
                             pass
                     continue
 
-                # 评估文本质量，必要时执行回退提取（PyMuPDF）
+                # 评估文本质量（字符数、页数、CJK比例等），决定是否启用回退策略
                 try:
                     stats = self._assess_result_text_quality(res)
                 except Exception:
@@ -391,7 +387,7 @@ class Document2Markdown:
                         poor_quality = True
 
                 if poor_quality:
-                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，使用回退策略（PyMuPDF -> full-page OCR）。")
+                    logging.warning(f"检测到低质量提取（chars={stats.get('chars')} cjk_ratio={stats.get('cjk_ratio')})，使用回退策略（full-page OCR）。")
                     try:
                         frag, image_counter_global = self._handle_poor_quality_batch(batch_bytes, bidx, image_counter_global, device_mode)
                     except Exception as e:
@@ -882,7 +878,7 @@ class Document2Markdown:
             return initial_md, image_counter
 
     def _handle_poor_quality_batch(self, batch_bytes: bytes, bidx: int, image_counter_global: int, device_mode: str) -> Tuple[str, int]:
-        """处理低质量批次：先尝试 PyMuPDF 回退提取；若无有效文本，再清理并尝试强制 full-page OCR。"""
+        """处理低质量批次：强制 full-page OCR。"""
 
 
         # 尝试强制 full-page OCR

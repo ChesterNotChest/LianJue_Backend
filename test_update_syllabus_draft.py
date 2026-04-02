@@ -89,6 +89,33 @@ def main():
                     print("update_syllabus_draft returned None (failure or no-op). Check logs/messages above.")
                 else:
                     print("update_syllabus_draft completed. Check syllabus draft JSON file for title/day_one/content changes; DB day_one may also be updated if applicable.")
+                    # extra verification: show draft JSON and list syllabuses brief
+                    try:
+                        from tasks.syllabus_task import get_syllabus_draft_detail_info, list_all_syllabuses_brief_info
+                        detail = get_syllabus_draft_detail_info(syllabus_id)
+                        print('\nSyllabus draft detail (preview):')
+                        if detail:
+                            import json as _json
+                            print(_json.dumps(detail, ensure_ascii=False, indent=2)[:4000])
+                        else:
+                            print('  (no draft detail available)')
+
+                        print('\nAll syllabuses (brief):')
+                        rows = list_all_syllabuses_brief_info()
+                        if rows:
+                            hdr = ['syllabus_id','title','draft_path']
+                            widths = [12,40,60]
+                            def fmt(cell,w):
+                                s = str(cell) if cell is not None else ''
+                                return (s[:w-1] + '…') if len(s) > w else s.ljust(w)
+                            print(' | '.join(h.ljust(w) for h,w in zip(hdr,widths)))
+                            print('-' * (sum(widths) + 3*(len(widths)-1)))
+                            for r in rows:
+                                print(' | '.join(fmt(r.get(k), w) for k,w in zip(['syllabus_id','title','draft_path'], widths)))
+                        else:
+                            print('  (no syllabuses found)')
+                    except Exception as e:
+                        print(f'  ⚠️ 额外验证失败: {e}')
             except Exception as e:
                 print(f"Exception during update_syllabus_draft: {e}")
     except Exception as e:

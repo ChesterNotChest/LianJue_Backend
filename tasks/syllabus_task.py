@@ -349,6 +349,47 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None
 
     return syllabus
 
+def get_syllabus_draft_detail_info(syllabus_id: int) -> dict:
+    """Get syllabus draft detail info for a given syllabus_id, including parsed period entries and raw model text if available."""
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [GET] 无效的 syllabus_id: {syllabus_id}")
+        return None
+
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    if not draft_path:
+        print(f"   ❌ [GET] syllabus {syllabus_id} 未配置 draft 路径。")
+        return None
+
+    p = Path(draft_path)
+    if not p.exists():
+        print(f"   ❌ [GET] 草稿文件不存在: {draft_path}")
+        return None
+
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+        period = data.get('period', [])
+        raw_model_text = data.get('raw_model_text', None)
+        return {
+            "period": period,
+            "raw_model_text": raw_model_text
+        }
+    except Exception as e:
+        print(f"   ❌ [GET] 读取或解析草稿文件失败: {e}")
+        return None
+    
+def list_all_syllabuses_brief_info():
+    """List all syllabuses with brief info (id, title, draft_path)."""
+    syllabuses = list_all_syllabuses()
+    result = []
+    for s in syllabuses:
+        result.append({
+            "syllabus_id": s.syllabus_id,
+            "title": s.title,
+            "draft_path": s.syllabus_draft_path
+        })
+    return result
+
 def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
     """Build final syllabus by enriching each `period` entry.
 

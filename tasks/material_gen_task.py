@@ -7,8 +7,9 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from repositories.material_repo import create_material, set_material_draft_path
+from repositories.material_repo import create_material, set_material_draft_path, set_material_pdf_path
 from repositories.syllabus_repo import get_syllabus_by_id
+from repositories.syllabusmaterial_repo import create_syllabus_material, get_syllabusmaterials_by_material, set_ok_to_recommend
 from utils.llm_utils import get_model_instance
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from knowlion.abution_knowlion_driver import KnowLion
@@ -58,7 +59,8 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 					except Exception:
 						continue
 					if wi in involved_weeks:
-						parts.append(w.get('content', ''))
+						# prefer enhanced_content when available to keep LLM grounded
+						parts.append(w.get('enhanced_content') or w.get('original_content') or w.get('content', ''))
 				context_text = "\n\n".join(parts)
 		except Exception as e:
 			print(f"   ⚠️ [MATERIAL] 读取 syllabus (final) 失败: {e}")
@@ -111,15 +113,19 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 				print(f"   ⚠️ [MATERIAL] RAG 检索失败，跳过周 {widx}: {e}")
 				res = None
 			if res:
-				frag = json.dumps(res.get('reasoning_paths', []) or res.get('paragraphs', []), ensure_ascii=False, indent=2)
-				retrieval_fragments.append(f"周{widx} 检索:\n" + frag)
+				# include the original enhanced content along with RAG results to avoid drift
+				orig_fragment = enh or ''
+				res_fragment = json.dumps(res.get('reasoning_paths', []) or res.get('paragraphs', []), ensure_ascii=False, indent=2)
+				frag = f"周{widx} 教学原文片段:\n{orig_fragment}\n\n检索结果:\n{res_fragment}"
+				retrieval_fragments.append(frag)
 			# polite pause
 			time.sleep(0.2)
 
 	retrieval_text = "\n\n".join(retrieval_fragments)
 	# 4. 构建草稿提示词（系统提示词：要求只产生json。）（用户提示词：知识+各类题数量）
 	# user prompt: 知识（来自RAG） + 各类题数量（distribution_fragment）
-	user_prompt = f"知识（来自RAG）:\n{retrieval_text}\n题量分配: {distribution_fragment}"
+	# provide both the original (enhanced) syllabus fragments and the retrieval results
+	user_prompt = f"教学片段:\n{context_text}\n\n检索结果（按周）:\n{retrieval_text}\n\n题量分配: {distribution_fragment}"
 
 	system_prompt = """
 你是一个试题生成专家，负责根据给定的教学大纲片段和题量分配，生成试卷草稿的题目提纲。
@@ -195,6 +201,16 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 
 			# update DB record
 			set_material_draft_path(material.material_id, str(draft_path))
+			# create syllabus<->material mapping entries for involved weeks (create missing only)
+			try:
+				for wk in draft_obj.get('involved_weeks', []) or []:
+					try:
+						create_syllabus_material(material.material_id, int(syllabus.syllabus_id), int(wk), ok_to_recommend=False)
+					except Exception:
+						# best-effort; don't fail draft save for DB mapping issues
+						pass
+			except Exception:
+				pass
 			print(f"   💾 [MATERIAL] 草稿已保存: {draft_path}")
 		except Exception as e:
 			print(f"   ❌ [MATERIAL] 保存草稿失败: {e}")
@@ -299,6 +315,42 @@ def update_material_draft(material_id: int, material_title: str = None, new_rela
 
 	return get_material_by_id(material_id)
 
+def get_material_draft_detail_info(material_id: int) -> dict:
+	"""获取 material 草稿的详细信息，包含解析后的 JSON 内容和相关字段。"""
+	from repositories.material_repo import get_material_by_id
+
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   ❌ [MATERIAL] 无效的 material_id: {material_id}")
+		return {}
+
+	draft_path = getattr(material, 'draft_material_path', None)
+	if not draft_path or not os.path.exists(draft_path):
+		print(f"   ❌ [MATERIAL] 草稿文件不存在: {draft_path}")
+		return {}
+
+	try:
+		with open(draft_path, 'r', encoding='utf-8') as f:
+			draft_obj = json.load(f)
+			return draft_obj
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 读取草稿文件失败: {e}")
+		return {}
+	
+def list_materials_draft_brief_info(syllabus_id: int):
+	"""List brief info of all materials for a given syllabus_id, including draft paths."""
+	from repositories.material_repo import list_materials_by_syllabus
+	items = []
+	for m in list_materials_by_syllabus(syllabus_id):
+		items.append({
+			'material_id': getattr(m, 'material_id', None),
+			'title': getattr(m, 'title', None),
+			'draft_path': getattr(m, 'draft_material_path', None),
+			'final_path': getattr(m, 'material_path', None),
+			'pdf_path': getattr(m, 'pdf_path', None),
+			'create_time': getattr(m, 'create_time', None)
+		})
+	return items
 
 
 def generate_final_material(material_id: int):
@@ -475,6 +527,17 @@ def generate_final_material(material_id: int):
 
 		# update DB record
 		set_material_path(material_id, str(final_path))
+		# ensure syllabusmaterial mapping exists for involved weeks (create missing only)
+		try:
+			m = get_material_by_id(material_id)
+			sy_id = getattr(m, 'syllabus_id', None)
+			for wk in final_obj.get('involved_weeks', []) or []:
+				try:
+					create_syllabus_material(material_id, int(sy_id), int(wk), ok_to_recommend=False)
+				except Exception:
+					pass
+		except Exception:
+			pass
 		print(f"   💾 [MATERIAL] 最终材料已保存: {final_path}")
 	except Exception as e:
 		print(f"   ❌ [MATERIAL] 保存最终材料失败: {e}")
@@ -622,3 +685,187 @@ def update_final_material(
 # 10. new_pdf则更新卷子pdf。pdf生成（生成一份卷子。页面末尾附上答案与解析。）
 #   10.1 生成pdf后，创file件记录，更新material表的pdf_path与file_id字段。
 # 11. do_publish则发布。此举后意味着学生提问时有概率推荐此卷子给学生。
+
+
+def publish_material(material_id: int, new_pdf: bool = False, do_publish: bool = False):
+	"""Publish a material: optionally regenerate PDF and optionally mark as published.
+
+	- new_pdf: regenerate PDF from the final JSON (`material.material_path`) and
+	  save it under `./material/material_pdf/`. The PDF will include questions and
+	  an answers+reasons section at the end. After PDF creation, a file record is
+	  created and `set_material_pdf_path` is called to persist `pdf_path` and `file_id`.
+	- do_publish: attempt to mark material as published via repository helper
+	  `set_material_published(material_id, True)` if available; otherwise logs a warning.
+
+	Returns the updated material DB object or None on failure.
+	"""
+
+	from repositories.material_repo import get_material_by_id, set_material_pdf_path
+	from repositories.file_repo import create_file
+
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   ❌ [PUBLISH] 无效的 material_id: {material_id}")
+		return None
+
+	# Regenerate PDF if requested
+	if new_pdf:
+		final_path = getattr(material, 'material_path', None)
+		if not final_path or not os.path.exists(final_path):
+			print(f"   ❌ [PUBLISH] 无法找到最终材料 JSON: {final_path}")
+			return None
+
+		try:
+			with open(final_path, 'r', encoding='utf-8') as f:
+				final_obj = json.load(f)
+		except Exception as e:
+			print(f"   ❌ [PUBLISH] 读取最终 JSON 失败: {e}")
+			return None
+
+		# prepare pdf directory
+		pdfs_dir = Path('./material/material_pdf')
+		pdfs_dir.mkdir(parents=True, exist_ok=True)
+		now_ts = int(time.time())
+		safe_title = (final_obj.get('material_title') or getattr(material, 'title', f"material_{material_id}")).replace(' ', '_')
+		pdf_fname = f"{safe_title}_{now_ts}.pdf"
+		pdf_path = str(pdfs_dir / pdf_fname)
+		# Build a markdown representation of the final material and convert to PDF via pypandoc
+		mds_dir = Path('./material/material_md_cache')
+		mds_dir.mkdir(parents=True, exist_ok=True)
+		md_fname = f"{safe_title}_{now_ts}.md"
+		md_path = str(mds_dir / md_fname)
+		# compose markdown
+		lines = []
+		lines.append(f"# {final_obj.get('material_title') or getattr(material, 'title', '')}\n")
+		involved = final_obj.get('involved_weeks') or []
+		lines.append(f"**涉及周次:** {', '.join(str(x) for x in involved)}\n")
+		lines.append('\n---\n')
+		for q in final_obj.get('questions', []) or []:
+			qi = q.get('question_index') or ''
+			lines.append(f"## {qi}. {q.get('question_content','')}\n")
+			opts = q.get('options')
+			if isinstance(opts, dict):
+				for k, v in opts.items():
+					lines.append(f"- **{k}** {v}")
+			lines.append('\n')
+		# answers
+		lines.append('---\n')
+		lines.append('## 答案与解析\n')
+		for q in final_obj.get('questions', []) or []:
+			qi = q.get('question_index') or ''
+			lines.append(f"### {qi}. 答案: {q.get('answer')}\n")
+			lines.append(f"{q.get('reason','')}\n")
+
+		md_content = '\n'.join(lines)
+		# write md
+		try:
+			with open(md_path, 'w', encoding='utf-8') as mf:
+				mf.write(md_content)
+		except Exception as e:
+			print(f"   ❌ [PUBLISH] 写入 Markdown 失败: {e}")
+			return None
+
+		# convert md -> pdf using pypandoc (requires system pandoc)
+		try:
+			import pypandoc
+			# specify outputfile and force xelatex with a CJK font to ensure proper CJK rendering
+			extra_args = [
+				'--pdf-engine=xelatex',
+				'-V', 'CJKmainfont=Noto Serif CJK SC'
+			]
+			pypandoc.convert_text(md_content, 'pdf', format='md', outputfile=pdf_path, extra_args=extra_args)
+		except Exception as e:
+			print("   ❌ [PUBLISH] 使用 pypandoc 将 Markdown 转为 PDF 失败: %s" % e)
+			print("   ❗ 请确保已安装 pandoc（系统）和 pypandoc（pip install pypandoc），或在环境中可用 pandoc 可执行文件。")
+			# ensure md is removed even on failure
+			try:
+				if os.path.exists(md_path):
+					os.remove(md_path)
+			except Exception:
+				pass
+			return None
+		finally:
+			# remove the temporary markdown cache file regardless of success
+			try:
+				if os.path.exists(md_path):
+					os.remove(md_path)
+			except Exception:
+				pass
+
+		# create file record and update material
+		try:
+			upload_time = datetime.utcnow().isoformat()
+			fobj = create_file(file_path=pdf_path, upload_time=upload_time)
+			file_id = getattr(fobj, 'file_id', None) if fobj else None
+			set_material_pdf_path(material_id, pdf_path, file_id=file_id)
+			print(f"   💾 [PUBLISH] PDF 已生成并保存: {pdf_path}")
+		except Exception as e:
+			print(f"   ⚠️ [PUBLISH] 保存 PDF 记录到 DB 失败: {e}")
+
+	# publish flag (best-effort)
+	if do_publish:
+		# when publishing, mark related syllabus-week mappings as recommendable
+		try:
+			mappings = get_syllabusmaterials_by_material(material_id)
+			if not mappings:
+				# if no mapping exists yet, try to infer from material.final JSON
+				try:
+					from repositories.material_repo import get_material_by_id
+					mat = get_material_by_id(material_id)
+					final_path = getattr(mat, 'material_path', None)
+					if final_path and os.path.exists(final_path):
+						with open(final_path, 'r', encoding='utf-8') as _f:
+							obj = json.load(_f)
+							for wk in obj.get('involved_weeks', []) or []:
+								try:
+									create_syllabus_material(material_id, int(getattr(mat, 'syllabus_id', None)), int(wk), ok_to_recommend=False)
+								except Exception:
+									pass
+				except Exception:
+					pass
+			# now set ok_to_recommend True for all mappings
+			for rec in get_syllabusmaterials_by_material(material_id):
+				try:
+					set_ok_to_recommend(rec.material_id, rec.syllabus_id, rec.week_index, ok=True)
+				except Exception:
+					pass
+			print(f"   🔔 [PUBLISH] Material {material_id} 的相关 syllabus-week 条目已标记为可推荐。")
+		except Exception as e:
+			print(f"   ⚠️ [PUBLISH] 标记可推荐时发生错误: {e}")
+
+	return get_material_by_id(material_id)
+
+def list_materials_brief_info(syllabus_id: int):
+	"""List all materials for a given syllabus_id."""
+	from repositories.material_repo import list_materials_by_syllabus
+	items = []
+	for m in list_materials_by_syllabus(syllabus_id):
+		items.append({
+			'material_id': getattr(m, 'material_id', None),
+			'title': getattr(m, 'title', None),
+			'draft_path': getattr(m, 'draft_material_path', None),
+			'final_path': getattr(m, 'material_path', None),
+			'pdf_path': getattr(m, 'pdf_path', None),
+			'create_time': getattr(m, 'create_time', None)
+		})
+	return items
+
+def get_material_detail_info(material_id: int):
+	"""Get detailed information for a material JSON for display, including parsed JSON content and related fields."""
+	'''repo方法 *不具备解析JSON的能力*，仅返回material记录。必须读json文件并解析后才能得到题目信息等。'''
+	from repositories.material_repo import get_material_by_id
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   ❌ [MATERIAL] 无效的 material_id: {material_id}")
+		return None
+	final_path = getattr(material, 'material_path', None)
+	if not final_path or not os.path.exists(final_path):
+		print(f"   ❌ [MATERIAL] 最终材料文件不存在: {final_path}")
+		return None
+	try:
+		with open(final_path, 'r', encoding='utf-8') as f:
+			final_obj = json.load(f)
+			return final_obj
+	except Exception as e:
+		print(f"   ❌ [MATERIAL] 读取最终材料文件失败: {e}")
+		return None
