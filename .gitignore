@@ -38,11 +38,17 @@ schedule/syllabus/*
 schedule/syllabus_draft/*
 !schedule/syllabus_draft/.gitkeep
 
+schedule/student_alt/*
+!schedule/student_alt/.gitkeep
+
 material/draft_material_json/*
 !material/draft_material_json/.gitkeep
 
 material/material_json/*
 !material/material_json/.gitkeep
+
+material/material_md_cache/*
+!material/material_md_cache/.gitkeep
 
 material/material_pdf/*
 !material/material_pdf/.gitkeep

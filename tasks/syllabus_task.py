@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 import json
 import time
-from repositories.file_repo import create_file
+from tasks.file_task import add_file as add_file_task
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
 from repositories.syllabus_graph_repo import create_syllabus_graph
@@ -16,12 +16,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from extensions import db
 
 
-def upload_calendar(file_path, upload_time: str = None) -> Syllabus:
+def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
-    file = create_file(file_path=file_path, upload_time=upload_time)
-    file_id = file.file_id if file else None
+    # persist file bytes if provided, otherwise just register path
+    save_dir = os.path.dirname(file_path)
+    fname = os.path.basename(file_path)
+    file_id = add_file_task(save_dir, fname, file_bytes=file_bytes, upload_time=upload_time)
     syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
     
     return syllabus
@@ -348,6 +350,47 @@ def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None
         return None
 
     return syllabus
+
+def get_syllabus_draft_detail_info(syllabus_id: int) -> dict:
+    """Get syllabus draft detail info for a given syllabus_id, including parsed period entries and raw model text if available."""
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [GET] 无效的 syllabus_id: {syllabus_id}")
+        return None
+
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    if not draft_path:
+        print(f"   ❌ [GET] syllabus {syllabus_id} 未配置 draft 路径。")
+        return None
+
+    p = Path(draft_path)
+    if not p.exists():
+        print(f"   ❌ [GET] 草稿文件不存在: {draft_path}")
+        return None
+
+    try:
+        data = json.loads(p.read_text(encoding='utf-8'))
+        period = data.get('period', [])
+        raw_model_text = data.get('raw_model_text', None)
+        return {
+            "period": period,
+            "raw_model_text": raw_model_text
+        }
+    except Exception as e:
+        print(f"   ❌ [GET] 读取或解析草稿文件失败: {e}")
+        return None
+    
+def list_all_syllabuses_brief_info():
+    """List all syllabuses with brief info (id, title, draft_path)."""
+    syllabuses = list_all_syllabuses()
+    result = []
+    for s in syllabuses:
+        result.append({
+            "syllabus_id": s.syllabus_id,
+            "title": s.title,
+            "draft_path": s.syllabus_draft_path
+        })
+    return result
 
 def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
     """Build final syllabus by enriching each `period` entry.
