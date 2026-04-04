@@ -47,6 +47,25 @@ class JobChecker:
         self.heavy_executor = ThreadPoolExecutor(max_workers=self.doc_workers)
         self.light_executor = ThreadPoolExecutor(max_workers=self.post_workers)
 
+        # On startup, reset any jobs left in 'in_progress' to 'pending'
+        try:
+            logger.info("Resetting lingering in_progress jobs to pending (startup)")
+            if self.app:
+                with self.app.app_context():
+                    jobs = list_all_jobs()
+                    for j in jobs:
+                        if getattr(j, 'status', None) == 'in_progress':
+                            update_job_status(j.job_id, 'pending')
+                            logger.info(f"Job {j.job_id} status reset from in_progress to pending")
+            else:
+                jobs = list_all_jobs()
+                for j in jobs:
+                    if getattr(j, 'status', None) == 'in_progress':
+                        update_job_status(j.job_id, 'pending')
+                        logger.info(f"Job {j.job_id} status reset from in_progress to pending")
+        except Exception as e:
+            logger.error(f"Failed to reset in_progress jobs on startup: {e}")
+
         try:
             while True:
                 if self._stop_event.is_set():
@@ -112,20 +131,41 @@ class JobChecker:
                         if needs_heavy and not already_heavy:
                             with self._lock:
                                 if len(self.running_heavy) < self.doc_workers:
-                                    print("   🚀 提交 heavy 工作 job_id:", job_id)
-                                    self.running_heavy.add(job_id)
-                                    update_job_status(job_id, 'in_progress')
-                                    fut = self.heavy_executor.submit(self._heavy_wrapper, job_id)
-                                    fut.add_done_callback(lambda f, jid=job_id: self._heavy_done_cb(f, jid))
+                                    # re-check DB status to avoid overriding a recent pause
+                                    fresh = None
+                                    try:
+                                        fresh = get_job_by_id(job_id)
+                                    except Exception:
+                                        fresh = None
+                                    if fresh and getattr(fresh, 'status', None) == 'paused':
+                                        # don't submit paused jobs; remove from local running set if accidentally added
+                                        self.running_heavy.discard(job_id)
+                                        logger.info(f"Skipping submit for paused job {job_id}")
+                                    else:
+                                        print("   🚀 提交 heavy 工作 job_id:", job_id)
+                                        self.running_heavy.add(job_id)
+                                        update_job_status(job_id, 'in_progress')
+                                        fut = self.heavy_executor.submit(self._heavy_wrapper, job_id)
+                                        fut.add_done_callback(lambda f, jid=job_id: self._heavy_done_cb(f, jid))
 
                         elif needs_light and not already_light:
                             with self._lock:
                                 if len(self.running_light) < self.post_workers:
-                                    print("   🚀 提交 light 工作 job_id:", job_id)
-                                    self.running_light.add(job_id)
-                                    update_job_status(job_id, 'in_progress')
-                                    fut = self.light_executor.submit(self._light_wrapper, job_id)
-                                    fut.add_done_callback(lambda f, jid=job_id: self._light_done_cb(f, jid))
+                                    # re-check DB status to avoid overriding a recent pause
+                                    fresh = None
+                                    try:
+                                        fresh = get_job_by_id(job_id)
+                                    except Exception:
+                                        fresh = None
+                                    if fresh and getattr(fresh, 'status', None) == 'paused':
+                                        self.running_light.discard(job_id)
+                                        logger.info(f"Skipping submit for paused job {job_id}")
+                                    else:
+                                        print("   🚀 提交 light 工作 job_id:", job_id)
+                                        self.running_light.add(job_id)
+                                        update_job_status(job_id, 'in_progress')
+                                        fut = self.light_executor.submit(self._light_wrapper, job_id)
+                                        fut.add_done_callback(lambda f, jid=job_id: self._light_done_cb(f, jid))
 
                 # short sleep before next poll
                 time.sleep(self.poll_interval)
@@ -279,27 +319,35 @@ class JobChecker:
 
         try:
             # run callback under app context as it updates DB
-            if self.app:
-                with self.app.app_context():
-                    exc = fut.exception()
-                    if exc:
-                        logger.error(f"Heavy task exception for {job_id}: {exc}")
-                        update_error_message(job_id, str(exc))
-                        update_job_status(job_id, 'failed')
-                    else:
-                        if job.stage == job.end_stage and job.markdown_path != None and job.markdown_path != "":
-                            update_job_status(job_id, 'completed')
-                        else:
-                            # 标记为pending，等待light任务接手
-                            update_job_status(job_id, 'pending')
-            else:
-                exc = fut.exception()
-                if exc:
-                    logger.error(f"Heavy task exception for {job_id}: {exc}")
-                    update_error_message(job_id, str(exc))
-                    update_job_status(job_id, 'failed')
+            exc = fut.exception()
+            if exc:
+                logger.error(f"Heavy task exception for {job_id}: {exc}")
+                update_error_message(job_id, str(exc))
+                update_job_status(job_id, 'failed')
+                return
+
+            # refresh job from DB to respect any concurrent status changes (e.g., paused by user)
+            fresh = None
+            try:
+                if self.app:
+                    with self.app.app_context():
+                        fresh = get_job_by_id(job_id)
                 else:
-                    update_job_status(job_id, 'pending')
+                    fresh = get_job_by_id(job_id)
+            except Exception:
+                fresh = job
+
+            # if job was paused while work ran, keep it paused and do not reset to pending
+            if fresh and getattr(fresh, 'status', None) == 'paused':
+                logger.info(f"Job {job_id} is paused after heavy work; leaving status as paused")
+                return
+
+            # otherwise mark completed or pending as before
+            if getattr(job, 'stage', None) == job.end_stage and job.markdown_path not in (None, ""):
+                update_job_status(job_id, 'completed')
+            else:
+                # 标记为pending，等待light任务接手
+                update_job_status(job_id, 'pending')
         except Exception as e:
             logger.error(f"Error handling heavy completion for {job_id}: {e}")
 
@@ -307,22 +355,28 @@ class JobChecker:
         with self._lock:
             self.running_light.discard(job_id)
         try:
-            if self.app:
-                with self.app.app_context():
-                    exc = fut.exception()
-                    if exc:
-                        logger.error(f"Light task exception for {job_id}: {exc}")
-                        update_error_message(job_id, str(exc))
-                        update_job_status(job_id, 'failed')
-                    else:
-                        update_job_status(job_id, 'completed')
-            else:
-                exc = fut.exception()
-                if exc:
-                    logger.error(f"Light task exception for {job_id}: {exc}")
-                    update_error_message(job_id, str(exc))
-                    update_job_status(job_id, 'failed')
+            exc = fut.exception()
+            if exc:
+                logger.error(f"Light task exception for {job_id}: {exc}")
+                update_error_message(job_id, str(exc))
+                update_job_status(job_id, 'failed')
+                return
+
+            # refresh job state and respect paused flag
+            fresh = None
+            try:
+                if self.app:
+                    with self.app.app_context():
+                        fresh = get_job_by_id(job_id)
                 else:
-                    update_job_status(job_id, 'completed')
+                    fresh = get_job_by_id(job_id)
+            except Exception:
+                fresh = None
+
+            if fresh and getattr(fresh, 'status', None) == 'paused':
+                logger.info(f"Job {job_id} is paused after light work; leaving status as paused")
+                return
+
+            update_job_status(job_id, 'completed')
         except Exception as e:
             logger.error(f"Error handling light completion for {job_id}: {e}")

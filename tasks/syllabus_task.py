@@ -4,7 +4,7 @@ from pathlib import Path
 import os
 import json
 import time
-from repositories.file_repo import create_file
+from tasks.file_task import add_file as add_file_task
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
 from repositories.syllabus_graph_repo import create_syllabus_graph
@@ -16,12 +16,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from extensions import db
 
 
-def upload_calendar(file_path, upload_time: str = None) -> Syllabus:
+def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
-    file = create_file(file_path=file_path, upload_time=upload_time)
-    file_id = file.file_id if file else None
+    # persist file bytes if provided, otherwise just register path
+    save_dir = os.path.dirname(file_path)
+    fname = os.path.basename(file_path)
+    file_id = add_file_task(save_dir, fname, file_bytes=file_bytes, upload_time=upload_time)
     syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
     
     return syllabus

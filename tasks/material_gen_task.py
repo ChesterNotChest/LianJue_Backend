@@ -701,7 +701,6 @@ def publish_material(material_id: int, new_pdf: bool = False, do_publish: bool =
 	"""
 
 	from repositories.material_repo import get_material_by_id, set_material_pdf_path
-	from repositories.file_repo import create_file
 
 	material = get_material_by_id(material_id)
 	if not material:
@@ -795,8 +794,11 @@ def publish_material(material_id: int, new_pdf: bool = False, do_publish: bool =
 		# create file record and update material
 		try:
 			upload_time = datetime.utcnow().isoformat()
-			fobj = create_file(file_path=pdf_path, upload_time=upload_time)
-			file_id = getattr(fobj, 'file_id', None) if fobj else None
+			# use file_task.add_file to register file (no bytes to write here)
+			from tasks.file_task import add_file as add_file_task
+			save_dir = os.path.dirname(pdf_path)
+			fname = os.path.basename(pdf_path)
+			file_id = add_file_task(save_dir, fname, file_bytes=None, upload_time=upload_time)
 			set_material_pdf_path(material_id, pdf_path, file_id=file_id)
 			print(f"   💾 [PUBLISH] PDF 已生成并保存: {pdf_path}")
 		except Exception as e:
