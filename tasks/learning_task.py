@@ -23,6 +23,7 @@ import json
 import re
 from time import time
 from datetime import datetime, timezone
+from constant import PersonalSyllabus
 
 from utils.llm_utils import get_model_instance
 from utils.markdown_utils import clean_llm_response
@@ -36,7 +37,7 @@ from extensions import db
 如下的描述都是相对于sylllabus json文件 来做拓展的。
 
 personal_sylllabus外部多了如下字段：
-review_count
+review_count # 这个不是复习次数，而是llm的审查次数。
 reviewed_at: 时间戳
 
 personal_sylllabus的*每个周*都多包括如下字段：
@@ -98,6 +99,7 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
     personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
     if not personal_path or not os.path.exists(personal_path):
         init_personal_syllabus(user_id, syllabus_id)
+        ps = get_user_syllabus(user_id, syllabus_id)
         personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
 
     # 2. 当前处在第几周
@@ -352,8 +354,69 @@ def _manage_forgetting_curve():
     2. 如果updated_at距离当前时间超过一定阈值，则将competance降低一级，并将competance_progress重置为0。
     3. 更新personal_syllabus_json文件。
     '''
-    # TODO: implement scheduled downgrade logic later
-    return
+    base_dir = os.path.join(os.getcwd(), 'schedule', 'student_alt')
+    if not os.path.exists(base_dir):
+        return 0
+
+    now_ts = int(time())
+    try:
+        forget_days = int(PersonalSyllabus.FORGET_DAYS.value)
+    except Exception:
+        forget_days = 7
+    threshold = forget_days * 24 * 3600
+
+    modified_count = 0
+
+    for user_folder in os.listdir(base_dir):
+        user_path = os.path.join(base_dir, user_folder)
+        if not os.path.isdir(user_path):
+            continue
+
+        for fname in os.listdir(user_path):
+            if not fname.endswith('_personal.json'):
+                continue
+            personal_path = os.path.join(user_path, fname)
+            try:
+                with open(personal_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except Exception:
+                continue
+
+            changed = False
+            period = data.get('period', [])
+            for entry in period:
+                try:
+                    updated_at = int(entry.get('updated_at') or 0)
+                except Exception:
+                    updated_at = 0
+
+                if updated_at <= 0:
+                    continue
+
+                if now_ts - updated_at > threshold:
+                    cur = entry.get('competance')
+                    # downgrade one level: master -> normal, normal -> weak, weak stays weak
+                    new_level = cur
+                    if cur == 'master':
+                        new_level = 'normal'
+                    elif cur == 'normal':
+                        new_level = 'weak'
+
+                    if new_level != cur:
+                        entry['competance'] = new_level
+                        entry['competance_progress'] = 0
+                        entry['updated_at'] = now_ts
+                        changed = True
+
+            if changed:
+                try:
+                    with open(personal_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    modified_count += 1
+                except Exception:
+                    pass
+
+    return modified_count
 
 def _get_current_week(syllabus_id: int, current_time: int):
     '''
@@ -381,7 +444,9 @@ def _get_current_week(syllabus_id: int, current_time: int):
 
     # ensure timezone-naive comparison
     if isinstance(day_one_dt, datetime):
-        delta_days = (datetime.fromtimestamp(current_time) - day_one_dt).days
+        day_one_dt = day_one_dt.replace(tzinfo=None)
+        now_dt = datetime.fromtimestamp(current_time, timezone.utc).replace(tzinfo=None)
+        delta_days = (now_dt - day_one_dt).days
     else:
         delta_days = 0
 
@@ -515,8 +580,11 @@ def _update_review_count(personal_syllabus_path: str) -> bool:
     except Exception:
         pass
 
-    # return whether reached threshold (5)
-    return rc >= 5
+    # return whether reached LLM review threshold
+    try:
+        return rc >= int(PersonalSyllabus.LLM_REVIEW_THREDHOLD.value)
+    except Exception:
+        return rc >= 5
 
 def _toggle_competance(personal_syllabus_path: str, week_index: int, suggested_competance: str):
     '''
@@ -645,15 +713,24 @@ def _update_competance(personal_syllabus_path: str, week_index: int):
     else:
         cur_prog += diff
 
-    # promotion/demotion thresholds
+    # promotion/demotion thresholds (use constants)
     new_level = cur
-    if cur_prog >= 5:
+    try:
+        prog_max = int(PersonalSyllabus.PROGRESS_MAX.value)
+    except Exception:
+        prog_max = 5
+    try:
+        prog_min = int(PersonalSyllabus.PROGRESS_MIN.value)
+    except Exception:
+        prog_min = -5
+
+    if cur_prog >= prog_max:
         if cur == 'weak':
             new_level = 'normal'
         elif cur == 'normal':
             new_level = 'master'
         cur_prog = 0
-    elif cur_prog <= -5:
+    elif cur_prog <= prog_min:
         if cur == 'master':
             new_level = 'normal'
         elif cur == 'normal':
@@ -669,16 +746,143 @@ def _update_competance(personal_syllabus_path: str, week_index: int):
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
-# 这个是为API设计的，后续可以根据需要来调整参数和返回值。它不是工具函数，而是一个完整的业务流程函数。
-# def update_personal_syllabus(user_id: int, syllabus_id: int, week_index: int, revision_time_spent: int = -1, competance: str = None, competance_progress: int = None):
-# '''
-# 学生一般做法是选择复习了的周次，以及复习了的时间。1个小时则 +2，2个小时则 +4, 3个小时则+5，超过3个小时则也是+5。
-# 后两个参数只在revision_time_spent不为-1时才有意义，来更新学生的学习状态。
-# 
-# 若为-1，接下来直接修改personal_syllabus_json里的competance为competance参数，competance_progress为competance_progress参数（如果有的话）。这个是为了让学生在提问时，根据大模型的建议来调整学习状态。
-# '''
 
-# def get_personal_syllabus_detail_info(user_id: int, syllabus_id: int) -> dict:
+
+# 这个是为API设计的，后续可以根据需要来调整参数和返回值。它不是工具函数，而是一个完整的业务流程函数。
+def update_personal_syllabus(user_id: int, syllabus_id: int, week_index: int, study_time_spent: int = -1, competance: str = None, competance_progress: int = None):
+    """
+    Update a user's personal syllabus entry for a given week.
+
+    Rules (strict):
+    - If `study_time_spent` != -1, interpret as hours and map to progress increments:
+        1h -> +2, 2h -> +4, 3h -> +5, >3h -> +5.
+      DO NOT use `review_count` as a study counter (its meaning is LLM audit).
+      Update only `competance_progress`, `competance` if thresholds hit, and `reviewed_at`/`updated_at` timestamps.
+    - If `study_time_spent` == -1, then apply direct overrides from `competance` and/or `competance_progress` if provided.
+    - Persist changes to the personal syllabus JSON file. Return parsed dict on success, None on failure.
+    """
+    if user_id is None or syllabus_id is None or week_index is None:
+        return None
+
+    ps = get_user_syllabus(user_id, syllabus_id)
+    personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
+    if not personal_path or not os.path.exists(personal_path):
+        try:
+            init_personal_syllabus(user_id, syllabus_id)
+        except Exception:
+            pass
+        ps = get_user_syllabus(user_id, syllabus_id)
+        personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
+
+    if not personal_path or not os.path.exists(personal_path):
+        return None
+
+    try:
+        with open(personal_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception:
+        return None
+
+    period = data.get('period', [])
+    target = None
+    for entry in period:
+        if str(entry.get('week_index')) == str(week_index):
+            target = entry
+            break
+    if not target:
+        return None
+
+    now_ts = int(time())
+
+    # Study time mode
+    if study_time_spent is not None and int(study_time_spent) != -1:
+        hrs = int(study_time_spent)
+        if hrs <= 0:
+            inc = 0
+        elif hrs == 1:
+            inc = 2
+        elif hrs == 2:
+            inc = 4
+        else:
+            inc = 5
+
+        # update timestamps only; do NOT touch review_count
+        data['reviewed_at'] = now_ts
+
+        # apply progress
+        cur_prog = int(target.get('competance_progress') or 0)
+        cur_prog += inc
+        cur = target.get('competance') or 'normal'
+
+        # promotion/demotion using constants
+        new_level = cur
+        if cur_prog >= PersonalSyllabus.PROGRESS_MAX.value:
+            if cur == 'weak':
+                new_level = 'normal'
+            elif cur == 'normal':
+                new_level = 'master'
+            cur_prog = 0
+        elif cur_prog <= PersonalSyllabus.PROGRESS_MIN.value:
+            if cur == 'master':
+                new_level = 'normal'
+            elif cur == 'normal':
+                new_level = 'weak'
+            cur_prog = 0
+
+        target['competance'] = new_level
+        target['competance_progress'] = cur_prog
+        target['updated_at'] = now_ts
+
+    else:
+        # direct override mode
+        changed = False
+        if competance is not None:
+            target['competance'] = competance
+            changed = True
+        if competance_progress is not None:
+            try:
+                target['competance_progress'] = int(competance_progress)
+                changed = True
+            except Exception:
+                pass
+        if changed:
+            target['updated_at'] = now_ts
+
+    try:
+        with open(personal_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        return None
+
+    return data
+
+
+def get_personal_syllabus(user_id: int, syllabus_id: int) -> dict:
+    """
+    Return parsed personal syllabus JSON for a user and syllabus.
+    Mirrors `get_material_detail_info` style: reads JSON file and returns parsed dict or None.
+    """
+    if user_id is None or syllabus_id is None:
+        return None
+
+    ps = get_user_syllabus(user_id, syllabus_id)
+    personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
+    if not personal_path or not os.path.exists(personal_path):
+        try:
+            init_personal_syllabus(user_id, syllabus_id)
+        except Exception:
+            pass
+        ps = get_user_syllabus(user_id, syllabus_id)
+        personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
+
+    if not personal_path or not os.path.exists(personal_path):
+        return None
+
+    try:
+        with open(personal_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 

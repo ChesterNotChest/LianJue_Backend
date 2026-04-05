@@ -30,3 +30,9 @@ class BasePath(Enum):
         MATERIAL_JSON_ROOT = "/material/material_json"
         MATERIAL_MD_CACHE_ROOT = "/material/material_md_cache"
         MATERIAL_PDF_ROOT = "/material/pdfs"
+
+class PersonalSyllabus(Enum):
+        FORGET_DAYS = 7
+        PROGRESS_MAX = 5
+        PROGRESS_MIN = -5 
+        LLM_REVIEW_THREDHOLD = 5 # 被LLM评估了5次后，则可以更新对应的学习状态
