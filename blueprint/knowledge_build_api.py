@@ -5,6 +5,14 @@ from tasks import jobs_task
 bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api/job')
 
 
+# 创建新的图谱
+# TODO
+# def create_graph_api():
+
+# 展示所有图谱
+# TODO
+# def list_graphs_api():
+
 @bp.route('/create', methods=['POST'])
 def create_job_api():
     '''

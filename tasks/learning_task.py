@@ -857,7 +857,7 @@ def update_personal_syllabus(user_id: int, syllabus_id: int, week_index: int, st
     return data
 
 
-def get_personal_syllabus(user_id: int, syllabus_id: int) -> dict:
+def get_personal_syllabus_detail_info(user_id: int, syllabus_id: int) -> dict:
     """
     Return parsed personal syllabus JSON for a user and syllabus.
     Mirrors `get_material_detail_info` style: reads JSON file and returns parsed dict or None.

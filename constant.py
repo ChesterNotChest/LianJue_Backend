@@ -31,6 +31,10 @@ class BasePath(Enum):
         MATERIAL_MD_CACHE_ROOT = "/material/material_md_cache"
         MATERIAL_PDF_ROOT = "/material/pdfs"
 
+class SyllabusPermission(Enum):
+        USER = "user"
+        OWNER = "owner"
+
 class PersonalSyllabus(Enum):
         FORGET_DAYS = 7
         PROGRESS_MAX = 5

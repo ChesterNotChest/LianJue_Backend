@@ -22,7 +22,7 @@ def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time:
         upload_time = datetime.utcnow().isoformat()
     # persist file bytes if provided, otherwise just register path
     save_dir = os.path.dirname(file_path)
-    fname = os.path.basename(file_path)
+    fname = file_name
     file_id = add_file_task(save_dir, fname, file_bytes=file_bytes, upload_time=upload_time)
     syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
     
@@ -43,6 +43,8 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     '''
     # 构建syllabus草稿，生成一个新的syllabus记录
     syllabus = get_syllabus_by_id(syllabus_id)
+
+    # TODO 加上 syllabusgraph 的记lu
 
     # 1. 解析教学日历，提取关键信息
     file_id = syllabus.file_id
