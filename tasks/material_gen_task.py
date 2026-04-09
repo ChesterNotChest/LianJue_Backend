@@ -7,7 +7,9 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from repositories.graph_repo import get_graph_by_id
 from repositories.material_repo import create_material, set_material_draft_path, set_material_pdf_path
+from repositories.syllabus_graph_repo import list_graphs_by_syllabus
 from repositories.syllabus_repo import get_syllabus_by_id
 from repositories.syllabusmaterial_repo import create_syllabus_material, get_syllabusmaterials_by_material, set_ok_to_recommend
 from utils.llm_utils import get_model_instance
@@ -83,11 +85,11 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 	# 3. 开始检索（每周的单独做一次content检索）
 	graph_name = None
 	try:
-		# if syllabus JSON was loaded above as `d`, prefer its graph_name
-		graph_name = d.get('graph_name') if isinstance(d, dict) else None
-		if not graph_name:
-			graph_name = getattr(syllabus, 'graph_name', None) or 'RAG'
-		kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name)
+		graph_ids = list_graphs_by_syllabus(syllabus_id)
+		graph_id = graph_ids[0] if graph_ids else None
+		graph = get_graph_by_id(graph_id) if graph_id is not None else None
+		graph_name = getattr(graph, 'graphId', None) if graph else None
+		kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name) if graph_name else None
 	except Exception:
 		kl = None
 
@@ -315,6 +317,53 @@ def update_material_draft(material_id: int, material_title: str = None, new_rela
 
 	return get_material_by_id(material_id)
 
+
+def update_material_draft_json(material_id: int, material_draft_json: dict):
+	"""Replace the whole material draft JSON with the submitted raw json."""
+	from repositories.material_repo import get_material_by_id, set_material_draft_path, set_material_title
+
+	if not isinstance(material_draft_json, dict):
+		print("   [MATERIAL] `material_draft_json` must be a dict.")
+		return None
+
+	required_fields = ("material_title", "involved_weeks", "questions")
+	if any(field not in material_draft_json for field in required_fields):
+		print(f"   [MATERIAL] material_draft_json must contain: {required_fields}")
+		return None
+
+	questions = material_draft_json.get("questions")
+	if not isinstance(questions, list) or not all(isinstance(item, dict) for item in questions):
+		print("   [MATERIAL] `questions` must be a list of dict.")
+		return None
+
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   [MATERIAL] invalid material_id: {material_id}")
+		return None
+
+	draft_path = getattr(material, 'draft_material_path', None)
+	if not draft_path or not os.path.exists(draft_path):
+		print(f"   [MATERIAL] draft material file does not exist: {draft_path}")
+		return None
+
+	try:
+		with open(draft_path, 'w', encoding='utf-8') as f:
+			json.dump(material_draft_json, f, ensure_ascii=False, indent=2)
+		set_material_draft_path(material_id, draft_path)
+	except Exception as e:
+		print(f"   [MATERIAL] failed to save updated draft: {e}")
+		return None
+
+	title = material_draft_json.get('material_title')
+	if isinstance(title, str) and title.strip():
+		try:
+			set_material_title(material_id, title)
+		except Exception as e:
+			print(f"   [MATERIAL] failed to persist draft title to DB: {e}")
+
+	print(f"   [MATERIAL] draft updated and saved: {draft_path}")
+	return get_material_by_id(material_id)
+
 def get_material_draft_detail_info(material_id: int) -> dict:
 	"""获取 material 草稿的详细信息，包含解析后的 JSON 内容和相关字段。"""
 	from repositories.material_repo import get_material_by_id
@@ -401,6 +450,18 @@ def generate_final_material(material_id: int):
 	from tenacity import retry, stop_after_attempt, wait_exponential
 
 	model = get_model_instance()
+	graph_name = None
+	kl = None
+	try:
+		syllabus_id = getattr(material, 'syllabus_id', None)
+		graph_ids = list_graphs_by_syllabus(syllabus_id) if syllabus_id is not None else []
+		graph_id = graph_ids[0] if graph_ids else None
+		graph = get_graph_by_id(graph_id) if graph_id is not None else None
+		graph_name = getattr(graph, 'graphId', None) if graph else None
+		kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name) if graph_name else None
+	except Exception as e:
+		print(f"   ⚠️ [MATERIAL] 无法通过 material -> syllabus -> graph 反查图谱，将跳过 RAG: {e}")
+		kl = None
 
 	@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
 	def call_model_with_retry(sys_prompt: str, usr_prompt: str) -> str:
@@ -455,6 +516,15 @@ def generate_final_material(material_id: int):
 		if qtype not in allowed_types:
 			return (q_index, None, f"非法题型: {qtype}", None)
 		sys_p, usr_p = make_prompts(q)
+		if kl is not None:
+			try:
+				search_query = f"{q.get('related_knowledge', '')}\n{q.get('query_key', '')}".strip()
+				if search_query:
+					rag_result = kl.search(search_query, top_k=4)
+					rag_text = json.dumps(rag_result.get('reasoning_paths', []) or rag_result.get('paragraphs', []), ensure_ascii=False, indent=2)
+					usr_p = f"{usr_p}\n补充参考资料（来自图谱 {graph_name}）：\n{rag_text}"
+			except Exception as e:
+				print(f"   ⚠️ [MATERIAL] 题 {q_index} 的图谱检索失败，继续使用草稿内容生成: {e}")
 		try:
 			raw = call_model_with_retry(sys_p, usr_p)
 			cleaned = clean_llm_response(raw)
@@ -678,6 +748,53 @@ def update_final_material(
 		print(f"   ❌ [MATERIAL] 保存更新后的最终材料失败: {e}")
 		return None
 
+	return get_material_by_id(material_id)
+
+
+def update_final_material_json(material_id: int, material_json: dict):
+	"""Replace the whole final material JSON with the submitted raw json."""
+	from repositories.material_repo import get_material_by_id, set_material_path, set_material_title
+
+	if not isinstance(material_json, dict):
+		print("   [MATERIAL] `material_json` must be a dict.")
+		return None
+
+	required_fields = ("material_title", "involved_weeks", "questions")
+	if any(field not in material_json for field in required_fields):
+		print(f"   [MATERIAL] material_json must contain: {required_fields}")
+		return None
+
+	questions = material_json.get("questions")
+	if not isinstance(questions, list) or not all(isinstance(item, dict) for item in questions):
+		print("   [MATERIAL] `questions` must be a list of dict.")
+		return None
+
+	material = get_material_by_id(material_id)
+	if not material:
+		print(f"   [MATERIAL] invalid material_id: {material_id}")
+		return None
+
+	final_path = getattr(material, 'material_path', None)
+	if not final_path or not os.path.exists(final_path):
+		print(f"   [MATERIAL] final material file does not exist: {final_path}")
+		return None
+
+	try:
+		with open(final_path, 'w', encoding='utf-8') as f:
+			json.dump(material_json, f, ensure_ascii=False, indent=2)
+		set_material_path(material_id, str(final_path))
+	except Exception as e:
+		print(f"   [MATERIAL] failed to save updated final material: {e}")
+		return None
+
+	title = material_json.get('material_title')
+	if isinstance(title, str) and title.strip():
+		try:
+			set_material_title(material_id, title)
+		except Exception as e:
+			print(f"   [MATERIAL] failed to persist final title to DB: {e}")
+
+	print(f"   [MATERIAL] final material updated and saved: {final_path}")
 	return get_material_by_id(material_id)
 
 

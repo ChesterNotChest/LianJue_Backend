@@ -26,3 +26,6 @@ def remove_graph(graph_id):
         db.session.commit()
         return True
     return False
+
+def list_graphs():
+    return Graph.query.all()

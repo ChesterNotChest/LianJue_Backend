@@ -1,0 +1,361 @@
+2026年4月9日 vibecode驱动备忘
+
+歧义消除： graphId 等价于 graph_name。 graph_id和前面的不是一个东西。
+
+用途：
+按当前前端现状，统计接下来需要真正对齐到后端的 API 方法名。这里优先以 blueprint 里已经存在的方法名、实际参数为准；blueprint 里还是 TODO 的，优先继承 2026年4月6日备忘里的业务描述；如果 4 月 6 日备忘没把方法写清，但当前前端 mock / task 已足够说明需求，则补建议方法名，并标注“ - 额外补充”。
+
+额外说明： 
+1. 当前前端里的 `getTeacherDashboardData()`、`getStudentDashboardData()` 是前端 mock 聚合层，不代表后端必须提供同名 dashboard 聚合 API。后端仍可以按基础接口拆分提供。
+2. 本文只修正“接下来要用哪些后端方法名、参数、返回结构、现状判断”，不改 4 月 6 日备忘中关于数据来源的大方向说明。
+3. 如某项与 2026年4月6日备忘或当前前端真实代码需求不一致，末尾标注“ - 待调整”。
+4. 如 blueprint 尚缺失，则末尾标注“ - 待完成”。
+5. 如该条是依据当前 mock / task 额外补出的建议方法，则末尾标注“ - 额外补充”。
+6. 新增约束：只有 `build_syllabus_draft_api()` 这一条在当前阶段允许显式接收图谱信息；之后的 syllabus / material 相关 API 不应再接收 `graph_name`。对应 task 内部若需要图谱，应通过 `repositories.syllabus_graph_repo.list_graphs_by_syllabus(syllabus_id)` 先拿到 `graph_id`，再通过 `repositories.graph_repo.get_graph_by_id(graph_id)` 取得 `graphId`（其本质就是 graph_name）。material 侧则先拿到 `syllabus_id`，再走同样链路。
+
+一、教师端顶部切换与当前教学大纲加载
+
+1. `list_syllabuses_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/list`
+当前参数：可选 `user_id`、可选 `manage`
+当前返回：调用 `tasks.syllabus_task.list_all_syllabuses_brief_info(user_id=None, manage=False)`，并按筛选语义返回不同结构
+当前前端实际需要：
+教师端切换条至少需要 `syllabus_id`、`title`、`syllabus_permission`、`graph_id`、`graph_name`、`day_one_time`、`edu_calendar_path`、`syllabus_draft_path`、`syllabus_path`
+学生端切换条至少需要 `syllabus_id`、`title`、`isLearning`、`personal_syllabus_path`、`day_one_time`
+对齐建议：
+沿用 `list_syllabuses_api()` 作为统一列表接口，当前已支持两类索取方式：
+1. `{"user_id": X, "manage": true}`：教师端管理视图，只返回当前用户可管理的 syllabus，字段包含 `syllabus_permission`、`graph_id`、`graph_name` 等教师端所需信息。
+2. `{"user_id": X, "manage": false}` 或 `{"user_id": X}`：学生端学习视图，返回当前用户绑定的 syllabus，字段包含 `isLearning`、`personal_syllabus_path` 等学生端所需信息。
+补充说明：当前仍保留 `user_id` 为空时返回全量教师形态 syllabus 列表的兼容分支，用于未接入用户过滤时的全量查看。
+
+2. `get_syllabus_detail_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/detail`
+当前参数：`syllabus_id`
+当前 task：`tasks.syllabus_task.get_syllabus_detail_info(syllabus_id)`
+当前 task 返回：最终版教学大纲的完整原始 json，或 `None`
+当前前端实际需要：
+得到最终版教学大纲的完整原始 json，例如 `title`、`day_one`、`graph_name`、`period`；其中 `graph_name` 当前还被用于“编辑教学大纲”弹窗的图谱名称回显。
+对齐建议：
+`get_syllabus_detail_api()` 只返回最终版 `syllabus` 的完整原始 json。
+
+3. `get_syllabus_status_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/status`
+当前参数：`syllabus_id`
+对应 task：`tasks.syllabus_task.get_syllabus_status(syllabus_id)`
+当前方法用途：
+服务教师端“教学大纲”卡片、创建/编辑教学大纲弹窗步骤跳转、灰化逻辑。
+返回字段：
+`is_edu_calendar_path_null`、`is_syllabus_draft_path_null`、`is_syllabus_path_null`
+说明：
+当前 task 会同时检查数据库路径字段与对应文件是否实际存在；只要路径为空或文件缺失，就视为对应阶段未就绪。
+
+二、图谱选择与创建
+
+4. `list_graphs_brief_info_api()`
+位置：`blueprint/knowledge_build_api.py`
+当前 blueprint：`GET /api/job/graph/list`
+当前前端实际需要：
+“创建教学大纲”弹窗左侧下拉框需要得到 `graph_id`、`graph_name` 列表
+当前返回：
+`{"success": true|false, "graphs": [{"graph_id": int, "graph_name": str}, ...], ...}`
+补充说明：
+当前 task 层已通过 `graph_repo.list_graphs()` 提供简表实现，blueprint 直接透传即可。
+
+5. `create_graph_api()`
+位置：`blueprint/knowledge_build_api.py`
+当前 blueprint：`POST /api/job/graph/create`
+当前前端实际需要：
+“创建教学大纲”弹窗左侧要通过图谱名称创建新图谱，并在成功后做一次软刷新，自动将新图谱设为当前选择
+当前参数：
+`graph_name`
+当前返回：
+`{"success": true|false, "graph": {"graph_id": int, "graph_name": str}|null, ...}`
+补充说明：
+这里的 `graph_name` 在 task / repo 中统一视为 `graphId`；`graph_id` 仅表示本地数据库自增 id。当前 `create_graph_api()` 已按这层语义落地。
+
+三、创建 / 编辑教学大纲弹窗链路
+
+6. `upload_calendar()`
+位置：`blueprint/file_transmit_api.py`
+当前 blueprint：`POST /upload_calendar`
+当前参数：`file_name`、`file_bytes`、`upload_time`
+当前返回：`file.file_id`、`syllabus.syllabus_id`
+当前前端实际需要：
+用于“创建新的教学大纲”弹窗右侧上传教学日历
+对齐说明：
+当前前端已改为不再预造本地 `syllabusId`，而是在上传成功后以 `upload_calendar()` 返回的真实 `syllabus_id` 为准，将新 syllabus 插入本地列表并继续后续草稿/终稿流程；后端方法本身保持不变。
+
+7. `build_syllabus_draft_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/build_draft`
+当前参数：`syllabus_id`、`graph_id`、`initial_prompt`
+当前 task：`tasks.syllabus_task.build_syllabus_draft(syllabus_id, graph_id, initial_prompt)`
+说明：
+该方法名与参数已经足够接住当前前端“选定 graph 后生成教学大纲草稿”的动作。当前前端弹窗第一步右侧灰化逻辑只是前端约束，不要求后端另改方法名。
+
+8. `get_syllabus_draft_detail_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/draft/detail`
+当前方法用途：
+服务教学大纲草稿编辑步骤
+当前参数：`syllabus_id`
+对应 task：`tasks.syllabus_task.get_syllabus_draft_detail_info(syllabus_id)`
+当前 task 返回：草稿版教学大纲的完整原始 json，或 `None`
+说明：
+`get_syllabus_draft_detail_api()` 应只返回 `syllabus_draft` 的完整原始 json，不应并入 `get_syllabus_detail_api()`。当前后端已按该标准拆分完成；前端 mock 与伪解析也应保持一一对应。
+
+9. `update_syllabus_draft_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/update_draft`
+当前参数：
+`syllabus_id`、`syllabus_draft_json`
+当前 task：`tasks.syllabus_task.update_syllabus_draft_json(...)`
+当前前端实际需要：
+当前前端草稿编辑弹窗是在横向周次数轴上本地编辑整份 syllabus draft 原始 json，保存时直接提交：
+`{ syllabusId, syllabusDraftJson }`
+对齐说明：
+当前后端已改为直接接收整份 `syllabus_draft_json`，task 会整体覆写 draft json；前端 mock 与伪解析也已按整份 draft json round-trip 对齐。
+
+10. `build_syllabus_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/build`
+当前参数：`syllabus_id`
+当前 task：`tasks.syllabus_task.build_syllabus(syllabus_id)`
+对齐说明：
+当前 blueprint 与 task 均已移除 `graph_name` 入参；`build_syllabus()` 会在内部通过 `repositories.syllabus_graph_repo.list_graphs_by_syllabus(syllabus_id)` 找到关联 `graph_id`，再通过 `repositories.graph_repo.get_graph_by_id(graph_id)` 取得 `graph.graphId` 供 KnowLion 使用。
+
+11. `update_syllabus_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/update`
+当前 task：`tasks.syllabus_task.update_syllabus_json(syllabus_id, syllabus_json)`
+当前前端实际需要：
+当前前端“编辑教学大纲终稿”保存时，直接提交整份 syllabus 原始 json
+当前参数：
+`syllabus_id`、`syllabus_json`
+说明：
+当前 blueprint 已改为整份 json 转发，task 会整体覆写 final syllabus json。前端终稿教学大纲编辑区也已允许修订 `enhanced_content`，但 `original_content` 保持只读。补充约束：`update_syllabus_json()` 在保存终稿后，还应同步刷新所有关联 `personal_syllabus` 的 `content / enhanced_content / week_index` 结构，并按 `week_index` 保留学生已有的 `competance`、`competance_progress`、`suggested_competance_list`、`updated_at`。
+
+四、教师端教学材料上传、文件列表与 job 状态
+
+12. `upload_knowledge_source()`
+位置：`blueprint/file_transmit_api.py`
+当前 blueprint：`POST /upload`
+当前参数：`file_name`、`file_bytes`、可选 `upload_time`、`file_type`
+当前返回：`file.file_id`
+当前前端实际需要：
+教师页“上传教学材料”区域的 dropbox 在正式对齐时应先调用它上传文件，再进入 job 创建链路；学生页“学习内容记录”方式 A 若走文件上传，也应复用这一入口。
+说明：
+当前前端教师页这块还只是本地插入假 `graph-file`，尚未真正发请求；但后端方法名可以直接沿用现有的 `upload_knowledge_source()`。
+
+13. `create_job_api()`
+位置：`blueprint/knowledge_build_api.py`
+当前 blueprint：`POST /api/job/create`
+当前参数：`graph_id`、`file_id`、可选 `end_stage`
+当前 task：`jobs_task.create_process_job(graph_id, file_id, end_stage)`
+当前前端实际需要：
+教师页上传教学材料后，应立刻以 `graph_id + file_id` 创建 job，用于后续图谱构建 / 解析进度展示
+说明：
+当前前端 mock 还没真正接上这一步，但从教师页“graph-file 卡片展示 job tag”的现状来看，下一步真实对齐必须走这条链。
+
+14. `list_jobs_api()`
+位置：`blueprint/knowledge_build_api.py`
+当前 blueprint：`GET /api/job/list`
+当前参数：查询参数 `graph_id`、`file_id`、`status`
+当前前端实际需要：
+教师页 graph-file 列表需要按 `graph_id` 拉取 jobs，并把 `status / stage / progress_index / end_stage` 显示到文件卡片 tag 上
+说明：
+该方法名与当前前端需求基本一致，可以直接使用。
+
+15. `list_graph_files_api()` / `list_syllabus_files_api()`
+位置：`blueprint/file_transmit_api.py`
+当前 blueprint：
+`POST /list_graph_files`
+`POST /list_syllabus_files`
+当前方法用途：
+`list_graph_files_api(graph_id_list)` 用于教师页展示 知识来源 材料
+`list_syllabus_files_api(syllabus_id_list)` 用于教师页材料架、学生页默认推荐材料
+当前底层调用：
+统一走 `tasks.file_task.list_all_files_brief_info(graph_id_list=None, syllabus_id_list=None)`
+blueprint 通过控制传入的参数表来引导 task 发生不同的行为。
+当前返回字段：
+`file_id`、`filename`、`path`、`source`、可选 `week_index_list`
+补充说明：
+当前 `list_all_files_brief_info()` 已落地为统一文件简表查询：
+1. `graph_id_list` 分支通过 `filegraph` 关系返回 `graph-file`
+2. `syllabus_id_list` 分支返回教学日历文件与该 syllabus 下 material 对应文件，统一标记为 `syllabus-file`
+3. `week_index_list` 当前仅在 syllabus-material 关系可从 `syllabusmaterials` 中稳定反查时返回；graph-file 侧数据库当前没有周次绑定，因此不额外伪造
+
+五、教师端教学习题 / material 流程
+
+16. `list_materials_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/list`
+当前参数：可选 `syllabus_id`
+当前行为：
+有 `syllabus_id` 时调用 `tasks.material_gen_task.list_materials_draft_brief_info(syllabus_id)`
+当前前端实际需要：
+教师页“教学习题构建”卡片展示当前 syllabus 下的 material 草稿 / 终稿一览
+说明：
+当前方法名可以继续用，但正式对齐时要确保返回里带出 `material_id`、`title`、`draft_path`、`final_path`、`pdf_path`、`create_time`。
+
+17. `generate_material_draft_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/generate_draft`
+当前参数：`syllabus_id`、`involved_weeks`、`question_type_distribution`
+当前 task：`tasks.material_gen_task.generate_material_draft(...)`
+说明：
+与当前前端“选择已有 material / 设 involved_weeks 与题量分布后生成草稿”的主流程兼容。当前前端额外带了 `materialId`，但现有 blueprint 并不接收该字段；正式对齐时可以忽略该额外字段，或单独定义“覆盖已有草稿”的语义。
+补充约束：
+这一条当前 blueprint 本身没有接收 `graph_name`，task 也已改为不再从 syllabus json 或旧字段兜底取 `graph_name`；而是统一先由 `syllabus_id` 反查关联 `graph_id`，再取对应 `graph.graphId`。
+
+18. `get_material_draft_detail_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/draft/detail`
+当前方法用途：
+服务 material 草稿编辑步骤
+当前参数：`material_id`
+对应 task：`tasks.material_gen_task.get_material_draft_detail_info(material_id)`
+说明：
+当前 blueprint 已补齐，直接返回 `material_draft` 的完整原始 json，供前端草稿编辑步骤使用。
+
+19. `update_material_draft_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/update_draft`
+当前参数：
+`material_id`、`material_draft_json`
+当前前端实际需要：
+草稿编辑界面已允许编辑 `material_title`、`involved_weeks`、每题的 `related_knowledge`、`query_key`
+对齐说明：
+当前 blueprint 已改为接收整份 `material_draft_json`，对应 task 为 `tasks.material_gen_task.update_material_draft_json(...)`；前端 mock 与伪解析也已按整份 draft json round-trip 对齐。
+
+20. `generate_final_material_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/generate_final`
+当前参数：`material_id`
+当前 task：`tasks.material_gen_task.generate_final_material(material_id)`
+说明：
+当前方法名与前端“生成习题终稿”动作一致。
+补充约束：
+当前 task 已按要求收口：先由 `material_id` 找到 `syllabus_id`，再通过 `repositories.syllabus_graph_repo.list_graphs_by_syllabus(syllabus_id)` 找到关联 `graph_id`，再取 `graph.graphId` 用于可选图谱检索增强；不再显式接收 `graph_name`，也不依赖旧的 syllabus json 残留字段。
+
+21. `get_material_detail_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/detail`
+当前参数：`material_id`
+当前 task：`tasks.material_gen_task.get_material_detail_info(material_id)`
+说明：
+当前前端“编辑习题终稿”步骤需要读取最终题目 json，这个方法名可直接沿用。
+
+22. `get_material_status_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/status`
+当前参数：`material_id`
+对应 task：`tasks.material_task.get_material_status(material_id)`
+当前方法用途：
+服务习题弹窗步骤跳转与状态判断
+返回字段：
+`is_material_draft_path_null`、`is_material_path_null`
+说明：
+当前 task 会同时检查数据库路径字段与对应文件是否实际存在；只要路径为空或文件缺失，就视为对应阶段未就绪。
+
+23. `update_final_material_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/update`
+对应 task：`tasks.material_gen_task.update_final_material_json(material_id, material_json)`
+当前参数：
+`material_id`、`material_json`
+当前前端实际需要：
+最终题目编辑界面已允许编辑 `question_content`、`answer`、`reason`，且 `SINGLE` 题已支持 A/B/C/D 选项编辑
+对齐说明：
+当前 blueprint 已补齐，task 已改为接收整份 `material_json` 并整体覆写 final material json；前端 mock 与伪解析也已按整份 final json round-trip 对齐。
+
+24. `publish_material_api()`
+位置：`blueprint/syllabus_material_api.py`
+当前 blueprint：`POST /api/syllabus/material/publish`
+当前参数：`material_id`、可选 `new_pdf`、`do_publish`
+当前 task：`tasks.material_gen_task.publish_material(material_id, new_pdf=False, do_publish=False)`
+说明：
+与当前前端发布步骤一致。当前前端弹窗里就是两个勾选项加一个执行按钮。
+
+六、学生端学习切换、personal_syllabus、提问与学习记录
+
+25. `init_personal_syllabus_api()`
+位置：`blueprint/learning_api.py`
+当前 blueprint：`POST /api/learning/init_personal_syllabus`
+当前参数：`user_id`、`syllabus_id`
+当前返回：`user_id`、`syllabus_id`、`personal_syllabus_path`
+说明：
+与当前前端“选择学习”动作一致。
+
+26. `get_personal_syllabus_detail_info_api()`
+位置：`blueprint/learning_api.py`
+当前 blueprint：`POST /api/learning/personal_syllabus/detail`
+当前参数：`user_id`、`syllabus_id`
+当前 task：`tasks.learning_task.get_personal_syllabus_detail_info(user_id, syllabus_id)`
+说明：
+当前前端 personal_syllabus 数轴展示需要这条方法。
+
+27. `update_personal_syllabus_api()`
+位置：`blueprint/learning_api.py`
+当前 blueprint：`POST /api/learning/update_personal_syllabus`
+对应 task：`tasks.learning_task.update_personal_syllabus(user_id, syllabus_id, week_index, study_time_spent=-1, competance=None, competance_progress=None)`
+当前前端实际需要：
+学生端“学习内容记录”方式 B 现在已经必须指定 `weekIndex`，并提交 `studyTimeSpent`
+当前参数：
+`user_id`、`syllabus_id`、`week_index`、`study_time_spent`
+说明：
+当前 blueprint 已补齐，并且只透传公开需要的 `study_time_spent` 路径；task 里用于调试的 `competance`、`competance_progress` 不通过 blueprint 暴露。
+
+28. `ask_question_api()`
+位置：`blueprint/learning_api.py`
+当前 blueprint：`POST /api/learning/ask_question`
+对应 task：`tasks.learning_task.ask_question(user_id, syllabus_id, question)`
+当前 task 返回的核心字段：
+`answer`、`matched_files`、`raw`
+当前前端实际需要：
+提问区提交后，拿回答文本与推荐材料列表；推荐材料会据 `matched_files` 再去和 syllabus-file / material 做映射
+当前参数：
+`user_id`、`syllabus_id`、`question`
+对齐说明：
+当前 blueprint 已补齐；前端提问调用也已显式补上 `user_id`。当前 route 直接透传 task 返回的 `answer`、`matched_files`、`raw`。
+前端联调项：`ask_question_api()` 成功后，应立即再调用一次 `get_personal_syllabus_detail_info_api()` 做软刷新，以同步时间轴上的 `competance`、`competance_progress`、`updated_at` 最新状态；不应依赖 `competance_list` 直接回传给前端展示。
+
+29. `submit_learning_record_api()`
+建议位置：`blueprint/learning_api.py`
+建议方法用途：
+服务学生端“学习内容记录”方式 A
+建议调用链：
+先走 `upload_knowledge_source()` 拿到 `file_id`，再调用 `submit_learning_record_api(user_id, syllabus_id, file_id, note)`
+建议参数：
+`user_id`、`syllabus_id`、`file_id`、可选 `note`
+补充说明：
+当前前端方式 A 已有真实 dropbox 与补充说明输入区，但 backend 的 task / blueprint 里还没有对应方法名，4 月 6 日备忘也没有进一步写清这条记录落库后要不要直接影响 `personal_syllabus`。因此这里只能先补一个最小可对齐方案：至少能把“上传的学习记录文件 + 文本说明 + 所属 syllabus / user”提交到后端。 - 方式A暂缓实现。
+
+七、当前已存在但本轮不必优先接入的 job 方法
+
+30. `pause_job_api()`、`resume_job_api()`、`end_job_api()`
+位置：`blueprint/knowledge_build_api.py`
+说明：
+这三条方法在 blueprint 中已经有实现，但当前前端界面还没有对应交互按钮，本轮 API 对齐可以先不接。
+
+八、需要特别记住的前后端差异
+
+31. 教师端“创建新的教学大纲”已对齐：前端不再本地预造 `syllabus_id`，而是以上传教学日历后返回的真实 `syllabus_id` 为准，再继续后续草稿/终稿流程。
+
+32. 教学大纲草稿保存已进一步收口：当前前端保存整份 `syllabus_draft_json`，后端 `update_syllabus_draft_api()` 也已改为整份 json 提交。
+
+33. syllabus / material 四类 update 当前已统一收口为整份 json 提交：
+`update_syllabus_draft_api(syllabus_id, syllabus_draft_json)`
+`update_syllabus_api(syllabus_id, syllabus_json)`
+`update_material_draft_api(material_id, material_draft_json)`
+`update_final_material_api(material_id, material_json)`
+当前前端 mock 与伪解析也已按这一组契约调整完毕；其中终稿教学大纲编辑区已允许修订 `enhanced_content`，但 `original_content` 仍保持只读。
+
+34. 图谱创建当前前端已经明确要求按 `graph_name` 创建，并在成功后软刷新；这里的 `graph_name` 在后端 task / repo 中应统一视为 `graphId`（图数据库使用的名称字符串），与本地数据库自增 `graph_id` 严格区分。当前这部分已开始按该约束实现。
+
+35. 除 `build_syllabus_draft_api()` 外，后续 syllabus / material 各类 API 不应再显式接收 `graph_name`；对应 task 里对 `graph_name` 入参的依赖也应统一弃用，改为通过 `repositories.syllabus_graph_repo.list_graphs_by_syllabus()` 反查。当前 `build_syllabus_api()` 与 material 相关方法均已按这一约束收口；其中 material 草稿生成已改为 `syllabus_id -> graph_id -> graph.graphId`，其余 material 方法当前也未显式接收 `graph_name`。补充注意：`blueprint/syllabus_material_api.py` 中 `build_syllabus_api()` 的注释文本仍残留 `graph_name (optional)` 字样，但这只是注释未更新，不是实际接口契约。
+36. 文件列表关系已对齐到可请求状态：`tasks.file_task.list_all_files_brief_info(...)` 已实现，`blueprint/file_transmit_api.py` 也已补上 `list_graph_files_api()` 与 `list_syllabus_files_api()`。当前需要记住的真实边界是：`week_index_list` 只在 syllabus-material 侧能从现有数据库关系稳定得到，graph-file 侧暂无这层关系，因此不应要求后端伪造该字段。
+37. `update_syllabus_json()` 同步相关 `personal_syllabus` 的实现难度评估：中低。原因是 `user_syllabus` 表里已经有 `personal_syllabus_path`，只需补一个按 `syllabus_id` 反查绑定关系的方法，再在 task 内按 `week_index` 重建 personal_syllabus 的 `period`，同时保留学生已有掌握度字段即可。当前这一项已完成；剩余需要注意的边界主要是“如果终稿重排或更改 week_index，本次同步会把旧进度视为新周次映射失败，从而按新周次重置默认掌握度”。

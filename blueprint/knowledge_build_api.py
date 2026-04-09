@@ -1,17 +1,75 @@
 from flask import Blueprint, request, jsonify
-from tasks import jobs_task
+from tasks import graph_task, jobs_task
 
 
 bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api/job')
 
 
 # 创建新的图谱
-# TODO
-# def create_graph_api():
 
 # 展示所有图谱
 # TODO
-# def list_graphs_api():
+# def list_graphs_brief_info_api():
+
+# 理论先执行file_transmit_api里的上传，再执行这个，再来做图谱构建的job管理接口
+@bp.route('/graph/create', methods=['POST'])
+def create_graph_api():
+    data = request.get_json(silent=True) or {}
+    graph_name = data.get('graph_name')
+
+    if graph_name is None or str(graph_name).strip() == '':
+        return jsonify({
+            'success': False,
+            'graph': None,
+            'error_message': 'missing graph_name',
+            'error_code': 'missing_fields'
+        }), 400
+
+    try:
+        graph = graph_task.create_graph(str(graph_name))
+        if not graph:
+            return jsonify({
+                'success': False,
+                'graph': None,
+                'error_message': 'create graph failed',
+                'error_code': 'create_failed'
+            }), 500
+
+        return jsonify({
+            'success': True,
+            'graph': {
+                'graph_id': getattr(graph, 'graph_id', None),
+                'graph_name': getattr(graph, 'graphId', None)
+            },
+            'error_message': '',
+            'error_code': ''
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'graph': None,
+            'error_message': str(e),
+            'error_code': 'exception'
+        }), 500
+
+@bp.route('/graph/list', methods=['GET'])
+def list_graphs_brief_info_api():
+    try:
+        rows = graph_task.list_graphs_brief_info()
+        return jsonify({
+            'success': True,
+            'graphs': rows,
+            'error_message': '',
+            'error_code': ''
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'graphs': [],
+            'error_message': str(e),
+            'error_code': 'exception'
+        }), 500
+
 
 @bp.route('/create', methods=['POST'])
 def create_job_api():

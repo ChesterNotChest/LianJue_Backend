@@ -226,6 +226,68 @@ def upload_calendar():
         }), 500
 
 
+@app.route('/list_graph_files', methods=['POST'])
+def list_graph_files_api():
+    data = request.get_json(silent=True) or {}
+    graph_id_list = data.get('graph_id_list')
+
+    if not isinstance(graph_id_list, list):
+        return jsonify({
+            "success": False,
+            "files": [],
+            "error_message": "missing graph_id_list",
+            "error_code": "missing_fields"
+        }), 400
+
+    try:
+        files = list_all_files_brief_info(graph_id_list=graph_id_list, syllabus_id_list=None, material_id_list=None)
+        return jsonify({
+            "success": True,
+            "files": files,
+            "error_message": "",
+            "error_code": ""
+        }), 200
+    except Exception as e:
+        logger.exception("list_graph_files_api failed")
+        return jsonify({
+            "success": False,
+            "files": [],
+            "error_message": str(e),
+            "error_code": "exception"
+        }), 500
+
+
+@app.route('/list_syllabus_files', methods=['POST'])
+def list_syllabus_files_api():
+    data = request.get_json(silent=True) or {}
+    syllabus_id_list = data.get('syllabus_id_list')
+
+    if not isinstance(syllabus_id_list, list):
+        return jsonify({
+            "success": False,
+            "files": [],
+            "error_message": "missing syllabus_id_list",
+            "error_code": "missing_fields"
+        }), 400
+
+    try:
+        files = list_all_files_brief_info(graph_id_list=None, syllabus_id_list=syllabus_id_list, material_id_list=None)
+        return jsonify({
+            "success": True,
+            "files": files,
+            "error_message": "",
+            "error_code": ""
+        }), 200
+    except Exception as e:
+        logger.exception("list_syllabus_files_api failed")
+        return jsonify({
+            "success": False,
+            "files": [],
+            "error_message": str(e),
+            "error_code": "exception"
+        }), 500
+
+
 def list_all_files():
     return list_all_files_brief_info(graph_id_list=None, syllabus_id_list=None, material_id_list=None)
 

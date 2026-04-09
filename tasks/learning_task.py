@@ -50,13 +50,9 @@ personal_sylllabus的*每个周*都多包括如下字段：
 
 def ask_question(user_id: int, syllabus_id: int, question: str):
     '''
-    里面的大部分是伪代码。主要用于描述流程逻辑。
     1. 获取当前时间戳
-
-
     2. 获取personal_syllabus_path（从user_syllabus表中获取），并获取json文件内容，来定位应该在 第几周。
         _get_current_week(syllabus_id, current_time)
-
     3. 让大模型用 学生的提问 来与 教学大纲中每周的描述性内容 做语义比对，来判断学生提问对应的是 哪几周。
         relevant_week_list = _get_relevant_week_by_semantic(question, syllabus_id)
         RAG_list = []
@@ -66,7 +62,6 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
                 "week_index": week_index,
                 "rag_content": _search_method(enhanced_content)
             })
-        
     4. history_window = 由一个 syllabus_id_student_id.json 维护，最大长度为5，来存储学生的提问历史和大模型的回答历史（仅包含timestamp, question, answer这3个字段）。
     5. user_prompt: question + 应处周次 + 实际周次-RAG结果 + 掌握度（如果有的话）
     6. system_prompt: 要求产出 {answer + document_names[...] + competance_list（掌握度） [{week_index: weak_far/weak/normal/master/master_far}, ...]}
@@ -103,6 +98,10 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
         personal_path = getattr(ps, 'personal_syllabus_path', None) if ps else None
 
     # 2. 当前处在第几周
+    if not personal_path or not os.path.exists(personal_path):
+        print(f"[LEARNING] personal_syllabus init/load failed: user_id={user_id}, syllabus_id={syllabus_id}")
+        return None
+
     current_week = _get_current_week(syllabus_id, now_ts)
 
     # 3. 语义比对定位相关周次
@@ -202,7 +201,7 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
 
 输出策略：
 - `answer` 应基于提供的 RAG 检索内容与教学周片段，优先引用高置信度检索结果；若检索不足，可基于通用教学知识给出简洁答案。
-- `document_names` 列出用于回答的主要文档名称（若无可匹配文档，则可留空列表）。
+- `document_names` 包含在rag结果中，每个记录的开头就是文档名称。列出用于回答的主要文档名称（若无可匹配文档，则可留空列表）。
 - `competance_list` 针对 `relevant_weeks` 中的周次按本次提问质量评估建议的掌握度，取值必须是 weak_far|weak|normal|master|master_far。
 - 只在匹配度明确时才标注 weak_far 或 master_far；不要输出其他未在此枚举中的等级字符串。
 
@@ -289,7 +288,6 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
     out = {
         'answer': parsed.get('answer') if isinstance(parsed, dict) else str(parsed),
         'matched_files': matched,
-        'competance_list': competance_list,
         'raw': parsed
     }
     return out
@@ -320,6 +318,7 @@ def init_personal_syllabus(user_id: int, syllabus_id: int):
             "week_index": entry.get('week_index'),
             "content": entry.get('content'),
             "enhanced_content": entry.get('enhanced_content'),
+            "importance": entry.get('importance'),
             "competance": "none",
             "competance_progress": 0,
             "suggested_competance_list": [],
@@ -346,6 +345,70 @@ def init_personal_syllabus(user_id: int, syllabus_id: int):
     if not ps:
         return False
     return abs_path
+
+
+def _hydrate_personal_syllabus_fields(personal_path: str, syllabus_id: int):
+    if not personal_path or not os.path.exists(personal_path):
+        return None
+
+    try:
+        with open(personal_path, 'r', encoding='utf-8') as f:
+            personal_json = json.load(f)
+    except Exception:
+        return None
+
+    syllabus = get_syllabus_by_id(syllabus_id)
+    syllabus_json = None
+    if syllabus and getattr(syllabus, 'syllabus_path', None) and os.path.exists(syllabus.syllabus_path):
+        try:
+            with open(syllabus.syllabus_path, 'r', encoding='utf-8') as f:
+                syllabus_json = json.load(f)
+        except Exception:
+            syllabus_json = None
+
+    if not isinstance(personal_json, dict) or not isinstance(syllabus_json, dict):
+        return personal_json
+
+    syllabus_period = syllabus_json.get('period', [])
+    personal_period = personal_json.get('period', [])
+    if not isinstance(syllabus_period, list) or not isinstance(personal_period, list):
+        return personal_json
+
+    syllabus_by_week = {
+        str(entry.get('week_index')): entry
+        for entry in syllabus_period
+        if isinstance(entry, dict) and entry.get('week_index') is not None
+    }
+
+    changed = False
+    for entry in personal_period:
+        if not isinstance(entry, dict) or entry.get('week_index') is None:
+            continue
+
+        source = syllabus_by_week.get(str(entry.get('week_index')))
+        if not isinstance(source, dict):
+            continue
+
+        if 'importance' not in entry or entry.get('importance') is None:
+            entry['importance'] = source.get('importance')
+            changed = True
+
+        if ('content' not in entry or entry.get('content') is None) and source.get('content') is not None:
+            entry['content'] = source.get('content')
+            changed = True
+
+        if ('enhanced_content' not in entry or entry.get('enhanced_content') is None) and source.get('enhanced_content') is not None:
+            entry['enhanced_content'] = source.get('enhanced_content')
+            changed = True
+
+    if changed:
+        try:
+            with open(personal_path, 'w', encoding='utf-8') as f:
+                json.dump(personal_json, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    return personal_json
 
 def _manage_forgetting_curve():
     '''
@@ -777,10 +840,8 @@ def update_personal_syllabus(user_id: int, syllabus_id: int, week_index: int, st
     if not personal_path or not os.path.exists(personal_path):
         return None
 
-    try:
-        with open(personal_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except Exception:
+    data = _hydrate_personal_syllabus_fields(personal_path, syllabus_id)
+    if not isinstance(data, dict):
         return None
 
     period = data.get('period', [])
@@ -878,11 +939,7 @@ def get_personal_syllabus_detail_info(user_id: int, syllabus_id: int) -> dict:
     if not personal_path or not os.path.exists(personal_path):
         return None
 
-    try:
-        with open(personal_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return None
+    return _hydrate_personal_syllabus_fields(personal_path, syllabus_id)
 
 
 
