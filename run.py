@@ -26,8 +26,6 @@ cfg = get_config()
 proc_cfg = cfg.get("PROCESSING_CONFIG", {}) if isinstance(cfg, dict) else {}
 model_path = str(Path(proc_cfg.get("MODEL_PATH", "./model")).resolve())
 
-#TODO
-# OCR本地模型路径
 
 def main():
     parser = argparse.ArgumentParser(description="批量处理文件夹下的文档并写入图数据库")

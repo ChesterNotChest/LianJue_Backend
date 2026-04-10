@@ -4,11 +4,14 @@ from pathlib import Path
 import os
 import json
 import time
-from repositories.file_repo import create_file
+from tasks.file_task import add_file as add_file_task
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
-from repositories.syllabus_graph_repo import create_syllabus_graph
+from repositories.syllabus_graph_repo import create_syllabus_graph, list_graphs_by_syllabus
+from repositories.graph_repo import get_graph_by_id
+from repositories.user_syllabus_repo import list_user_syllabuses, list_user_syllabuses_by_syllabus
 from schemas.syllabus import Syllabus
+from constant import SyllabusPermission
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from utils.llm_utils import get_model_instance
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,12 +19,14 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from extensions import db
 
 
-def upload_calendar(file_path, upload_time: str = None) -> Syllabus:
+def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
-    file = create_file(file_path=file_path, upload_time=upload_time)
-    file_id = file.file_id if file else None
+    # persist file bytes if provided, otherwise just register path
+    save_dir = os.path.dirname(file_path)
+    fname = file_name
+    file_id = add_file_task(save_dir, fname, file_bytes=file_bytes, upload_time=upload_time)
     syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
     
     return syllabus
@@ -41,6 +46,8 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     '''
     # 构建syllabus草稿，生成一个新的syllabus记录
     syllabus = get_syllabus_by_id(syllabus_id)
+
+    # TODO 加上 syllabusgraph 的记lu
 
     # 1. 解析教学日历，提取关键信息
     file_id = syllabus.file_id
@@ -195,161 +202,289 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     return syllabus
 
 
-def update_syllabus_draft(syllabus_id: int, week_index: str, day_one: str = None, new_content: str = None, new_importance: str = None, new_title: str = None) -> Syllabus:
-    """Update an existing syllabus draft JSON for a given `syllabus_id`.
+def _validate_syllabus_period(period: list) -> bool:
+    if not isinstance(period, list):
+        print("   [UPDATE] `period` must be a list.")
+        return False
+    if not all(isinstance(entry, dict) for entry in period):
+        print("   [UPDATE] each `period` entry must be a dict.")
+        return False
+    if any(entry.get('week_index') is None for entry in period):
+        print("   [UPDATE] every `period` entry must contain `week_index`.")
+        return False
+    return True
 
-    - Only updates fields that already exist in the matched week entry.
-    - `week_index` is used for matching and will not be modified.
-    - `new_importance` must be one of: 'low', 'medium', 'high' (case-insensitive accepted).
-    - `new_content` must be a string.
-    - `day_one` is mandatory and is used for positioning the begin of semester, it will not be updated but is required for locating the correct week entry in the draft.
 
-    Returns the `Syllabus` object on success, or None on failure.
-    """
-    # validate inputs (allow updating title or day_one even if content/importance absent)
-    if new_content is None and new_importance is None and new_title is None and (day_one is None or (isinstance(day_one, str) and day_one.strip() == "")):
-        print("   ⚠️ [POST] 没有要更新的字段（content/importances/title/day_one）。")
+def _read_json_from_path(path_value: str):
+    try:
+        return json.loads(Path(path_value).read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"   [UPDATE] failed to read/parse json file: {e}")
         return None
 
-    if new_importance is not None:
-        ni = new_importance.lower()
-        if ni not in ("low", "medium", "high"):
-            print("   ❌ [POST] importance 必须是 'low'/'medium'/'high'。")
-            return None
-        new_importance = ni
 
-    if new_content is not None and not isinstance(new_content, str):
-        print("   ❌ [POST] new_content 必须是字符串。")
+def _write_json_to_path(path_value: str, payload: dict) -> bool:
+    try:
+        Path(path_value).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        return True
+    except Exception as e:
+        print(f"   [UPDATE] failed to save json file: {e}")
+        return False
+
+
+def _parse_day_one_string(day_one: str):
+    if not day_one:
+        return None
+    try:
+        if re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', day_one):
+            return datetime.strptime(day_one, '%Y-%m-%d')
+        if re.match(r'^\d{1,2}-\d{1,2}$', day_one):
+            month, day = day_one.split('-')
+            return datetime(datetime.utcnow().year, int(month), int(day))
+        return datetime.fromisoformat(day_one)
+    except Exception:
+        return None
+
+
+def _is_missing_path(path_value) -> bool:
+    if not path_value or not isinstance(path_value, str):
+        return True
+    return not os.path.exists(path_value)
+
+
+def _sync_personal_syllabuses_from_syllabus_json(syllabus_id: int, syllabus_json: dict) -> int:
+    if not isinstance(syllabus_json, dict):
+        return 0
+
+    period = syllabus_json.get('period')
+    if not isinstance(period, list):
+        return 0
+
+    try:
+        bindings = list_user_syllabuses_by_syllabus(syllabus_id)
+    except Exception as e:
+        print(f"   [UPDATE] failed to list related personal_syllabus bindings: {e}")
+        return 0
+
+    synced_count = 0
+
+    for binding in bindings:
+        personal_path = getattr(binding, 'personal_syllabus_path', None)
+        if not personal_path or not os.path.exists(personal_path):
+            continue
+
+        existing_json = _read_json_from_path(personal_path)
+        if not isinstance(existing_json, dict):
+            continue
+
+        existing_period = existing_json.get('period')
+        if not isinstance(existing_period, list):
+            existing_period = []
+
+        existing_by_week = {
+            str(entry.get('week_index')): entry
+            for entry in existing_period
+            if isinstance(entry, dict) and entry.get('week_index') is not None
+        }
+
+        synced_period = []
+        for syllabus_entry in period:
+            if not isinstance(syllabus_entry, dict):
+                continue
+
+            week_key = str(syllabus_entry.get('week_index'))
+            existing_entry = existing_by_week.get(week_key, {})
+            synced_period.append({
+                'week_index': syllabus_entry.get('week_index'),
+                'content': syllabus_entry.get('content'),
+                'enhanced_content': syllabus_entry.get('enhanced_content'),
+                'importance': syllabus_entry.get('importance'),
+                'competance': existing_entry.get('competance', 'none'),
+                'competance_progress': existing_entry.get('competance_progress', 0),
+                'suggested_competance_list': existing_entry.get('suggested_competance_list', []),
+                'updated_at': existing_entry.get('updated_at', 0),
+            })
+
+        existing_json['syllabus_id'] = syllabus_id
+        existing_json['user_id'] = getattr(binding, 'user_id', existing_json.get('user_id'))
+        existing_json['period'] = synced_period
+
+        if _write_json_to_path(personal_path, existing_json):
+            synced_count += 1
+
+    return synced_count
+
+
+def update_syllabus_draft_json(syllabus_id: int, syllabus_draft_json: dict) -> Syllabus:
+    """Replace the whole syllabus draft JSON with the submitted raw json."""
+    if not isinstance(syllabus_draft_json, dict):
+        print("   [UPDATE] `syllabus_draft_json` must be a dict.")
+        return None
+
+    required_fields = ('title', 'graph_name', 'period')
+    if any(field not in syllabus_draft_json for field in required_fields):
+        print(f"   [UPDATE] syllabus_draft_json must contain: {required_fields}")
+        return None
+
+    if not _validate_syllabus_period(syllabus_draft_json.get('period')):
         return None
 
     syllabus = get_syllabus_by_id(syllabus_id)
     if not syllabus:
-        print(f"   ❌ [POST] 无效的 syllabus_id: {syllabus_id}")
+        print(f"   [UPDATE] invalid syllabus_id: {syllabus_id}")
+        return None
+
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    if not draft_path or not Path(draft_path).exists():
+        print(f"   [UPDATE] draft file does not exist: {draft_path}")
+        return None
+
+    if not _write_json_to_path(draft_path, syllabus_draft_json):
+        return None
+
+    title = syllabus_draft_json.get('title')
+    if isinstance(title, str) and title.strip():
+        try:
+            set_syllabus_title(syllabus_id, title)
+        except Exception as e:
+            print(f"   [UPDATE] failed to persist draft title to DB: {e}")
+
+    print(f"   [UPDATE] syllabus draft updated and saved: {draft_path}")
+    return get_syllabus_by_id(syllabus_id)
+
+
+def get_syllabus_draft_detail_info(syllabus_id: int) -> dict:
+    """Return the full syllabus draft JSON for the given syllabus_id."""
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   ❌ [GET] 无效的 syllabus_id: {syllabus_id}")
         return None
 
     draft_path = getattr(syllabus, 'syllabus_draft_path', None)
     if not draft_path:
-        print(f"   ❌ [POST] syllabus {syllabus_id} 未配置 draft 路径。")
+        print(f"   ❌ [GET] syllabus {syllabus_id} 未配置 draft 路径。")
         return None
 
     p = Path(draft_path)
     if not p.exists():
-        print(f"   ❌ [POST] 草稿文件不存在: {draft_path}")
+        print(f"   ❌ [GET] 草稿文件不存在: {draft_path}")
         return None
 
     try:
-        data = json.loads(p.read_text(encoding='utf-8'))
+        return json.loads(p.read_text(encoding='utf-8'))
     except Exception as e:
-        print(f"   ❌ [POST] 读取或解析草稿文件失败: {e}")
+        print(f"   ❌ [GET] 读取或解析草稿文件失败: {e}")
         return None
 
-    period = data.get('period')
-    if not isinstance(period, list):
-        print("   ❌ [POST] 草稿中不包含有效的 'period' 列表，无法更新。")
+
+def get_syllabus_status(syllabus_id: int) -> dict:
+    """Return syllabus status flags for upload/draft/final readiness."""
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
         return None
 
-    # find matching week entry (match as string)
-    matched = None
-    for entry in period:
-        if str(entry.get('week_index')) == str(week_index):
-            matched = entry
-            break
+    edu_calendar_path = getattr(syllabus, 'edu_calendar_path', None)
+    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
+    final_path = getattr(syllabus, 'syllabus_path', None)
 
-    if not matched:
-        print(f"   ❌ [POST] 未找到 week_index={week_index} 的条目。")
+    return {
+        'is_edu_calendar_path_null': _is_missing_path(edu_calendar_path),
+        'is_syllabus_draft_path_null': _is_missing_path(draft_path),
+        'is_syllabus_path_null': _is_missing_path(final_path),
+    }
+    
+def _serialize_day_one_time(value):
+    if value is None:
         return None
-
-    # Only update fields that already exist in the entry
-    updated = False
-    if new_content is not None and 'content' in matched:
-        matched['content'] = new_content
-        updated = True
-    elif new_content is not None:
-        print("   ⚠️ [POST] 条目中不存在 'content' 字段，已跳过 content 更新。")
-
-    if new_importance is not None and 'importance' in matched:
-        matched['importance'] = new_importance
-        updated = True
-    elif new_importance is not None:
-        print("   ⚠️ [POST] 条目中不存在 'importance' 字段，已跳过 importance 更新。")
-
-    # allow updates that only change title or day_one even if content/importance weren't updated
-    if not updated and new_title is None and (day_one is None or (isinstance(day_one, str) and day_one.strip() == "")):
-        print("   ⚠️ [POST] 未执行任何更新（没有匹配到可修改的字段）。")
-        return None
-    elif not updated:
-        print("   ⚠️ [POST] 未执行 content/importance 更新，但将处理 title/day_one 提交。")
-
-    # If new_title provided, update the draft JSON title only (do NOT modify DB)
-    if new_title is not None:
-        try:
-            data['title'] = new_title
-            updated = True
-        except Exception as e:
-            print(f"   ⚠️ [POST] 更新 JSON 中的 title 失败: {e}")
-
-    # Determine and persist day_one handling per rules:
-    # - if day_one param is empty/None: read DB value; if DB missing -> default to '3-2' and save to DB
-    # - if day_one param provided (non-empty), set JSON and attempt to persist parsed date to DB
-    desired_day_one = None
-    if day_one is None or (isinstance(day_one, str) and day_one.strip() == ""):
-        # use DB value if present
-        db_day = getattr(syllabus, 'day_one_time', None)
-        if db_day:
-            desired_day_one = db_day.strftime('%Y-%m-%d')
-        else:
-            desired_day_one = '3-2'
-            # try to parse '3-2' into a date (current year)
-            try:
-                parts = desired_day_one.split('-')
-                month = int(parts[0])
-                day = int(parts[1])
-                year = datetime.utcnow().year
-                set_syllabus_day_one(syllabus_id, datetime(year, month, day))
-            except Exception:
-                pass
-    else:
-        # user provided a value -> set JSON and attempt to persist parsed date to DB
-        desired_day_one = day_one
-        parsed_dt = None
-        try:
-            if re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', day_one):
-                parsed_dt = datetime.strptime(day_one, '%Y-%m-%d')
-            elif re.match(r'^\d{1,2}-\d{1,2}$', day_one):
-                parts = day_one.split('-')
-                month = int(parts[0])
-                d = int(parts[1])
-                year = datetime.utcnow().year
-                parsed_dt = datetime(year, month, d)
-            else:
-                try:
-                    parsed_dt = datetime.fromisoformat(day_one)
-                except Exception:
-                    parsed_dt = None
-        except Exception:
-            parsed_dt = None
-
-        if parsed_dt is not None:
-            try:
-                set_syllabus_day_one(syllabus_id, parsed_dt)
-            except Exception:
-                pass
-
-    # write desired_day_one into matched entry
-    if desired_day_one is not None:
-        matched['day_one'] = desired_day_one
-
-    # write back
     try:
-        p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-        print(f"   💾 [POST] 草稿已更新并保存: {draft_path}")
-    except Exception as e:
-        print(f"   ❌ [POST] 保存更新失败: {e}")
-        return None
+        return value.isoformat()
+    except Exception:
+        return str(value)
 
-    return syllabus
 
-def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
+def _get_primary_graph_info(syllabus_id: int):
+    graph_ids = list_graphs_by_syllabus(syllabus_id)
+    if not graph_ids:
+        return None, None
+
+    graph = get_graph_by_id(graph_ids[0])
+    if not graph:
+        return graph_ids[0], None
+
+    return getattr(graph, 'graph_id', graph_ids[0]), getattr(graph, 'graphId', None)
+
+
+def _serialize_teacher_syllabus(syllabus, user_binding=None):
+    graph_id, graph_name = _get_primary_graph_info(getattr(syllabus, 'syllabus_id', None))
+    permission = getattr(user_binding, 'syllabus_permission', None)
+
+    return {
+        'syllabus_id': getattr(syllabus, 'syllabus_id', None),
+        'title': getattr(syllabus, 'title', None),
+        'edu_calendar_path': getattr(syllabus, 'edu_calendar_path', None),
+        'syllabus_draft_path': getattr(syllabus, 'syllabus_draft_path', None),
+        'syllabus_path': getattr(syllabus, 'syllabus_path', None),
+        'day_one_time': _serialize_day_one_time(getattr(syllabus, 'day_one_time', None)),
+        'syllabus_permission': permission,
+        'graph_id': graph_id,
+        'graph_name': graph_name,
+    }
+
+
+def _serialize_student_syllabus(syllabus, user_binding):
+    personal_path = getattr(user_binding, 'personal_syllabus_path', None)
+    return {
+        'syllabus_id': getattr(syllabus, 'syllabus_id', None),
+        'title': getattr(syllabus, 'title', None),
+        'personal_syllabus_path': personal_path,
+        'day_one_time': _serialize_day_one_time(getattr(syllabus, 'day_one_time', None)),
+        'isLearning': bool(personal_path),
+    }
+
+
+def _list_manageable_syllabuses(user_id: int):
+    bindings = list_user_syllabuses(user_id, syllabus_permission=SyllabusPermission.OWNER.value)
+    result = []
+
+    for binding in bindings:
+        syllabus = get_syllabus_by_id(getattr(binding, 'syllabus_id', None))
+        if not syllabus:
+            continue
+        result.append(_serialize_teacher_syllabus(syllabus, binding))
+
+    return result
+
+
+def _list_learning_syllabuses(user_id: int):
+    bindings = list_user_syllabuses(user_id)
+    result = []
+
+    for binding in bindings:
+        syllabus = get_syllabus_by_id(getattr(binding, 'syllabus_id', None))
+        if not syllabus:
+            continue
+        result.append(_serialize_student_syllabus(syllabus, binding))
+
+    return result
+
+
+def list_all_syllabuses_brief_info(user_id: int = None, manage: bool = False):
+    """List syllabus brief info for teacher manage view or student learning view.
+
+    - user_id is None: return all syllabuses in teacher-style shape.
+    - manage=True: return only syllabuses the user can manage (owner).
+    - manage=False: return all syllabuses bound to the user in student-style shape.
+    """
+    if user_id is None:
+        syllabuses = list_all_syllabuses()
+        return [_serialize_teacher_syllabus(s) for s in syllabuses]
+
+    if manage:
+        return _list_manageable_syllabuses(user_id)
+
+    return _list_learning_syllabuses(user_id)
+
+def build_syllabus(syllabus_id: int) -> Syllabus:
     """Build final syllabus by enriching each `period` entry.
 
     Steps:
@@ -360,7 +495,6 @@ def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
 
     Arguments:
     - syllabus_id: id of the syllabus record to process.
-    - graph_name: optional graph override (falls back to draft's graph_name).
     """
     # load syllabus record and draft
     syllabus = get_syllabus_by_id(syllabus_id)
@@ -389,9 +523,16 @@ def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
         print("   ❌ [BUILD] 草稿中不包含有效的 'period' 列表，无法构建最终 syllabus。")
         return None
 
-    # determine graph_name
-    draft_graph = data.get('graph_name')
-    graph_name = graph_name or draft_graph
+    # determine graph_name through syllabus -> graph relation
+    graph_name = None
+    try:
+        related_graph_ids = list_graphs_by_syllabus(syllabus_id)
+        graph_id = related_graph_ids[0] if related_graph_ids else None
+        graph = get_graph_by_id(graph_id) if graph_id is not None else None
+        graph_name = getattr(graph, 'graphId', None) if graph else None
+    except Exception as e:
+        print(f"   [BUILD] failed to resolve graph by syllabus relation: {e}")
+        graph_name = None
 
     # Prepare model instance
     model_instance = get_model_instance()
@@ -544,103 +685,77 @@ def build_syllabus(syllabus_id: int, graph_name: str = None) -> Syllabus:
     return syllabus
 
 # update_syllabus()
-def update_syllabus(syllabus_id: int, *, title: str = None, day_one: str = None, syllabus_path: str = None) -> Syllabus:
-    """Update syllabus record fields (title/day_one/syllabus_path).
-
-    - `title`: will update the DB title field if provided (best-effort).
-    - `day_one`: attempts to parse and persist a datetime to DB using `set_syllabus_day_one`.
-    - `syllabus_path`: set the final syllabus JSON path in DB via `set_syllabus_path`.
-
-    Returns the updated `Syllabus` object or None on failure.
-    """
-    syllabus = get_syllabus_by_id(syllabus_id)
-    if not syllabus:
-        print(f"   ❌ [UPDATE] 无效的 syllabus_id: {syllabus_id}")
+def update_syllabus_json(syllabus_id: int, syllabus_json: dict) -> Syllabus:
+    """Replace the whole final syllabus JSON with the submitted raw json."""
+    if not isinstance(syllabus_json, dict):
+        print("   [UPDATE] `syllabus_json` must be a dict.")
         return None
 
-    # update day_one if provided
-    if day_one:
-        parsed_dt = None
-        try:
-            if re.match(r'^\d{4}-\d{1,2}-\d{1,2}$', day_one):
-                parsed_dt = datetime.strptime(day_one, '%Y-%m-%d')
-            elif re.match(r'^\d{1,2}-\d{1,2}$', day_one):
-                parts = day_one.split('-')
-                month = int(parts[0]); d = int(parts[1])
-                year = datetime.utcnow().year
-                parsed_dt = datetime(year, month, d)
-            else:
-                try:
-                    parsed_dt = datetime.fromisoformat(day_one)
-                except Exception:
-                    parsed_dt = None
-        except Exception:
-            parsed_dt = None
+    required_fields = ('title', 'day_one', 'graph_name', 'period')
+    if any(field not in syllabus_json for field in required_fields):
+        print(f"   [UPDATE] syllabus_json must contain: {required_fields}")
+        return None
 
-        if parsed_dt is not None:
-            try:
-                set_syllabus_day_one(syllabus_id, parsed_dt)
-                print(f"   💾 [UPDATE] 已更新 syllabus.day_one: {parsed_dt}")
-            except Exception as e:
-                print(f"   ⚠️ [UPDATE] 保存 day_one 到 DB 失败: {e}")
-        else:
-            print("   ⚠️ [UPDATE] 无法解析 day_one 字符串，已跳过 DB 保存。")
+    if not _validate_syllabus_period(syllabus_json.get('period')):
+        return None
 
-    # update syllabus_path if provided
-    if syllabus_path:
-        try:
-            set_syllabus_path(syllabus_id, str(syllabus_path))
-            print(f"   💾 [UPDATE] 已更新 syllabus_path: {syllabus_path}")
-        except Exception as e:
-            print(f"   ⚠️ [UPDATE] 保存 syllabus_path 到 DB 失败: {e}")
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        print(f"   [UPDATE] invalid syllabus_id: {syllabus_id}")
+        return None
 
-    # update title in draft JSON only is handled elsewhere; attempt DB title if provided
-    if title:
+    final_path = getattr(syllabus, 'syllabus_path', None)
+    if not final_path or not Path(final_path).exists():
+        print(f"   [UPDATE] final syllabus file does not exist: {final_path}")
+        return None
+
+    if not _write_json_to_path(final_path, syllabus_json):
+        return None
+
+    title = syllabus_json.get('title')
+    if isinstance(title, str) and title.strip():
         try:
             set_syllabus_title(syllabus_id, title)
-            print(f"   💾 [UPDATE] 已更新 DB 中的 title: {title}")
         except Exception as e:
-            print(f"   ⚠️ [UPDATE] 保存 title 到 DB 失败: {e}")
+            print(f"   [UPDATE] failed to persist final title to DB: {e}")
 
-    # return fresh object
-    try:
-        return get_syllabus_by_id(syllabus_id)
-    except Exception:
-        return syllabus
+    parsed_day_one = _parse_day_one_string(syllabus_json.get('day_one'))
+    if parsed_day_one is not None:
+        try:
+            set_syllabus_day_one(syllabus_id, parsed_day_one)
+        except Exception as e:
+            print(f"   [UPDATE] failed to persist final day_one to DB: {e}")
+
+    synced_personal_count = _sync_personal_syllabuses_from_syllabus_json(syllabus_id, syllabus_json)
+    if synced_personal_count:
+        print(f"   [UPDATE] synced {synced_personal_count} related personal_syllabus file(s).")
+
+    print(f"   [UPDATE] final syllabus updated and saved: {final_path}")
+    return get_syllabus_by_id(syllabus_id)
 
 
 def get_syllabus_detail_info(syllabus_id: int) -> dict:
-    """Return detailed syllabus info including draft and final JSON contents.
-
-    Returns a dict with keys: `syllabus` (DB object), `draft` (parsed JSON or None),
-    `final` (parsed JSON or None). None returned on invalid id.
-    """
+    """Return the full final syllabus JSON for the given syllabus_id."""
     syllabus = get_syllabus_by_id(syllabus_id)
     if not syllabus:
         print(f"   ❌ [GET] 无效的 syllabus_id: {syllabus_id}")
         return None
 
-    result = {'syllabus': syllabus, 'draft': None, 'final': None}
-
-    draft_path = getattr(syllabus, 'syllabus_draft_path', None)
-    if draft_path:
-        p = Path(draft_path)
-        if p.exists():
-            try:
-                result['draft'] = json.loads(p.read_text(encoding='utf-8'))
-            except Exception as e:
-                print(f"   ⚠️ [GET] 读取 draft JSON 失败: {e}")
-
     final_path = getattr(syllabus, 'syllabus_path', None)
-    if final_path:
-        p2 = Path(final_path)
-        if p2.exists():
-            try:
-                result['final'] = json.loads(p2.read_text(encoding='utf-8'))
-            except Exception as e:
-                print(f"   ⚠️ [GET] 读取 final JSON 失败: {e}")
+    if not final_path:
+        print(f"   ❌ [GET] syllabus {syllabus_id} 未配置 final 路径。")
+        return None
 
-    return result
+    p = Path(final_path)
+    if not p.exists():
+        print(f"   ❌ [GET] final 文件不存在: {final_path}")
+        return None
+
+    try:
+        return json.loads(p.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f"   ❌ [GET] 读取或解析 final 文件失败: {e}")
+        return None
 
 
 def list_all_syllabus_brief_info() -> list:
