@@ -11,6 +11,9 @@ from repositories.user_repo import (
     update_user,
     list_all_users_brief,
 )
+from repositories.syllabus_repo import list_all_syllabuses
+from repositories.user_syllabus_repo import create_user_syllabus
+from constant import SyllabusPermission
 
 
 def register(user_name: str, password: str, email: str) -> Optional[dict]:
@@ -22,6 +25,21 @@ def register(user_name: str, password: str, email: str) -> Optional[dict]:
     u = create_user(user_name, ph, email)
     if not u:
         return None
+
+    try:
+        for syllabus in list_all_syllabuses():
+            syllabus_id = getattr(syllabus, 'syllabus_id', None)
+            if syllabus_id is None:
+                continue
+            create_user_syllabus(
+                user_id=u.user_id,
+                syllabus_id=syllabus_id,
+                syllabus_permission=SyllabusPermission.USER.value,
+            )
+    except Exception:
+        # registering the user itself has succeeded; relation backfill failure should not mask it
+        pass
+
     return {'user_id': u.user_id, 'user_name': u.user_name, 'email': u.email}
 
 

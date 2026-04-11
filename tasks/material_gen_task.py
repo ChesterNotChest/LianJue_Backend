@@ -11,12 +11,51 @@ from repositories.graph_repo import get_graph_by_id
 from repositories.material_repo import create_material, set_material_draft_path, set_material_pdf_path
 from repositories.syllabus_graph_repo import list_graphs_by_syllabus
 from repositories.syllabus_repo import get_syllabus_by_id
-from repositories.syllabusmaterial_repo import create_syllabus_material, get_syllabusmaterials_by_material, set_ok_to_recommend
+from repositories.syllabusmaterial_repo import create_syllabus_material, get_syllabusmaterials_by_material, remove_syllabusmaterial, set_ok_to_recommend
 from utils.llm_utils import get_model_instance
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from knowlion.abution_knowlion_driver import KnowLion
 from config import MODEL_CONFIGS
 import time
+
+
+def _normalize_involved_weeks(involved_weeks):
+	weeks = []
+	if not isinstance(involved_weeks, list):
+		return weeks
+	for value in involved_weeks:
+		try:
+			week_index = int(value)
+		except Exception:
+			continue
+		if week_index not in weeks:
+			weeks.append(week_index)
+	return weeks
+
+
+def _sync_material_week_bindings(material_id: int, syllabus_id: int, involved_weeks, default_ok_to_recommend: bool = False):
+	if material_id is None or syllabus_id is None:
+		return
+
+	target_weeks = set(_normalize_involved_weeks(involved_weeks))
+	existing_rows = [
+		row for row in get_syllabusmaterials_by_material(material_id)
+		if getattr(row, 'syllabus_id', None) == syllabus_id
+	]
+	existing_by_week = {
+		int(getattr(row, 'week_index')): row
+		for row in existing_rows
+		if getattr(row, 'week_index', None) is not None
+	}
+
+	for week_index, row in existing_by_week.items():
+		if week_index not in target_weeks:
+			remove_syllabusmaterial(material_id, syllabus_id, week_index)
+
+	for week_index in target_weeks:
+		existing = existing_by_week.get(week_index)
+		ok_to_recommend = getattr(existing, 'ok_to_recommend', default_ok_to_recommend) if existing else default_ok_to_recommend
+		create_syllabus_material(material_id, syllabus_id, week_index, ok_to_recommend=ok_to_recommend)
 
 def generate_material_draft(syllabus_id: int, involved_weeks: List[int], question_type_distribution: Dict[str, int]):
 	"""
@@ -203,16 +242,7 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 
 			# update DB record
 			set_material_draft_path(material.material_id, str(draft_path))
-			# create syllabus<->material mapping entries for involved weeks (create missing only)
-			try:
-				for wk in draft_obj.get('involved_weeks', []) or []:
-					try:
-						create_syllabus_material(material.material_id, int(syllabus.syllabus_id), int(wk), ok_to_recommend=False)
-					except Exception:
-						# best-effort; don't fail draft save for DB mapping issues
-						pass
-			except Exception:
-				pass
+			_sync_material_week_bindings(material.material_id, int(syllabus.syllabus_id), draft_obj.get('involved_weeks', []), default_ok_to_recommend=False)
 			print(f"   💾 [MATERIAL] 草稿已保存: {draft_path}")
 		except Exception as e:
 			print(f"   ❌ [MATERIAL] 保存草稿失败: {e}")
@@ -310,6 +340,7 @@ def update_material_draft(material_id: int, material_title: str = None, new_rela
 			json.dump(draft_obj, f, ensure_ascii=False, indent=2)
 		# ensure DB draft path matches (no-op if unchanged)
 		set_material_draft_path(material_id, draft_path)
+		_sync_material_week_bindings(material_id, int(getattr(material, 'syllabus_id', None)), draft_obj.get('involved_weeks', []), default_ok_to_recommend=False)
 		print(f"   💾 [MATERIAL] 草稿已更新: {draft_path}")
 	except Exception as e:
 		print(f"   ❌ [MATERIAL] 保存更新后的草稿失败: {e}")
@@ -350,6 +381,7 @@ def update_material_draft_json(material_id: int, material_draft_json: dict):
 		with open(draft_path, 'w', encoding='utf-8') as f:
 			json.dump(material_draft_json, f, ensure_ascii=False, indent=2)
 		set_material_draft_path(material_id, draft_path)
+		_sync_material_week_bindings(material_id, int(getattr(material, 'syllabus_id', None)), material_draft_json.get('involved_weeks', []), default_ok_to_recommend=False)
 	except Exception as e:
 		print(f"   [MATERIAL] failed to save updated draft: {e}")
 		return None
@@ -597,17 +629,8 @@ def generate_final_material(material_id: int):
 
 		# update DB record
 		set_material_path(material_id, str(final_path))
-		# ensure syllabusmaterial mapping exists for involved weeks (create missing only)
-		try:
-			m = get_material_by_id(material_id)
-			sy_id = getattr(m, 'syllabus_id', None)
-			for wk in final_obj.get('involved_weeks', []) or []:
-				try:
-					create_syllabus_material(material_id, int(sy_id), int(wk), ok_to_recommend=False)
-				except Exception:
-					pass
-		except Exception:
-			pass
+		_sync_material_week_bindings(material_id, int(getattr(material, 'syllabus_id', None)), final_obj.get('involved_weeks', []), default_ok_to_recommend=False)
+		_sync_material_week_bindings(material_id, int(getattr(material, 'syllabus_id', None)), final_obj.get('involved_weeks', []), default_ok_to_recommend=False)
 		print(f"   💾 [MATERIAL] 最终材料已保存: {final_path}")
 	except Exception as e:
 		print(f"   ❌ [MATERIAL] 保存最终材料失败: {e}")
@@ -783,6 +806,7 @@ def update_final_material_json(material_id: int, material_json: dict):
 		with open(final_path, 'w', encoding='utf-8') as f:
 			json.dump(material_json, f, ensure_ascii=False, indent=2)
 		set_material_path(material_id, str(final_path))
+		_sync_material_week_bindings(material_id, int(getattr(material, 'syllabus_id', None)), material_json.get('involved_weeks', []), default_ok_to_recommend=False)
 	except Exception as e:
 		print(f"   [MATERIAL] failed to save updated final material: {e}")
 		return None

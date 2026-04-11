@@ -3,10 +3,10 @@ from flask import Blueprint, jsonify, request
 from tasks import learning_task
 
 
-bp = Blueprint('learning_api', __name__, url_prefix='/api/learning')
+bp = Blueprint('learning_api', __name__, url_prefix='/api')
 
 
-@bp.route('/init_personal_syllabus', methods=['POST'])
+@bp.route('/learning_init_personal_syllabus', methods=['POST'])
 def init_personal_syllabus_api():
     data = request.get_json(silent=True) or {}
     user_id = data.get('user_id')
@@ -49,7 +49,7 @@ def init_personal_syllabus_api():
         }), 500
 
 
-@bp.route('/personal_syllabus/detail', methods=['POST'])
+@bp.route('/learning_personal_syllabus_detail', methods=['POST'])
 def get_personal_syllabus_detail_info_api():
     data = request.get_json(silent=True) or {}
     user_id = data.get('user_id')
@@ -88,7 +88,7 @@ def get_personal_syllabus_detail_info_api():
         }), 500
 
 
-@bp.route('/ask_question', methods=['POST'])
+@bp.route('/learning_ask_question', methods=['POST'])
 def ask_question_api():
     data = request.get_json(silent=True) or {}
     user_id = data.get('user_id')
@@ -136,7 +136,7 @@ def ask_question_api():
         }), 500
 
 
-@bp.route('/update_personal_syllabus', methods=['POST'])
+@bp.route('/learning_update_personal_syllabus', methods=['POST'])
 def update_personal_syllabus_api():
     data = request.get_json(silent=True) or {}
     user_id = data.get('user_id')

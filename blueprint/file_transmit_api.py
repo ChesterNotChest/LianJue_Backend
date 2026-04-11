@@ -1,22 +1,18 @@
 
-import app
-from flask import request, jsonify
+from flask import Blueprint, request, jsonify
 import base64
 import os
-import tempfile
-import shutil
 import logging
-
-from knowlion.doc_parsing_markdown import Document2Markdown
 from tasks.file_task import get_file_detail_info, list_all_files_brief_info, add_file as add_file_task
 from tasks import syllabus_task
 from config import get_config
 import constant
 
 logger = logging.getLogger(__name__)
+bp = Blueprint('file_transmit_api', __name__, url_prefix='/api')
 
 
-@app.route('/upload', methods=['POST'])
+@bp.route('/file_upload', methods=['POST'])
 def upload_knowledge_source():
     '''
     通讯格式：
@@ -98,6 +94,8 @@ def upload_knowledge_source():
         cfg = get_config() or {}
         proc = cfg.get('PROCESSING_CONFIG', {}) if isinstance(cfg, dict) else {}
         model_path = str(proc.get('MODEL_PATH', './model'))
+        from knowlion.doc_parsing_markdown import Document2Markdown
+
         d2m = Document2Markdown(None, model_path)
 
         try:
@@ -135,7 +133,7 @@ def upload_knowledge_source():
             pass
 
 
-@app.route('/upload_calendar', methods=['POST'])
+@bp.route('/file_upload_calendar', methods=['POST'])
 def upload_calendar():
     '''
     通讯格式：
@@ -226,7 +224,7 @@ def upload_calendar():
         }), 500
 
 
-@app.route('/list_graph_files', methods=['POST'])
+@bp.route('/file_list_graph_files', methods=['POST'])
 def list_graph_files_api():
     data = request.get_json(silent=True) or {}
     graph_id_list = data.get('graph_id_list')
@@ -257,7 +255,7 @@ def list_graph_files_api():
         }), 500
 
 
-@app.route('/list_syllabus_files', methods=['POST'])
+@bp.route('/file_list_syllabus_files', methods=['POST'])
 def list_syllabus_files_api():
     data = request.get_json(silent=True) or {}
     syllabus_id_list = data.get('syllabus_id_list')
@@ -286,11 +284,40 @@ def list_syllabus_files_api():
             "error_message": str(e),
             "error_code": "exception"
         }), 500
+@bp.route('/file_detail', methods=['POST'])
+def get_file_detail_api():
+    data = request.get_json(silent=True) or {}
+    file_id = data.get('file_id')
 
+    if file_id is None or str(file_id).strip() == '':
+        return jsonify({
+            "success": False,
+            "file": None,
+            "error_message": "missing file_id",
+            "error_code": "missing_fields"
+        }), 400
 
-def list_all_files():
-    return list_all_files_brief_info(graph_id_list=None, syllabus_id_list=None, material_id_list=None)
+    try:
+        file = get_file_detail_info(int(file_id))
+        if not file:
+            return jsonify({
+                "success": False,
+                "file": None,
+                "error_message": "not found",
+                "error_code": "not_found"
+            }), 404
 
-
-def get_file_detail(file_id: int):
-    return get_file_detail_info(file_id)
+        return jsonify({
+            "success": True,
+            "file": file,
+            "error_message": "",
+            "error_code": ""
+        }), 200
+    except Exception as e:
+        logger.exception("get_file_detail_api failed")
+        return jsonify({
+            "success": False,
+            "file": None,
+            "error_message": str(e),
+            "error_code": "exception"
+        }), 500

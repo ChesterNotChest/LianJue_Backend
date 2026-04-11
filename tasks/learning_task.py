@@ -21,6 +21,7 @@
 import os
 import json
 import re
+from difflib import SequenceMatcher
 from time import time
 from datetime import datetime, timezone
 from constant import PersonalSyllabus
@@ -28,7 +29,9 @@ from constant import PersonalSyllabus
 from utils.llm_utils import get_model_instance
 from utils.markdown_utils import clean_llm_response
 from knowlion.abution_knowlion_driver import KnowLion
+from repositories.material_repo import get_material_by_id
 from repositories.syllabus_repo import get_syllabus_by_id
+from repositories.syllabusmaterial_repo import get_syllabusmaterials_by_syllabus_and_weeks
 from repositories.user_syllabus_repo import get_user_syllabus, set_personal_syllabus_path
 from schemas.file import File
 from extensions import db
@@ -121,10 +124,14 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
     graph_name = None
     if syllabus_json:
         graph_name = syllabus_json.get('graph_name')
-
+    
+    
+    from config import MODEL_CONFIGS
+    from knowlion.abution_knowlion_driver import KnowLion
+        
     kl = None
     try:
-        kl = KnowLion({}, graph_name or '')
+        kl = KnowLion(MODEL_CONFIGS, graph_name=str(graph_name))
     except Exception:
         kl = None
 
@@ -204,6 +211,7 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
 - `document_names` 取自 RAG 结果中 ([文档名]) 格式里方括号内的名称，例如([大数据导论])、([第4章_数据管理])。取用被小括号与中括号组成的2层包裹内的文件名称即可。列出用于回答的主要文档名称（若无可匹配文档，则可留空列表）。
 - `competance_list` 针对 `relevant_weeks` 中的周次按本次提问质量评估建议的掌握度，取值必须是 weak_far|weak|normal|master|master_far。
 - 只在匹配度明确时才标注 weak_far 或 master_far；不要输出其他未在此枚举中的等级字符串。
+- 掌握度更高的提问一般是更深入具体的，能体现对知识点的理解和应用；掌握度更低的提问可能比较模糊或表面。
 
 行为约束：
 - 严格只返回 JSON；不输出额外文字。
@@ -244,12 +252,40 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
     else:
         parsed = {"answer": cleaned_raw}
 
+    competance_list = parsed.get('competance_list') if isinstance(parsed, dict) else []
+    recommendation_week_candidates = []
+    for source_list in (relevant_week_list, [item.get('week_index') for item in (competance_list or []) if isinstance(item, dict)]):
+        for value in source_list or []:
+            try:
+                week_index = int(value)
+            except Exception:
+                continue
+            if week_index not in recommendation_week_candidates:
+                recommendation_week_candidates.append(week_index)
+
     # 7. match documents
     doc_names = parsed.get('document_names') if isinstance(parsed, dict) else None
-    matched = _match_documents(doc_names or [])
+    if not isinstance(doc_names, list):
+        doc_names = []
+
+    recommended_doc_names = _get_recommended_material_document_names(syllabus_id, recommendation_week_candidates)
+    merged_doc_names = []
+    seen_doc_names = set()
+    for name in [*(doc_names or []), *recommended_doc_names]:
+        if not isinstance(name, str):
+            continue
+        cleaned_name = name.strip()
+        if not cleaned_name or cleaned_name in seen_doc_names:
+            continue
+        seen_doc_names.add(cleaned_name)
+        merged_doc_names.append(cleaned_name)
+
+    if isinstance(parsed, dict):
+        parsed['document_names'] = merged_doc_names
+
+    matched = _match_documents(merged_doc_names)
 
     # 8. competence handling
-    competance_list = parsed.get('competance_list') if isinstance(parsed, dict) else []
     # update review count and apply suggested competance
     if personal_path:
         reached = False
@@ -273,6 +309,8 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
                     _update_competance(personal_path, wi)
                 except Exception:
                     pass
+
+    print(f"   ✅ [LEARNING] 问题处理完成，answer: {parsed.get('answer') if isinstance(parsed, dict) else str(parsed)}, document_names: {merged_doc_names}, matched documents: {matched}, competence_list: {competance_list}")
 
     # store history (keep last 5)
     entry = {"timestamp": now_ts, "question": question, "answer": parsed.get('answer') if isinstance(parsed, dict) else str(parsed)}
@@ -600,24 +638,144 @@ def _match_documents(document_names: list[str]):
     1. 对于每个document_name，在file表中模糊匹配material_path，来找到对应的file_id。匹配不到的直接展示llm给的document名字
     2. 返回一个列表，包含每个document_name对应的file_id（如果有的话）
     '''
+    def _normalize_doc_name(value: str) -> str:
+        if not isinstance(value, str):
+            return ''
+        cleaned = value.strip()
+        cleaned = re.sub(r'^[\[\(（【\s]+|[\]\)）】\s]+$', '', cleaned)
+        cleaned = os.path.splitext(cleaned)[0]
+        cleaned = cleaned.lower()
+        cleaned = re.sub(r'[\s_\-\+\.\(\)\[\]（）【】]+', '', cleaned)
+        return cleaned
+
+    def _build_candidates():
+        candidates = []
+        try:
+            rows = File.query.all()
+        except Exception:
+            return candidates
+
+        for row in rows:
+            path = getattr(row, 'path', None)
+            file_id = getattr(row, 'file_id', None)
+            if not path or file_id is None:
+                continue
+
+            basename = os.path.basename(path)
+            stem = os.path.splitext(basename)[0]
+            normalized_path = _normalize_doc_name(path)
+            normalized_basename = _normalize_doc_name(basename)
+            normalized_stem = _normalize_doc_name(stem)
+
+            candidates.append({
+                'file_id': file_id,
+                'path': path,
+                'basename': basename,
+                'stem': stem,
+                'normalized_path': normalized_path,
+                'normalized_basename': normalized_basename,
+                'normalized_stem': normalized_stem,
+            })
+
+        return candidates
+
+    def _score_candidate(target: str, candidate: dict) -> tuple:
+        stem = candidate['normalized_stem']
+        basename = candidate['normalized_basename']
+        full_path = candidate['normalized_path']
+
+        if not target:
+            return (-1, 0.0, -len(candidate['path']))
+        if target == stem:
+            return (4, 1.0, -len(candidate['path']))
+        if target == basename:
+            return (4, 0.99, -len(candidate['path']))
+        if target in stem or stem in target:
+            return (3, SequenceMatcher(None, target, stem).ratio(), -len(candidate['path']))
+        if target in basename or basename in target:
+            return (3, SequenceMatcher(None, target, basename).ratio(), -len(candidate['path']))
+        if target in full_path:
+            return (2, SequenceMatcher(None, target, full_path).ratio(), -len(candidate['path']))
+        return (1, max(
+            SequenceMatcher(None, target, stem).ratio(),
+            SequenceMatcher(None, target, basename).ratio(),
+            SequenceMatcher(None, target, full_path).ratio(),
+        ), -len(candidate['path']))
+
     results = []
     if not document_names:
         return results
+
+    candidates = _build_candidates()
+
     for name in document_names:
         if not name:
             results.append(None)
             continue
-        # fuzzy match against File.path
-        try:
-            q = File.query.filter(File.path.ilike(f"%{name}%"))
-            fobj = q.first()
-            if fobj:
-                results.append(fobj.file_id)
-            else:
-                results.append(name)
-        except Exception:
+
+        normalized_name = _normalize_doc_name(name)
+        if not normalized_name or not candidates:
             results.append(name)
+            continue
+
+        best = None
+        best_score = None
+        for candidate in candidates:
+            score = _score_candidate(normalized_name, candidate)
+            if best_score is None or score > best_score:
+                best_score = score
+                best = candidate
+
+        if best is not None and best_score is not None:
+            match_level, similarity, _ = best_score
+            if match_level >= 3 or similarity >= 0.72:
+                results.append(best['file_id'])
+                continue
+
+        results.append(name)
+
     return results
+
+
+def _get_recommended_material_document_names(syllabus_id: int, relevant_week_list: list[int]):
+    if syllabus_id is None or not isinstance(relevant_week_list, list) or not relevant_week_list:
+        return []
+
+    try:
+        mappings = get_syllabusmaterials_by_syllabus_and_weeks(syllabus_id, relevant_week_list)
+    except Exception:
+        return []
+
+    document_names = []
+    seen = set()
+
+    for mapping in mappings:
+        if not getattr(mapping, 'ok_to_recommend', False):
+            continue
+
+        material = get_material_by_id(getattr(mapping, 'material_id', None))
+        if not material:
+            continue
+
+        display_name = None
+        pdf_path = getattr(material, 'pdf_path', None)
+        title = getattr(material, 'title', None)
+        final_path = getattr(material, 'material_path', None)
+
+        if isinstance(pdf_path, str) and pdf_path.strip():
+            display_name = os.path.basename(pdf_path)
+        elif isinstance(title, str) and title.strip():
+            display_name = title.strip()
+        elif isinstance(final_path, str) and final_path.strip():
+            display_name = os.path.basename(final_path)
+
+        if not display_name or display_name in seen:
+            continue
+
+        seen.add(display_name)
+        document_names.append(display_name)
+
+    return document_names
 
 def _update_review_count(personal_syllabus_path: str) -> bool:
     '''
@@ -635,19 +793,23 @@ def _update_review_count(personal_syllabus_path: str) -> bool:
 
     rc = data.get('review_count', 0) or 0
     rc += 1
-    data['review_count'] = rc
     data['reviewed_at'] = int(time())
+
+    try:
+        threshold = int(PersonalSyllabus.LLM_REVIEW_THREDHOLD.value)
+    except Exception:
+        threshold = 5
+
+    reached = rc >= threshold
+    data['review_count'] = 0 if reached else rc
+
     try:
         with open(personal_syllabus_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 
-    # return whether reached LLM review threshold
-    try:
-        return rc >= int(PersonalSyllabus.LLM_REVIEW_THREDHOLD.value)
-    except Exception:
-        return rc >= 5
+    return reached
 
 def _toggle_competance(personal_syllabus_path: str, week_index: int, suggested_competance: str):
     '''
@@ -871,9 +1033,14 @@ def update_personal_syllabus(user_id: int, syllabus_id: int, week_index: int, st
         data['reviewed_at'] = now_ts
 
         # apply progress
+        cur = target.get('competance')
         cur_prog = int(target.get('competance_progress') or 0)
+        if cur in (None, 'none') and inc > 0:
+            cur = 'weak'
+            target['competance'] = cur
         cur_prog += inc
-        cur = target.get('competance') or 'normal'
+        if cur in (None, 'none'):
+            cur = 'normal'
 
         # promotion/demotion using constants
         new_level = cur
@@ -902,7 +1069,10 @@ def update_personal_syllabus(user_id: int, syllabus_id: int, week_index: int, st
             changed = True
         if competance_progress is not None:
             try:
-                target['competance_progress'] = int(competance_progress)
+                parsed_progress = int(competance_progress)
+                if parsed_progress > 0 and target.get('competance') in (None, 'none') and competance is None:
+                    target['competance'] = 'normal'
+                target['competance_progress'] = parsed_progress
                 changed = True
             except Exception:
                 pass

@@ -12,10 +12,10 @@ from tasks.user_task import (
 
 
 
-bp = Blueprint('user_api', __name__, url_prefix='/api/user')
+bp = Blueprint('user_api', __name__, url_prefix='/api')
 
 
-@bp.route('/register', methods=['POST'])
+@bp.route('/user_register', methods=['POST'])
 def register_api():
     '''
     通讯格式：
@@ -66,7 +66,7 @@ def register_api():
     })
 
 
-@bp.route('/login', methods=['POST'])
+@bp.route('/user_login', methods=['POST'])
 def login_api():
     '''
     通讯格式：
@@ -109,7 +109,7 @@ def login_api():
     })
 
 
-@bp.route('/change_password', methods=['POST'])
+@bp.route('/user_change_password', methods=['POST'])
 def change_password_api():
     '''
     通讯格式：
@@ -154,7 +154,7 @@ def change_password_api():
     })
 
 
-@bp.route('/reset_password', methods=['POST'])
+@bp.route('/user_reset_password', methods=['POST'])
 def reset_password_api():
     '''
     通讯格式：
@@ -205,7 +205,7 @@ def reset_password_api():
     })
 
 
-@bp.route('/update', methods=['POST'])
+@bp.route('/user_update', methods=['POST'])
 def update_user_api():
     '''
     通讯格式：
@@ -250,7 +250,7 @@ def update_user_api():
     })
 
 
-@bp.route('/detail', methods=['POST'])
+@bp.route('/user_detail', methods=['POST'])
 def get_user_api():
     '''
     通讯格式：
@@ -290,7 +290,7 @@ def get_user_api():
     })
 
 
-@bp.route('/list', methods=['GET'])
+@bp.route('/user_list', methods=['GET'])
 def list_users_api():
     '''
     通讯格式：

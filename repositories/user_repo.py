@@ -1,5 +1,5 @@
 from extensions import db
-from schemas.user import UserSyllabus as User
+from schemas.user import User
 from typing import Optional
 
 
@@ -74,4 +74,3 @@ def list_all_users_brief():
 	for r in rows:
 		out.append({'user_id': r.user_id, 'user_name': r.user_name, 'email': r.email, 'create_time': getattr(r, 'create_time', None)})
 	return out
-

@@ -1,12 +1,8 @@
-import os
-
 from repositories.material_repo import get_material_by_id
 
 
 def _is_missing_path(path_value) -> bool:
-    if not path_value or not isinstance(path_value, str):
-        return True
-    return not os.path.exists(path_value)
+    return not isinstance(path_value, str) or not path_value.strip()
 
 
 def get_material_status(material_id: int) -> dict:

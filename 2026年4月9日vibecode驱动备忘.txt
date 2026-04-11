@@ -85,7 +85,7 @@
 
 6. `upload_calendar()`
 位置：`blueprint/file_transmit_api.py`
-当前 blueprint：`POST /upload_calendar`
+当前 blueprint：`POST /api/file/upload_calendar`
 当前参数：`file_name`、`file_bytes`、`upload_time`
 当前返回：`file.file_id`、`syllabus.syllabus_id`
 当前前端实际需要：
@@ -147,7 +147,7 @@
 
 12. `upload_knowledge_source()`
 位置：`blueprint/file_transmit_api.py`
-当前 blueprint：`POST /upload`
+当前 blueprint：`POST /api/file/upload`
 当前参数：`file_name`、`file_bytes`、可选 `upload_time`、`file_type`
 当前返回：`file.file_id`
 当前前端实际需要：
@@ -177,8 +177,8 @@
 15. `list_graph_files_api()` / `list_syllabus_files_api()`
 位置：`blueprint/file_transmit_api.py`
 当前 blueprint：
-`POST /list_graph_files`
-`POST /list_syllabus_files`
+`POST /api/file/list_graph_files`
+`POST /api/file/list_syllabus_files`
 当前方法用途：
 `list_graph_files_api(graph_id_list)` 用于教师页展示 知识来源 材料
 `list_syllabus_files_api(syllabus_id_list)` 用于教师页材料架、学生页默认推荐材料

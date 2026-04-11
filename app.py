@@ -1,5 +1,7 @@
 from flask import Flask
+import importlib
 import logging
+import os
 
 from config import get_config, MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE
 from extensions import db
@@ -31,6 +33,13 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = get_mysql_url(user=user, password=password, host=host, port=port, db=database)
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+    @app.after_request
+    def add_cors_headers(response):
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return response
+
     # initialize db extension
     db.init_app(app)
 
@@ -44,6 +53,8 @@ def create_app():
             import schemas.filegraph
             import schemas.syllabus
             import schemas.syllabusgraph
+            import schemas.user
+            import schemas.user_syllabus
         except Exception:
             # models may already be imported elsewhere; ignore import errors here
             pass
@@ -51,5 +62,21 @@ def create_app():
             db.create_all()
         except Exception as e:
             logger.warning(f"db.create_all() failed: {e}")
+
+    blueprint_targets = [
+        ("blueprint.file_transmit_api", "bp"),
+        ("blueprint.knowledge_build_api", "bp"),
+        ("blueprint.learning_api", "bp"),
+        ("blueprint.syllabus_material_api", "bp"),
+        ("blueprint.user_api", "bp"),
+    ]
+
+    for module_name, attr_name in blueprint_targets:
+        try:
+            module = importlib.import_module(module_name)
+            blueprint = getattr(module, attr_name)
+            app.register_blueprint(blueprint)
+        except Exception:
+            logger.exception(f"register blueprint failed: {module_name}.{attr_name}")
 
     return app

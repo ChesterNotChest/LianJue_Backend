@@ -159,7 +159,7 @@ def get_job_details(job_id: int) -> dict:
     return {
         'job_id': job.job_id,
         'file_path': file.path if file else None,
-        'graph_name': graph.name if graph else None,
+        'graph_name': getattr(graph, 'graphId', None) if graph else None,
         'status': job.status,
         'stage': job.stage,
         'progress_index': job.progress_index,

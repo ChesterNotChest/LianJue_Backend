@@ -28,6 +28,19 @@ def create_syllabus_material(material_id: int, syllabus_id: int, week_index: int
         raise
 
 
+def remove_syllabusmaterial(material_id: int, syllabus_id: int, week_index: int):
+    rec = get_syllabusmaterial(material_id, syllabus_id, week_index)
+    if not rec:
+        return False
+    try:
+        db.session.delete(rec)
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        raise
+
+
 def set_ok_to_recommend(material_id: int, syllabus_id: int, week_index: int, ok: bool = True):
     rec = get_syllabusmaterial(material_id, syllabus_id, week_index)
     if not rec:

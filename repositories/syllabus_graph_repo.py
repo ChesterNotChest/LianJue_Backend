@@ -4,6 +4,9 @@ from schemas.syllabusgraph import SyllabusGraph
 
 def create_syllabus_graph(syllabus_id: int, graph_id: int):
     """Create an association between a syllabus and a graph."""
+    existing = SyllabusGraph.query.filter_by(syllabus_id=syllabus_id, graph_id=graph_id).first()
+    if existing:
+        return existing
     binding = SyllabusGraph(syllabus_id=syllabus_id, graph_id=graph_id)
     db.session.add(binding)
     db.session.commit()

@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from tasks import graph_task, jobs_task
 
 
-bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api/job')
+bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api')
 
 
 # 创建新的图谱
@@ -12,7 +12,7 @@ bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api/job')
 # def list_graphs_brief_info_api():
 
 # 理论先执行file_transmit_api里的上传，再执行这个，再来做图谱构建的job管理接口
-@bp.route('/graph/create', methods=['POST'])
+@bp.route('/job_graph_create', methods=['POST'])
 def create_graph_api():
     data = request.get_json(silent=True) or {}
     graph_name = data.get('graph_name')
@@ -52,7 +52,7 @@ def create_graph_api():
             'error_code': 'exception'
         }), 500
 
-@bp.route('/graph/list', methods=['GET'])
+@bp.route('/job_graph_list', methods=['GET'])
 def list_graphs_brief_info_api():
     try:
         rows = graph_task.list_graphs_brief_info()
@@ -71,7 +71,7 @@ def list_graphs_brief_info_api():
         }), 500
 
 
-@bp.route('/create', methods=['POST'])
+@bp.route('/job_create', methods=['POST'])
 def create_job_api():
     '''
     通讯格式：
@@ -127,7 +127,7 @@ def create_job_api():
         }), 500
 
 
-@bp.route('/pause', methods=['POST'])
+@bp.route('/job_pause', methods=['POST'])
 def pause_job_api():
     '''
     通讯格式：
@@ -152,7 +152,7 @@ def pause_job_api():
         return jsonify({'success': False, 'job': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/resume', methods=['POST'])
+@bp.route('/job_resume', methods=['POST'])
 def resume_job_api():
     '''
     通讯格式：
@@ -177,7 +177,7 @@ def resume_job_api():
         return jsonify({'success': False, 'job': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/end', methods=['POST'])
+@bp.route('/job_end', methods=['POST'])
 def end_job_api():
     '''
     通讯格式：
@@ -202,7 +202,7 @@ def end_job_api():
         return jsonify({'success': False, 'job': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/detail', methods=['POST'])
+@bp.route('/job_detail', methods=['POST'])
 def get_job_api():
     '''
     通讯格式：
@@ -229,7 +229,7 @@ def get_job_api():
         return jsonify({'success': False, 'job': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/list', methods=['GET'])
+@bp.route('/job_list', methods=['GET'])
 def list_jobs_api():
     '''
     通讯格式：

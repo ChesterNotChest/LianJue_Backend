@@ -8,7 +8,7 @@ from tasks.file_task import add_file as add_file_task
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
 from repositories.syllabus_graph_repo import create_syllabus_graph, list_graphs_by_syllabus
-from repositories.graph_repo import get_graph_by_id
+from repositories.graph_repo import get_graph_by_id, get_graph_by_graphId
 from repositories.user_syllabus_repo import list_user_syllabuses, list_user_syllabuses_by_syllabus
 from schemas.syllabus import Syllabus
 from constant import SyllabusPermission
@@ -17,6 +17,8 @@ from utils.llm_utils import get_model_instance
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential
 from extensions import db
+
+BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
 def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None) -> Syllabus:
@@ -217,7 +219,10 @@ def _validate_syllabus_period(period: list) -> bool:
 
 def _read_json_from_path(path_value: str):
     try:
-        return json.loads(Path(path_value).read_text(encoding='utf-8'))
+        resolved_path = _resolve_repo_path(path_value)
+        if resolved_path is None:
+            return None
+        return json.loads(resolved_path.read_text(encoding='utf-8'))
     except Exception as e:
         print(f"   [UPDATE] failed to read/parse json file: {e}")
         return None
@@ -225,7 +230,11 @@ def _read_json_from_path(path_value: str):
 
 def _write_json_to_path(path_value: str, payload: dict) -> bool:
     try:
-        Path(path_value).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+        resolved_path = _resolve_repo_path(path_value)
+        if resolved_path is None:
+            return False
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
         return True
     except Exception as e:
         print(f"   [UPDATE] failed to save json file: {e}")
@@ -247,9 +256,81 @@ def _parse_day_one_string(day_one: str):
 
 
 def _is_missing_path(path_value) -> bool:
+    return not isinstance(path_value, str) or not path_value.strip()
+
+
+def _resolve_repo_path(path_value):
     if not path_value or not isinstance(path_value, str):
-        return True
-    return not os.path.exists(path_value)
+        return None
+
+    raw_path = path_value.strip()
+    if not raw_path:
+        return None
+
+    normalized = raw_path.replace('\\', '/')
+    candidates = []
+
+    if re.match(r'^[A-Za-z]:/', normalized):
+        drive = normalized[0].lower()
+        candidates.append(Path(normalized))
+        candidates.append(Path('/mnt') / drive / normalized[3:])
+    else:
+        normalized_path = Path(normalized)
+        raw_obj = Path(raw_path)
+        if normalized_path.is_absolute():
+            candidates.append(normalized_path)
+        else:
+            candidates.append(BACKEND_ROOT / normalized_path)
+            candidates.append(normalized_path)
+        if raw_obj not in candidates:
+            candidates.append(raw_obj)
+
+    unique_candidates = []
+    seen = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_candidates.append(candidate)
+
+    for candidate in unique_candidates:
+        if candidate.exists():
+            return candidate
+
+    return unique_candidates[0] if unique_candidates else None
+
+
+def _extract_graph_name_from_syllabus_payload(syllabus) -> str:
+    for path_attr in ('syllabus_path', 'syllabus_draft_path'):
+        payload = _read_json_from_path(getattr(syllabus, path_attr, None))
+        if not isinstance(payload, dict):
+            continue
+        graph_name = payload.get('graph_name')
+        if isinstance(graph_name, str) and graph_name.strip():
+            return graph_name.strip()
+    return None
+
+
+def _get_graph_info_from_legacy_payload(syllabus_id: int):
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        return None, None
+
+    legacy_graph_name = _extract_graph_name_from_syllabus_payload(syllabus)
+    if not legacy_graph_name:
+        return None, None
+
+    graph = get_graph_by_graphId(legacy_graph_name)
+    if not graph:
+        return None, legacy_graph_name
+
+    try:
+        create_syllabus_graph(syllabus_id=syllabus_id, graph_id=graph.graph_id)
+    except Exception as e:
+        print(f"   [LIST] failed to backfill syllabus_graph for syllabus_id={syllabus_id}: {e}")
+
+    return getattr(graph, 'graph_id', None), getattr(graph, 'graphId', legacy_graph_name)
 
 
 def _sync_personal_syllabuses_from_syllabus_json(syllabus_id: int, syllabus_json: dict) -> int:
@@ -270,7 +351,8 @@ def _sync_personal_syllabuses_from_syllabus_json(syllabus_id: int, syllabus_json
 
     for binding in bindings:
         personal_path = getattr(binding, 'personal_syllabus_path', None)
-        if not personal_path or not os.path.exists(personal_path):
+        resolved_personal_path = _resolve_repo_path(personal_path)
+        if resolved_personal_path is None or not resolved_personal_path.exists():
             continue
 
         existing_json = _read_json_from_path(personal_path)
@@ -335,7 +417,8 @@ def update_syllabus_draft_json(syllabus_id: int, syllabus_draft_json: dict) -> S
         return None
 
     draft_path = getattr(syllabus, 'syllabus_draft_path', None)
-    if not draft_path or not Path(draft_path).exists():
+    resolved_draft_path = _resolve_repo_path(draft_path)
+    if not draft_path or resolved_draft_path is None or not resolved_draft_path.exists():
         print(f"   [UPDATE] draft file does not exist: {draft_path}")
         return None
 
@@ -365,8 +448,8 @@ def get_syllabus_draft_detail_info(syllabus_id: int) -> dict:
         print(f"   ❌ [GET] syllabus {syllabus_id} 未配置 draft 路径。")
         return None
 
-    p = Path(draft_path)
-    if not p.exists():
+    p = _resolve_repo_path(draft_path)
+    if p is None or not p.exists():
         print(f"   ❌ [GET] 草稿文件不存在: {draft_path}")
         return None
 
@@ -404,14 +487,11 @@ def _serialize_day_one_time(value):
 
 def _get_primary_graph_info(syllabus_id: int):
     graph_ids = list_graphs_by_syllabus(syllabus_id)
-    if not graph_ids:
-        return None, None
-
-    graph = get_graph_by_id(graph_ids[0])
-    if not graph:
-        return graph_ids[0], None
-
-    return getattr(graph, 'graph_id', graph_ids[0]), getattr(graph, 'graphId', None)
+    for graph_id in graph_ids:
+        graph = get_graph_by_id(graph_id)
+        if graph:
+            return getattr(graph, 'graph_id', graph_id), getattr(graph, 'graphId', None)
+    return _get_graph_info_from_legacy_payload(syllabus_id)
 
 
 def _serialize_teacher_syllabus(syllabus, user_binding=None):
@@ -507,8 +587,8 @@ def build_syllabus(syllabus_id: int) -> Syllabus:
         print(f"   ❌ [BUILD] syllabus {syllabus_id} 未配置 draft 路径。")
         return None
 
-    p = Path(draft_path)
-    if not p.exists():
+    p = _resolve_repo_path(draft_path)
+    if p is None or not p.exists():
         print(f"   ❌ [BUILD] 草稿文件不存在: {draft_path}")
         return None
 
@@ -526,10 +606,7 @@ def build_syllabus(syllabus_id: int) -> Syllabus:
     # determine graph_name through syllabus -> graph relation
     graph_name = None
     try:
-        related_graph_ids = list_graphs_by_syllabus(syllabus_id)
-        graph_id = related_graph_ids[0] if related_graph_ids else None
-        graph = get_graph_by_id(graph_id) if graph_id is not None else None
-        graph_name = getattr(graph, 'graphId', None) if graph else None
+        _, graph_name = _get_primary_graph_info(syllabus_id)
     except Exception as e:
         print(f"   [BUILD] failed to resolve graph by syllabus relation: {e}")
         graph_name = None
@@ -705,7 +782,8 @@ def update_syllabus_json(syllabus_id: int, syllabus_json: dict) -> Syllabus:
         return None
 
     final_path = getattr(syllabus, 'syllabus_path', None)
-    if not final_path or not Path(final_path).exists():
+    resolved_final_path = _resolve_repo_path(final_path)
+    if not final_path or resolved_final_path is None or not resolved_final_path.exists():
         print(f"   [UPDATE] final syllabus file does not exist: {final_path}")
         return None
 
@@ -746,8 +824,8 @@ def get_syllabus_detail_info(syllabus_id: int) -> dict:
         print(f"   ❌ [GET] syllabus {syllabus_id} 未配置 final 路径。")
         return None
 
-    p = Path(final_path)
-    if not p.exists():
+    p = _resolve_repo_path(final_path)
+    if p is None or not p.exists():
         print(f"   ❌ [GET] final 文件不存在: {final_path}")
         return None
 

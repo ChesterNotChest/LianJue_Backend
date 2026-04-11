@@ -23,9 +23,18 @@ def list_user_syllabuses_by_syllabus(syllabus_id: int, syllabus_permission: str 
     return q.all()
 
 
-def create_user_syllabus(user_id: int, syllabus_id: int, personal_syllabus_path: str = None):
-    """Create a UserSyllabus entry and return it."""
-    us = UserSyllabus(user_id=user_id, syllabus_id=syllabus_id, personal_syllabus_path=personal_syllabus_path)
+def create_user_syllabus(user_id: int, syllabus_id: int, syllabus_permission: str = 'user', personal_syllabus_path: str = None):
+    """Create a UserSyllabus entry and return it. If it already exists, return the existing row."""
+    existing = get_user_syllabus(user_id, syllabus_id)
+    if existing:
+        return existing
+
+    us = UserSyllabus(
+        user_id=user_id,
+        syllabus_id=syllabus_id,
+        syllabus_permission=syllabus_permission,
+        personal_syllabus_path=personal_syllabus_path,
+    )
     db.session.add(us)
     db.session.commit()
     return us

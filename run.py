@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import concurrent.futures
+import threading
 import traceback
 from pathlib import Path
 import os
@@ -31,33 +32,26 @@ def main():
     parser = argparse.ArgumentParser(description="批量处理文件夹下的文档并写入图数据库")
     parser.add_argument("--input", default="./pdfs", help="待处理的文件或文件夹路径")
     parser.add_argument("--workers", type=int, default=2, help="并行线程数")
+    parser.add_argument("--host", default="0.0.0.0", help="Flask 服务监听地址")
+    parser.add_argument("--port", type=int, default=5000, help="Flask 服务监听端口")
+    parser.add_argument("--debug", action="store_true", help="启用 Flask debug 模式")
+    parser.add_argument("--no-job-checker", action="store_true", help="只启动 Flask API，不启动后台 JobChecker")
     args = parser.parse_args()
 
     # create Flask app and initialize DB/models
-    app = create_app()
+    flask_app = create_app()
 
-    # print(f"🚀 开始初始化 KnowLion 实例，图名: {args.graph}")
-    # knowlion = KnowLion(MODEL_CONFIGS, graph_name=args.graph)
-    knowlion = KnowLion(MODEL_CONFIGS, graph_name="RAG")
-    knowlion.init_graph()
+    checker = None
+    if not args.no_job_checker:
+        checker = JobChecker(app=flask_app)
+        checker_thread = threading.Thread(target=checker.start, name="job-checker", daemon=True)
+        checker_thread.start()
 
-    # run the processing inside the Flask app context so models and `db` are available
-    with app.app_context():
-
-        pdf_dir = Path(args.input or "./pdfs")
-
-        # collect added file ids so we can create jobs reliably
-
-        # start JobChecker which will poll DB and orchestrate tasks
-        checker = JobChecker(app=app)
-        try:
-            checker.start()
-        except KeyboardInterrupt:
-            print("Shutting down JobChecker")
-            try:
-                checker.stop()
-            except Exception:
-                pass
+    try:
+        flask_app.run(host=args.host, port=args.port, debug=args.debug, use_reloader=False)
+    finally:
+        if checker:
+            checker.stop()
 
 
 if __name__ == "__main__":

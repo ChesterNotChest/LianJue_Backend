@@ -1,11 +1,8 @@
-from datetime import datetime
-
 from constant import JobStatus
-from extensions import db
 from repositories.graph_repo import get_graph_by_id
 from repositories.filegraph_repo import add_binding
 from repositories.file_repo import get_file_by_id
-from repositories.jobs_repo import create_job, update_job_status, list_all_jobs
+from repositories.jobs_repo import create_job, update_job_status
 from repositories import jobs_repo
 
 
@@ -45,11 +42,9 @@ def get_job_detail_info(job_id: int):
         "file_id": job.file_id,
         "file_path": file.path if file else None,
         "graph_id": job.graph_id,
-        "graph_name": graph.name if graph else None,
+        "graph_name": getattr(graph, 'graphId', None) if graph else None,
         "status": job.status,
         "stage": job.stage,
         "progress_index": job.progress_index,
-        "end_stage": job.end_stage,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "updated_at": job.updated_at.isoformat() if job.updated_at else None
+        "end_stage": job.end_stage
     }

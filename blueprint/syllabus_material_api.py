@@ -2,10 +2,10 @@ from flask import Blueprint, request, jsonify
 from tasks import syllabus_task, material_gen_task, material_task
 
 
-bp = Blueprint('syllabus_material_api', __name__, url_prefix='/api/syllabus')
+bp = Blueprint('syllabus_material_api', __name__, url_prefix='/api')
 
 
-@bp.route('/build_draft', methods=['POST'])
+@bp.route('/syllabus_build_draft', methods=['POST'])
 def build_syllabus_draft_api():
     '''
     通讯格式：
@@ -41,7 +41,7 @@ def build_syllabus_draft_api():
         return jsonify({'success': False, 'syllabus': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/build', methods=['POST'])
+@bp.route('/syllabus_build', methods=['POST'])
 def build_syllabus_api():
     '''
     通讯格式：
@@ -66,7 +66,7 @@ def build_syllabus_api():
         return jsonify({'success': False, 'syllabus': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/update_draft', methods=['POST'])
+@bp.route('/syllabus_update_draft', methods=['POST'])
 def update_syllabus_draft_api():
     '''
     通讯格式：
@@ -95,7 +95,7 @@ def update_syllabus_draft_api():
         return jsonify({'success': False, 'syllabus': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/update', methods=['POST'])
+@bp.route('/syllabus_update', methods=['POST'])
 def update_syllabus_api():
     '''
     Input:
@@ -125,7 +125,7 @@ def update_syllabus_api():
         return jsonify({'success': False, 'syllabus': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/detail', methods=['POST'])
+@bp.route('/syllabus_detail', methods=['POST'])
 def get_syllabus_detail_api():
     '''
     通讯格式：
@@ -149,7 +149,7 @@ def get_syllabus_detail_api():
         return jsonify({'success': False, 'syllabus': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/status', methods=['POST'])
+@bp.route('/syllabus_status', methods=['POST'])
 def get_syllabus_status_api():
     if not request.is_json:
         return jsonify({'success': False, 'status': None, 'error_message': 'invalid json', 'error_code': 'invalid_json'}), 400
@@ -166,7 +166,7 @@ def get_syllabus_status_api():
         return jsonify({'success': False, 'status': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/draft/detail', methods=['POST'])
+@bp.route('/syllabus_draft_detail', methods=['POST'])
 def get_syllabus_draft_detail_api():
     '''
     通讯格式：
@@ -190,7 +190,7 @@ def get_syllabus_draft_detail_api():
         return jsonify({'success': False, 'syllabus_draft': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/list', methods=['POST'])
+@bp.route('/syllabus_list', methods=['POST'])
 def list_syllabuses_api():
     '''
     通讯格式：
@@ -230,7 +230,7 @@ def list_syllabuses_api():
 
 
 # Material endpoints under same blueprint but with '/material' prefix
-@bp.route('/material/generate_draft', methods=['POST'])
+@bp.route('/syllabus_material_generate_draft', methods=['POST'])
 def generate_material_draft_api():
     '''
     通讯格式：
@@ -261,7 +261,7 @@ def generate_material_draft_api():
         return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/update_draft', methods=['POST'])
+@bp.route('/syllabus_material_update_draft', methods=['POST'])
 def update_material_draft_api():
     '''
     通讯格式：
@@ -288,7 +288,7 @@ def update_material_draft_api():
         return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/update', methods=['POST'])
+@bp.route('/syllabus_material_update', methods=['POST'])
 def update_final_material_api():
     if not request.is_json:
         return jsonify({'success': False, 'material': None, 'error_message': 'invalid json', 'error_code': 'invalid_json'}), 400
@@ -306,7 +306,7 @@ def update_final_material_api():
         return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/draft/detail', methods=['POST'])
+@bp.route('/syllabus_material_draft_detail', methods=['POST'])
 def get_material_draft_detail_api():
     '''
     通讯格式：输入：{ "material_id": int }
@@ -327,7 +327,7 @@ def get_material_draft_detail_api():
         return jsonify({'success': False, 'material_draft': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/generate_final', methods=['POST'])
+@bp.route('/syllabus_material_generate_final', methods=['POST'])
 def generate_final_material_api():
     '''
     通讯格式：
@@ -350,7 +350,7 @@ def generate_final_material_api():
         return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/publish', methods=['POST'])
+@bp.route('/syllabus_material_publish', methods=['POST'])
 def publish_material_api():
     '''
     通讯格式：
@@ -373,7 +373,7 @@ def publish_material_api():
         return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/detail', methods=['POST'])
+@bp.route('/syllabus_material_detail', methods=['POST'])
 def get_material_detail_api():
     '''
     通讯格式：输入 { "material_id": int }
@@ -394,7 +394,7 @@ def get_material_detail_api():
         return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/status', methods=['POST'])
+@bp.route('/syllabus_material_status', methods=['POST'])
 def get_material_status_api():
     if not request.is_json:
         return jsonify({'success': False, 'status': None, 'error_message': 'invalid json', 'error_code': 'invalid_json'}), 400
@@ -411,7 +411,7 @@ def get_material_status_api():
         return jsonify({'success': False, 'status': None, 'error_message': str(e), 'error_code': 'exception'}), 500
 
 
-@bp.route('/material/list', methods=['POST'])
+@bp.route('/syllabus_material_list', methods=['POST'])
 def list_materials_api():
     '''
     通讯格式：输入 { "syllabus_id": int } (optional)
