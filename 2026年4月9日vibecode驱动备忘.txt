@@ -13,6 +13,11 @@
 5. 如该条是依据当前 mock / task 额外补出的建议方法，则末尾标注“ - 额外补充”。
 6. 新增约束：只有 `build_syllabus_draft_api()` 这一条在当前阶段允许显式接收图谱信息；之后的 syllabus / material 相关 API 不应再接收 `graph_name`。对应 task 内部若需要图谱，应通过 `repositories.syllabus_graph_repo.list_graphs_by_syllabus(syllabus_id)` 先拿到 `graph_id`，再通过 `repositories.graph_repo.get_graph_by_id(graph_id)` 取得 `graphId`（其本质就是 graph_name）。material 侧则先拿到 `syllabus_id`，再走同样链路。
 
+当前核对结论：
+1. 以“后端 blueprint / task 方法是否存在且契约明确”为标准，除第 29 条“方式 A 暂缓实现”外，本文列出的后端方法已全部落地。
+2. 以“前端 mock API 伪解析是否与后端返回字段一致”为标准，本轮已补齐 `get_material_draft_detail_api()` 的 `material_draft` 键名对齐；当前 detail / status / update / list 的主要键名已可直接映射到现有后端接口。
+3. 当前剩余的主要问题已不再是“后端方法缺失”，而是“前端联调动作未接上”：教师页材料上传链仍未真正走 `upload_knowledge_source() -> create_job_api() -> list_jobs_api()`；学生页 `init_personal_syllabus_api()` 与 `ask_question_api()` 成功后仍应追加 `get_personal_syllabus_detail_info_api()` 软刷新。
+
 一、教师端顶部切换与当前教学大纲加载
 
 1. `list_syllabuses_api()`
@@ -148,7 +153,7 @@
 当前前端实际需要：
 教师页“上传教学材料”区域的 dropbox 在正式对齐时应先调用它上传文件，再进入 job 创建链路；学生页“学习内容记录”方式 A 若走文件上传，也应复用这一入口。
 说明：
-当前前端教师页这块还只是本地插入假 `graph-file`，尚未真正发请求；但后端方法名可以直接沿用现有的 `upload_knowledge_source()`。
+当前前端教师页这块还只是本地插入假 `graph-file`，尚未真正发请求；但后端方法名可以直接沿用现有的 `upload_knowledge_source()`。这属于前端联调未接线，不是后端方法缺失。
 
 13. `create_job_api()`
 位置：`blueprint/knowledge_build_api.py`
@@ -158,7 +163,7 @@
 当前前端实际需要：
 教师页上传教学材料后，应立刻以 `graph_id + file_id` 创建 job，用于后续图谱构建 / 解析进度展示
 说明：
-当前前端 mock 还没真正接上这一步，但从教师页“graph-file 卡片展示 job tag”的现状来看，下一步真实对齐必须走这条链。
+当前前端 mock 还没真正接上这一步，但从教师页“graph-file 卡片展示 job tag”的现状来看，下一步真实对齐必须走这条链。这属于前端联调未接线，不是后端方法缺失。
 
 14. `list_jobs_api()`
 位置：`blueprint/knowledge_build_api.py`
@@ -167,7 +172,7 @@
 当前前端实际需要：
 教师页 graph-file 列表需要按 `graph_id` 拉取 jobs，并把 `status / stage / progress_index / end_stage` 显示到文件卡片 tag 上
 说明：
-该方法名与当前前端需求基本一致，可以直接使用。
+该方法名与当前前端需求基本一致，可以直接使用；当前剩余工作主要是把教师页材料上传后的文件列表切到真实 job 查询。
 
 15. `list_graph_files_api()` / `list_syllabus_files_api()`
 位置：`blueprint/file_transmit_api.py`
@@ -219,7 +224,7 @@ blueprint 通过控制传入的参数表来引导 task 发生不同的行为。
 当前参数：`material_id`
 对应 task：`tasks.material_gen_task.get_material_draft_detail_info(material_id)`
 说明：
-当前 blueprint 已补齐，直接返回 `material_draft` 的完整原始 json，供前端草稿编辑步骤使用。
+当前 blueprint 已补齐，直接返回 `material_draft` 的完整原始 json，供前端草稿编辑步骤使用；前端 mock 伪解析当前也已对齐到 `material_draft` 键名。
 
 19. `update_material_draft_api()`
 位置：`blueprint/syllabus_material_api.py`
@@ -288,7 +293,7 @@ blueprint 通过控制传入的参数表来引导 task 发生不同的行为。
 当前参数：`user_id`、`syllabus_id`
 当前返回：`user_id`、`syllabus_id`、`personal_syllabus_path`
 说明：
-与当前前端“选择学习”动作一致。
+与当前前端“选择学习”动作一致。补充注意：当前前端点击成功后仍应立即再调一次 `get_personal_syllabus_detail_info_api()`，把完整 `personal_syllabus` 拉回本地；这属于前端联调未接线，不是接口缺失。
 
 26. `get_personal_syllabus_detail_info_api()`
 位置：`blueprint/learning_api.py`

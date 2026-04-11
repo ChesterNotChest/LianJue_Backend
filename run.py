@@ -38,6 +38,8 @@ def main():
 
     # print(f"🚀 开始初始化 KnowLion 实例，图名: {args.graph}")
     # knowlion = KnowLion(MODEL_CONFIGS, graph_name=args.graph)
+    knowlion = KnowLion(MODEL_CONFIGS, graph_name="RAG")
+    knowlion.init_graph()
 
     # run the processing inside the Flask app context so models and `db` are available
     with app.app_context():
@@ -45,25 +47,6 @@ def main():
         pdf_dir = Path(args.input or "./pdfs")
 
         # collect added file ids so we can create jobs reliably
-        # TODO 这里之后靠api
-        file_ids = []
-        for (root, dirs, files) in os.walk(pdf_dir):
-            for file in files:
-                if file.lower().endswith(('.pdf', '.docx', '.txt')):  # 支持的文件类型
-                    file_path = os.path.join(root, file)
-                    try:
-                        fid = add_file(file_path)
-                        file_ids.append(fid)
-                    except Exception as e:
-                        print(f"添加文件失败 {file_path}: {e}")
-                        traceback.print_exc()
-        # TODO 这里之后靠api
-        try:
-            for fid in file_ids:
-                create_process_job(1, fid, JobStage.KNOWLEDGE_TO_SAVE.value) # 暂时默认使用 graph_id=1 和最终阶段为 KNOWLEDGE_TO_SAVE
-        except Exception as e:
-            print(f"创建处理任务失败: {e}")
-            traceback.print_exc()
 
         # start JobChecker which will poll DB and orchestrate tasks
         checker = JobChecker(app=app)

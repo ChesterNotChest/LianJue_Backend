@@ -162,17 +162,14 @@ def knowledge_to_save(knowlion, job_id: int):
         print(f"   ❌ [POST] 读取知识对象文件失败: {e}")
         return []
 
+    # Graph creation/schema initialization belongs to create_graph().
+    # Re-running init_graph() here calls add_graph() for every saved pkl and can
+    # race on graph metadata when many pending jobs resume together.
     try:
-        # Attempt to initialize graph on KnowLion instance (will be tolerant to failures)
-        try:
-            knowlion.init_graph()
-        except Exception as e:
-            print(f"   ⚠️ [POST] init_graph 失败（outbox 已弃用），继续执行：{e}")
-
+        knowlion.knowledge_to_save(knowledge)
     except Exception as e:
-        print(f"   ⚠️ [POST] 检查/创建 graph 记录时发生错误: {e}")
-
-    knowlion.knowledge_to_save(knowledge)
+        print(f"   ❌ [POST] 知识对象写入图数据库失败: {e}")
+        raise
     print(f"   ✅ [POST] 已写入图数据库")
     
 

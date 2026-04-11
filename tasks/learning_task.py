@@ -201,7 +201,7 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
 
 输出策略：
 - `answer` 应基于提供的 RAG 检索内容与教学周片段，优先引用高置信度检索结果；若检索不足，可基于通用教学知识给出简洁答案。
-- `document_names` 包含在rag结果中，每个记录的开头就是文档名称。列出用于回答的主要文档名称（若无可匹配文档，则可留空列表）。
+- `document_names` 取自 RAG 结果中 ([文档名]) 格式里方括号内的名称，例如([大数据导论])、([第4章_数据管理])。取用被小括号与中括号组成的2层包裹内的文件名称即可。列出用于回答的主要文档名称（若无可匹配文档，则可留空列表）。
 - `competance_list` 针对 `relevant_weeks` 中的周次按本次提问质量评估建议的掌握度，取值必须是 weak_far|weak|normal|master|master_far。
 - 只在匹配度明确时才标注 weak_far 或 master_far；不要输出其他未在此枚举中的等级字符串。
 
