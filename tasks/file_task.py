@@ -1,4 +1,5 @@
 from datetime import datetime
+import mimetypes
 import os
 import time
 from typing import Union
@@ -163,4 +164,33 @@ def get_file_detail_info(file_id: int):
         'filename': os.path.basename(path) if path else None,
         'path': path,
         'upload_time': upload_time.isoformat() if hasattr(upload_time, 'isoformat') else upload_time,
+    }
+
+
+def get_file_download_info(file_id: int):
+    try:
+        normalized_file_id = int(file_id)
+    except (TypeError, ValueError):
+        return None
+
+    file = get_file_by_id(normalized_file_id)
+    if not file:
+        return None
+
+    raw_path = getattr(file, 'path', None)
+    if not raw_path:
+        return None
+
+    normalized_path = os.path.abspath(raw_path)
+    if not os.path.isfile(normalized_path):
+        return None
+
+    filename = os.path.basename(normalized_path)
+    mimetype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+
+    return {
+        'file_id': normalized_file_id,
+        'filename': filename,
+        'path': normalized_path,
+        'mimetype': mimetype,
     }

@@ -1,9 +1,14 @@
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 import base64
 import os
 import logging
-from tasks.file_task import get_file_detail_info, list_all_files_brief_info, add_file as add_file_task
+from tasks.file_task import (
+    get_file_detail_info,
+    get_file_download_info,
+    list_all_files_brief_info,
+    add_file as add_file_task,
+)
 from tasks import syllabus_task
 from config import get_config
 import constant
@@ -320,4 +325,40 @@ def get_file_detail_api():
             "file": None,
             "error_message": str(e),
             "error_code": "exception"
+        }), 500
+
+
+@bp.route('/file_download', methods=['GET'])
+def download_file_api():
+    file_id = request.args.get('file_id')
+
+    if file_id is None or str(file_id).strip() == '':
+        return jsonify({
+            "success": False,
+            "error_message": "missing file_id",
+            "error_code": "missing_fields",
+        }), 400
+
+    try:
+        download_info = get_file_download_info(file_id)
+        if not download_info:
+            return jsonify({
+                "success": False,
+                "error_message": "not found",
+                "error_code": "not_found",
+            }), 404
+
+        return send_file(
+            download_info['path'],
+            as_attachment=True,
+            download_name=download_info['filename'],
+            mimetype=download_info['mimetype'],
+            conditional=True,
+        )
+    except Exception as e:
+        logger.exception("download_file_api failed")
+        return jsonify({
+            "success": False,
+            "error_message": str(e),
+            "error_code": "exception",
         }), 500

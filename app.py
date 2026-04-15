@@ -38,6 +38,7 @@ def create_app():
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Expose-Headers"] = "Content-Disposition, Content-Type"
         return response
 
     # initialize db extension

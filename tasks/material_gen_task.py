@@ -425,6 +425,7 @@ def list_materials_draft_brief_info(syllabus_id: int):
 	for m in list_materials_by_syllabus(syllabus_id):
 		items.append({
 			'material_id': getattr(m, 'material_id', None),
+			'file_id': getattr(m, 'file_id', None),
 			'title': getattr(m, 'title', None),
 			'draft_path': getattr(m, 'draft_material_path', None),
 			'final_path': getattr(m, 'material_path', None),
@@ -985,6 +986,7 @@ def list_materials_brief_info(syllabus_id: int):
 	for m in list_materials_by_syllabus(syllabus_id):
 		items.append({
 			'material_id': getattr(m, 'material_id', None),
+			'file_id': getattr(m, 'file_id', None),
 			'title': getattr(m, 'title', None),
 			'draft_path': getattr(m, 'draft_material_path', None),
 			'final_path': getattr(m, 'material_path', None),
