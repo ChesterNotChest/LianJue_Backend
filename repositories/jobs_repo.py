@@ -149,3 +149,26 @@ def list_all_jobs(**kwargs) -> list[Jobs]:
         if hasattr(Jobs, key):
             query = query.filter(getattr(Jobs, key) == value)
     return query.all()
+
+def get_job_details(job_id: int) -> dict:
+    job = get_job_by_id(job_id)
+    if not job:
+        return None
+    file = get_file_by_id(job.file_id)
+    graph = get_graph_by_id(job.graph_id)
+    return {
+        'job_id': job.job_id,
+        'file_path': file.path if file else None,
+        'graph_name': getattr(graph, 'graphId', None) if graph else None,
+        'status': job.status,
+        'stage': job.stage,
+        'progress_index': job.progress_index,
+        'end_stage': job.end_stage,
+        'error_message': job.error_message,
+        'partial_md_path': job.partial_md_path,
+        'split_markdown_path': job.split_markdown_path,
+        'markdown_path': job.markdown_path,
+        'partial_triples_path': job.partial_triples_path,
+        'triples_path': job.triples_path,
+        'knowledge_path': job.knowledge_path
+    }

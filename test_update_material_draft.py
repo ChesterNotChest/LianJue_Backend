@@ -105,6 +105,35 @@ def main():
                     print(Path(draft_path).read_text(encoding='utf-8')[:2000])
                 else:
                     print("Draft file not found on disk. Check logs.")
+                # additional validation: list materials for the syllabus and show a simple table
+                try:
+                    from tasks.material_gen_task import get_material_draft_detail_info, list_materials_draft_brief_info
+                    syl_id = getattr(m, 'syllabus_id', None)
+                    print("\nMaterials (brief) for syllabus_id=", syl_id)
+                    rows = list_materials_draft_brief_info(syl_id) if syl_id is not None else []
+                    if rows:
+                        # print pseudo-table
+                        hdr = ["material_id", "title", "draft_path", "final_path", "pdf_path", "create_time"]
+                        widths = [12, 30, 40, 40, 30, 20]
+                        def fmt(cell, w):
+                            s = str(cell) if cell is not None else ""
+                            return (s[:w-1] + '…') if len(s) > w else s.ljust(w)
+                        print(' | '.join(h.ljust(w) for h, w in zip(hdr, widths)))
+                        print('-' * (sum(widths) + 3 * (len(widths)-1)))
+                        for r in rows:
+                            print(' | '.join(fmt(r.get(k), w) for k, w in zip(['material_id','title','draft_path','final_path','pdf_path','create_time'], widths)))
+                    else:
+                        print('  (no materials found)')
+
+                    print('\nMaterial draft (parsed JSON) preview:')
+                    det = get_material_draft_detail_info(material_id)
+                    if det:
+                        import json as _json
+                        print(_json.dumps(det, ensure_ascii=False, indent=2)[:4000])
+                    else:
+                        print('  (no draft JSON available)')
+                except Exception as e:
+                    print(f"  ⚠️ 额外验证失败: {e}")
             except Exception as e:
                 print(f"Exception during update_material_draft: {e}")
     except Exception as e:

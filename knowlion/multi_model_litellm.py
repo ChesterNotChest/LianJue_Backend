@@ -14,9 +14,26 @@ class LitellmMultiModel:
         """
         self.MODEL_CONFIGS = model_configs
 
-    def call_text_model(self, prompt: str, query: str, stream=False) -> str | None | Any:
-        """调用文本模型处理纯文字对话"""
-        messages = [{"role": "system", "content": prompt}, {"role": "user", "content": query}]
+    def call_text_model(self, prompt: str, query: str, stream=False, history: list | None = None) -> str | None | Any:
+        """调用文本模型处理纯文字对话
+
+        Args:
+            prompt: system prompt
+            query: user query
+            stream: whether to stream
+            history: optional list of past turns, each item is dict with keys 'timestamp','question','answer'
+        """
+        messages = [{"role": "system", "content": prompt}]
+        # if history provided, append as assistant/user turns between system and current user query
+        if history:
+            for h in history:
+                q = h.get('question') or h.get('q') or ''
+                a = h.get('answer') or h.get('a') or ''
+                if q:
+                    messages.append({"role": "user", "content": q})
+                if a:
+                    messages.append({"role": "assistant", "content": a})
+        messages.append({"role": "user", "content": query})
         config = self.MODEL_CONFIGS["text"]
         try:
             response = litellm.completion(

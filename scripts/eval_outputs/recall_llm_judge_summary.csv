@@ -1,0 +1,4 @@
+top_k	hit_count	miss_count	dirty_count	hit_rate
+TOP1	31	19	0	0.62
+TOP3	44	6	0	0.88
+TOP5	48	2	0	0.96

@@ -1,11 +1,8 @@
-from datetime import datetime
-
 from constant import JobStatus
-from extensions import db
 from repositories.graph_repo import get_graph_by_id
 from repositories.filegraph_repo import add_binding
-from repositories.file_repo import create_file, get_file_by_id
-from repositories.jobs_repo import create_job, update_job_status, list_all_jobs
+from repositories.file_repo import get_file_by_id
+from repositories.jobs_repo import create_job, update_job_status
 from repositories import jobs_repo
 
 
@@ -34,3 +31,20 @@ def end_job(job_id):
 def list_all_jobs(**kwargs):
     return jobs_repo.list_all_jobs(**kwargs)
     
+def get_job_detail_info(job_id: int):
+    job = jobs_repo.get_job_by_id(job_id)
+    if not job:
+        return None
+    graph = get_graph_by_id(job.graph_id)
+    file = get_file_by_id(job.file_id)
+    return {
+        "job_id": job.job_id,
+        "file_id": job.file_id,
+        "file_path": file.path if file else None,
+        "graph_id": job.graph_id,
+        "graph_name": getattr(graph, 'graphId', None) if graph else None,
+        "status": job.status,
+        "stage": job.stage,
+        "progress_index": job.progress_index,
+        "end_stage": job.end_stage
+    }

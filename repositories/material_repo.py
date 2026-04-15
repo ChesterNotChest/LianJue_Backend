@@ -47,3 +47,8 @@ def set_material_title(material_id: int, title: str):
         material.title = title
         db.session.commit()
     return material
+
+
+def list_materials_by_syllabus(syllabus_id: int):
+    """Return list of Material objects for a given syllabus_id."""
+    return Material.query.filter_by(syllabus_id=syllabus_id).order_by(Material.material_id.desc()).all()
