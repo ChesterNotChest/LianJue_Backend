@@ -54,3 +54,6 @@ material/material_md_cache/*
 
 material/material_pdf/*
 !material/material_pdf/.gitkeep
+
+history/*
+!history/.gitkeep
