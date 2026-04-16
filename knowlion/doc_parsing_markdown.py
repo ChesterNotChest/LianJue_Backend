@@ -378,7 +378,7 @@ class Document2Markdown:
                 # If CJK ratio is very low on a multi-page doc, it may be an English PDF.
                 # Before treating as poor, check whether the result contains substantial
                 # English/Latin text; if so, do NOT mark as poor.
-                if pages > 0 and cjk_ratio < 0.02:
+                if pages > 0 and cjk_ratio < 0.1:
                     try:
                         is_english = self._contains_english_text(res)
                     except Exception:

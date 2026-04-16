@@ -206,6 +206,49 @@ copy config.example.json config.json
 pip install -r requirements.txt
 ```
 
+### 1.1 预抓取 Docling 模型到本地 `model/` 目录
+
+Docling 官方文档说明：首次处理 PDF、图片等需要其视觉管线的文档时，会自动下载所需模型；默认缓存目录是 `$HOME/.cache/docling/models`。为了避免服务首跑时临时拉取模型、也为了支持离线部署，建议在安装完成后先显式执行一次模型预抓取，再同步到本项目的 `PROCESSING_CONFIG.MODEL_PATH`（默认值为 `./model`）。
+
+推荐步骤如下：
+
+```bash
+# 1) 先按 Docling 官方方式预下载模型到默认缓存目录
+docling-tools models download
+
+# 2) 将 Docling 默认缓存同步到项目本地 model 目录
+mkdir -p ./model
+cp -R ~/.cache/docling/models/. ./model/
+
+# 3) 运行服务前，确认 config.json 中 PROCESSING_CONFIG.MODEL_PATH 指向 ./model
+```
+
+如果当前环境没有 `docling-tools` 可执行命令，可以按 Docling 官方文档提供的 Python 方式预下载模型：
+
+```python
+from docling.utils.model_downloader import download_models
+
+download_models()
+```
+
+Windows PowerShell 可参考：
+
+```powershell
+# 1) 预下载模型到默认缓存目录
+docling-tools models download
+
+# 2) 同步到项目本地目录
+New-Item -ItemType Directory -Force -Path .\model | Out-Null
+Copy-Item "$HOME\\.cache\\docling\\models\\*" ".\\model\\" -Recurse -Force
+```
+
+补充说明：
+
+- 本项目代码里会读取 `config.json` 的 `PROCESSING_CONFIG.MODEL_PATH`，并将其作为 Docling 的 `artifacts_path` 使用，因此 `./model` 下应保存的是 Docling 预下载后的模型目录内容，而不是再额外嵌套一层 `models/`。
+- 如果你在仓库外单独运行 Docling 脚本或 CLI，也可以按官方文档设置环境变量 `DOCLING_ARTIFACTS_PATH` 指向同一个模型目录。
+- 如果部署环境需要完全离线运行，建议在镜像构建或服务器初始化阶段完成上述预抓取和复制动作，再启动 `python run.py`。
+- 如果你想把 Docling 模型直接放在其他绝对路径，也可以把 `PROCESSING_CONFIG.MODEL_PATH` 改成对应目录；只要该目录内容与 `$HOME/.cache/docling/models` 下的内容一致即可。
+
 ### 2. 准备外部依赖
 
 运行前通常还需要：
