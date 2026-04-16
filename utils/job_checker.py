@@ -50,136 +50,25 @@ class JobChecker:
         # On startup, reset any jobs left in 'in_progress' to 'pending'
         try:
             logger.info("Resetting lingering in_progress jobs to pending (startup)")
-            if self.app:
-                with self.app.app_context():
-                    jobs = list_all_jobs()
-                    for j in jobs:
-                        if getattr(j, 'status', None) == 'in_progress':
-                            update_job_status(j.job_id, 'pending')
-                            logger.info(f"Job {j.job_id} status reset from in_progress to pending")
-            else:
-                jobs = list_all_jobs()
-                for j in jobs:
-                    if getattr(j, 'status', None) == 'in_progress':
-                        update_job_status(j.job_id, 'pending')
-                        logger.info(f"Job {j.job_id} status reset from in_progress to pending")
+            self._run_with_app_context(self._reset_in_progress_jobs)
         except Exception as e:
-            logger.error(f"Failed to reset in_progress jobs on startup: {e}")
+            logger.exception(f"Failed to reset in_progress jobs on startup: {e}")
 
         try:
             while True:
                 if self._stop_event.is_set():
                     logger.info("JobChecker stop event set; exiting main loop")
                     break
-                # fetch jobs that are either in_progress or pending; prioritize in_progress
-                # expire SQLAlchemy session to avoid returning stale objects from previous commits
+
                 try:
-                    db.session.expire_all()
+                    self._run_with_app_context(self._poll_once)
                 except Exception:
-                    pass
-                all_jobs = list_all_jobs()
-                jobs_to_consider = [j for j in all_jobs if getattr(j, 'status', None) in ('in_progress', 'pending')]
-                if not jobs_to_consider:
-                    time.sleep(self.poll_interval)
-                    continue
+                    logger.exception("JobChecker poll iteration crashed")
 
-                # prioritize resuming in_progress jobs first
-                jobs_to_consider.sort(key=lambda j: 0 if getattr(j, 'status', None) == 'in_progress' else 1)
-
-                for job in jobs_to_consider:
-                    job_id = job.job_id
-                    try:
-                        job_obj = get_job_by_id(job_id)
-                    except Exception as e:
-                        logger.error(f"Failed to fetch job {job_id}: {e}")
-                        update_error_message(job_id, str(e))
-                        update_job_status(job_id, 'failed')
-                        continue
-
-                    job_status = getattr(job_obj, 'status', None)
-                    if job_status not in ('in_progress', 'pending'):
-                        self._clear_running_flags(job_id)
-                        continue
-
-                    work_kind = self._get_work_kind(job_obj)
-                    if work_kind == 'complete':
-                        update_job_status(job_id, 'completed')
-                        self._clear_running_flags(job_id)
-                        continue
-
-                    needs_heavy = work_kind == 'heavy'
-                    needs_light = work_kind == 'light'
-                    if not needs_heavy and not needs_light:
-                        logger.warning(f"Job {job_id} has no schedulable work; status={job_status}, stage={getattr(job_obj, 'stage', None)}, end_stage={getattr(job_obj, 'end_stage', None)}")
-                        self._clear_running_flags(job_id)
-                        continue
-                    already_heavy, already_light = self._sync_running_flags_by_db_status(job_id, job_status)
-                    #print(f"\n👀 检查 Job {job_id} - needs_heavy: {needs_heavy}, needs_light: {needs_light}, already_heavy: {already_heavy}, already_light: {already_light}")
-
-                    if job_status == 'in_progress':
-                        # resume without changing status
-                        if needs_heavy and not already_heavy:
-                            with self._lock:
-                                if len(self.running_heavy) < self.doc_workers:
-                                    print("   🔁 继续 heavy 工作 - job_id:", job_id)
-                                    self.running_heavy.add(job_id)
-                                    fut = self.heavy_executor.submit(self._heavy_wrapper, job_id)
-                                    fut.add_done_callback(lambda f, jid=job_id: self._heavy_done_cb(f, jid))
-
-                        elif needs_light and not already_light:
-                            with self._lock:
-                                if len(self.running_light) < self.post_workers:
-                                    print("   🔁 继续 light 工作 job_id:", job_id)
-                                    self.running_light.add(job_id)
-                                    fut = self.light_executor.submit(self._light_wrapper, job_id)
-                                    fut.add_done_callback(lambda f, jid=job_id: self._light_done_cb(f, jid))
-
-                    else:  # pending
-                        if needs_heavy and not already_heavy:
-                            with self._lock:
-                                if len(self.running_heavy) < self.doc_workers:
-                                    # Re-check DB status so DB state remains authoritative.
-                                    fresh = None
-                                    try:
-                                        fresh = get_job_by_id(job_id)
-                                    except Exception:
-                                        fresh = None
-                                    if not fresh or getattr(fresh, 'status', None) != 'pending':
-                                        # Do not submit jobs that are no longer pending.
-                                        self.running_heavy.discard(job_id)
-                                        logger.info(f"Skipping submit for job {job_id}; current status is {getattr(fresh, 'status', None)}")
-                                    else:
-                                        print("   🚀 提交 heavy 工作 job_id:", job_id)
-                                        self.running_heavy.add(job_id)
-                                        update_job_status(job_id, 'in_progress')
-                                        fut = self.heavy_executor.submit(self._heavy_wrapper, job_id)
-                                        fut.add_done_callback(lambda f, jid=job_id: self._heavy_done_cb(f, jid))
-
-                        elif needs_light and not already_light:
-                            with self._lock:
-                                if len(self.running_light) < self.post_workers:
-                                    # Re-check DB status so DB state remains authoritative.
-                                    fresh = None
-                                    try:
-                                        fresh = get_job_by_id(job_id)
-                                    except Exception:
-                                        fresh = None
-                                    if not fresh or getattr(fresh, 'status', None) != 'pending':
-                                        self.running_light.discard(job_id)
-                                        logger.info(f"Skipping submit for job {job_id}; current status is {getattr(fresh, 'status', None)}")
-                                    else:
-                                        print("   🚀 提交 light 工作 job_id:", job_id)
-                                        self.running_light.add(job_id)
-                                        update_job_status(job_id, 'in_progress')
-                                        fut = self.light_executor.submit(self._light_wrapper, job_id)
-                                        fut.add_done_callback(lambda f, jid=job_id: self._light_done_cb(f, jid))
-
-                # short sleep before next poll
                 time.sleep(self.poll_interval)
         except KeyboardInterrupt:
             logger.info("KeyboardInterrupt received in JobChecker; setting stop event")
             self._stop_event.set()
-
         finally:
             try:
                 if hasattr(self, 'heavy_executor'):
@@ -195,6 +84,120 @@ class JobChecker:
     def stop(self):
         """Signal the JobChecker to stop gracefully."""
         self._stop_event.set()
+
+    def _reset_in_progress_jobs(self):
+        jobs = list_all_jobs()
+        for j in jobs:
+            if getattr(j, 'status', None) == 'in_progress':
+                update_job_status(j.job_id, 'pending')
+                logger.info(f"Job {j.job_id} status reset from in_progress to pending")
+
+    def _poll_once(self):
+        # expire SQLAlchemy session to avoid returning stale objects from previous commits
+        try:
+            db.session.expire_all()
+        except Exception:
+            pass
+
+        all_jobs = list_all_jobs()
+        jobs_to_consider = [j for j in all_jobs if getattr(j, 'status', None) in ('in_progress', 'pending')]
+        if not jobs_to_consider:
+            return
+
+        # prioritize resuming in_progress jobs first
+        jobs_to_consider.sort(key=lambda j: 0 if getattr(j, 'status', None) == 'in_progress' else 1)
+
+        for job in jobs_to_consider:
+            job_id = job.job_id
+            try:
+                job_obj = get_job_by_id(job_id)
+            except Exception as e:
+                logger.error(f"Failed to fetch job {job_id}: {e}")
+                update_error_message(job_id, str(e))
+                update_job_status(job_id, 'failed')
+                continue
+
+            job_status = getattr(job_obj, 'status', None)
+            if job_status not in ('in_progress', 'pending'):
+                self._clear_running_flags(job_id)
+                continue
+
+            work_kind = self._get_work_kind(job_obj)
+            if work_kind == 'complete':
+                update_job_status(job_id, 'completed')
+                self._clear_running_flags(job_id)
+                continue
+
+            needs_heavy = work_kind == 'heavy'
+            needs_light = work_kind == 'light'
+            if not needs_heavy and not needs_light:
+                logger.warning(
+                    f"Job {job_id} has no schedulable work; "
+                    f"status={job_status}, stage={getattr(job_obj, 'stage', None)}, "
+                    f"end_stage={getattr(job_obj, 'end_stage', None)}"
+                )
+                self._clear_running_flags(job_id)
+                continue
+
+            already_heavy, already_light = self._sync_running_flags_by_db_status(job_id, job_status)
+
+            if job_status == 'in_progress':
+                # resume without changing status
+                if needs_heavy and not already_heavy:
+                    with self._lock:
+                        if len(self.running_heavy) < self.doc_workers:
+                            print("   [JOB_CHECKER] resume heavy job_id:", job_id)
+                            self.running_heavy.add(job_id)
+                            fut = self.heavy_executor.submit(self._heavy_wrapper, job_id)
+                            fut.add_done_callback(lambda f, jid=job_id: self._heavy_done_cb(f, jid))
+
+                elif needs_light and not already_light:
+                    with self._lock:
+                        if len(self.running_light) < self.post_workers:
+                            print("   [JOB_CHECKER] resume light job_id:", job_id)
+                            self.running_light.add(job_id)
+                            fut = self.light_executor.submit(self._light_wrapper, job_id)
+                            fut.add_done_callback(lambda f, jid=job_id: self._light_done_cb(f, jid))
+
+            else:  # pending
+                if needs_heavy and not already_heavy:
+                    with self._lock:
+                        if len(self.running_heavy) < self.doc_workers:
+                            # Re-check DB status so DB state remains authoritative.
+                            fresh = None
+                            try:
+                                fresh = get_job_by_id(job_id)
+                            except Exception:
+                                fresh = None
+                            if not fresh or getattr(fresh, 'status', None) != 'pending':
+                                # Do not submit jobs that are no longer pending.
+                                self.running_heavy.discard(job_id)
+                                logger.info(f"Skipping submit for job {job_id}; current status is {getattr(fresh, 'status', None)}")
+                            else:
+                                print("   [JOB_CHECKER] submit heavy job_id:", job_id)
+                                self.running_heavy.add(job_id)
+                                update_job_status(job_id, 'in_progress')
+                                fut = self.heavy_executor.submit(self._heavy_wrapper, job_id)
+                                fut.add_done_callback(lambda f, jid=job_id: self._heavy_done_cb(f, jid))
+
+                elif needs_light and not already_light:
+                    with self._lock:
+                        if len(self.running_light) < self.post_workers:
+                            # Re-check DB status so DB state remains authoritative.
+                            fresh = None
+                            try:
+                                fresh = get_job_by_id(job_id)
+                            except Exception:
+                                fresh = None
+                            if not fresh or getattr(fresh, 'status', None) != 'pending':
+                                self.running_light.discard(job_id)
+                                logger.info(f"Skipping submit for job {job_id}; current status is {getattr(fresh, 'status', None)}")
+                            else:
+                                print("   [JOB_CHECKER] submit light job_id:", job_id)
+                                self.running_light.add(job_id)
+                                update_job_status(job_id, 'in_progress')
+                                fut = self.light_executor.submit(self._light_wrapper, job_id)
+                                fut.add_done_callback(lambda f, jid=job_id: self._light_done_cb(f, jid))
 
     def _clear_running_flags(self, job_id: str):
         with self._lock:
@@ -283,7 +286,7 @@ class JobChecker:
 
                 # pass current progress index to file_to_md so it can resume from that batch
                 cur_progress = get_progress_index_by_job_id(job_id) or 0
-                print(f"   🔄 [HEAVY] 单次调用 file_to_md - job_id {job_id} | 进度 - progress_index {cur_progress}")
+                print(f"   [HEAVY] single file_to_md call - job_id {job_id} | progress_index {cur_progress}")
                 # Create a KnowLion instance per task using the job's configured graph name
                 try:
                     graph_name = self._get_graph_name_for_job(job_id)
@@ -300,19 +303,17 @@ class JobChecker:
                 # updating `progress_index` and managing any partial-file loops.
                 cur_progress = get_progress_index_by_job_id(job_id) or 0
                 try:
-                    
-                    logger.info(f"任务 {job_id} 完成: {cur_progress}/{total_batches}")
+                    logger.info(f"Job {job_id} heavy stage done: {cur_progress}/{total_batches}")
                     if self._canonical_stage(job.end_stage) == 'pdf_to_md':
                         update_job_status(job_id, 'completed')
                     else:
-                        update_job_stage(job_id, 'md_to_triples')  # 直接更新阶段，light任务会根据这个阶段来判断下一步执行什么
+                        update_job_stage(job_id, 'md_to_triples')
                 except Exception:
                     logger.debug(f"Finished heavy call for job {job_id}; progress read failed")
                 return job_id
         except Exception as e:
-            logger.error(f"   ❌ [HEAVY] 工作开展出现异常 - job_id {job_id}: {e}")
+            logger.error(f"   [HEAVY] worker failed - job_id {job_id}: {e}")
             raise
-
 
     def _light_wrapper(self, job_id: str):
         try:
@@ -322,7 +323,7 @@ class JobChecker:
             else:
                 return self._light_work_loop(job_id)
         except Exception as e:
-            print(f"   ❌ [LIGHT] 工作开展出现异常 - job_id {job_id}: {e}")
+            print(f"   [LIGHT] worker failed - job_id {job_id}: {e}")
             raise
 
     def _light_work_loop(self, job_id: str):
@@ -334,14 +335,12 @@ class JobChecker:
             job = get_job_by_id(job_id)
             if not job:
                 raise RuntimeError(f"Job {job_id} not found in light wrapper")
-            #设置前检查 stage == end_stage 的情况，如果相等说明这个阶段已经完成了，不需要再继续往下走了。
             if job.status == 'completed':
                 logger.info(f"Job {job_id} already completed; exiting light loop")
                 break
             if self._mark_completed_if_end_stage_done(job_id):
                 break
-            ###################
-            # 如下设置下一步执行的内容
+
             # Create a KnowLion instance per job for isolation and proper graph scoping
             try:
                 graph_name = self._get_graph_name_for_job(job_id)
@@ -353,7 +352,6 @@ class JobChecker:
             if not getattr(job, 'triples_path', None):
                 update_job_stage(job_id, 'md_to_triples')
                 md_to_triples(knowlion, job_id)
-                # 若是终止步，则标记完成；否则继续循环
                 if self._mark_completed_if_end_stage_done(job_id):
                     break
                 continue
@@ -361,7 +359,6 @@ class JobChecker:
             if not getattr(job, 'knowledge_path', None):
                 update_job_stage(job_id, 'triple_to_knowledge')
                 triples_to_knowledge(knowlion, job_id)
-                # 若是终止步，则标记完成；否则继续循环
                 if self._mark_completed_if_end_stage_done(job_id):
                     break
                 continue
@@ -370,7 +367,6 @@ class JobChecker:
             if getattr(job, 'knowledge_path', None):
                 update_job_stage(job_id, 'knowledge_to_save')
                 knowledge_to_save(knowlion, job_id)
-                # 防止二次进入这个流程，直接标记完成；否则继续循环
                 update_job_status(job_id, 'completed')
                 logger.info(f"Job {job_id} reached terminal stage; marking as completed and exiting light loop")
                 break

@@ -14,7 +14,7 @@ from schemas.file import File
 
 def add_file(save_path, file_name, file_bytes: Union[bytes, str] = None, upload_time: str = None):
     if not upload_time:
-        upload_time = datetime.utcnow().isoformat()
+        upload_time = datetime.utcnow()
 
     if save_path:
         abs_path = os.path.abspath(os.path.join(save_path, file_name))

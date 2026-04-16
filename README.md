@@ -123,7 +123,7 @@ Lianjue_Backend/
 位置：`blueprint/file_transmit_api.py`
 
 - `POST /api/file_upload`
-- `POST /api/file_upload_calendar`
+- `POST /api/file_upload_calendar`，支持可选 `user_id`，用于在创建 syllabus 后同步建立 owner 绑定
 - `POST /api/file_list_graph_files`
 - `POST /api/file_list_syllabus_files`
 - `POST /api/file_detail`
