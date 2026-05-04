@@ -1,31 +1,9 @@
 # -*- coding: utf-8 -*-
 import argparse
-import concurrent.futures
 import threading
-import traceback
-from pathlib import Path
-import os
-import json
-import gc
-from datetime import datetime
-from constant import JobStage
-from tasks.jobs_task import create_process_job
-from tasks.file_task import add_file
-from tasks.process_task import file_to_md
-from tasks.post_process_task import md_to_triples, triples_to_knowledge
-from knowlion.abution_knowlion_driver import KnowLion
-from abutionpy.abution_operations import *
-from abutionpy.abution_connector import *
-from config import MODEL_CONFIGS, PROCESSING_CONFIG
 from utils.job_checker import JobChecker
 
-from config import get_config
 from app import create_app
-
-# model_path can be configured via config.json PROCESSING_CONFIG.MODEL_PATH
-cfg = get_config()
-proc_cfg = cfg.get("PROCESSING_CONFIG", {}) if isinstance(cfg, dict) else {}
-model_path = str(Path(proc_cfg.get("MODEL_PATH", "./model")).resolve())
 
 
 def main():

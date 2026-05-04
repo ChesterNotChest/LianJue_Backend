@@ -2,6 +2,8 @@ import time
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import json
+import re
 from config import PROCESSING_CONFIG, MODEL_CONFIGS
 from knowlion.abution_knowlion_driver import KnowLion
 from tasks.process_task import file_to_md
@@ -19,7 +21,7 @@ from repositories.jobs_repo import (
 )
 from extensions import db
 from repositories.jobs_repo import get_graphId_by_job_id
-from repositories.graph_repo import get_graph_by_id
+from repositories.graph_repo import list_graphs as list_local_graphs
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,12 @@ class JobChecker:
         # keep executors on the instance so `stop()` can shut them down
         self.heavy_executor = ThreadPoolExecutor(max_workers=self.doc_workers)
         self.light_executor = ThreadPoolExecutor(max_workers=self.post_workers)
+
+        try:
+            logger.info("Reconciling local graph records with remote graph service (startup)")
+            self._run_with_app_context(self._ensure_remote_graphs_exist)
+        except Exception as e:
+            logger.exception(f"Failed to reconcile remote graphs on startup: {e}")
 
         # On startup, reset any jobs left in 'in_progress' to 'pending'
         try:
@@ -91,6 +99,109 @@ class JobChecker:
             if getattr(j, 'status', None) == 'in_progress':
                 update_job_status(j.job_id, 'pending')
                 logger.info(f"Job {j.job_id} status reset from in_progress to pending")
+
+    def _ensure_remote_graphs_exist(self):
+        local_graph_names = [
+            str(getattr(graph, 'graphId', '')).strip()
+            for graph in list_local_graphs()
+            if str(getattr(graph, 'graphId', '')).strip()
+        ]
+        if not local_graph_names:
+            logger.info("No local graph records found; skipping remote graph reconciliation")
+            return
+
+        inspector = KnowLion(MODEL_CONFIGS, graph_name=self.default_graph_name)
+        remote_graph_names = self._fetch_remote_graph_names(inspector)
+        if remote_graph_names is None:
+            logger.warning(
+                "Skipping remote graph reconciliation because remote graph listing failed"
+            )
+            return
+
+        logger.info(
+            "Remote graph reconciliation started: local=%s remote=%s",
+            len(local_graph_names),
+            len(remote_graph_names),
+        )
+
+        for graph_name in local_graph_names:
+            exists_remotely = graph_name in remote_graph_names
+            if not exists_remotely:
+                exists_remotely = self._remote_graph_exists(inspector, graph_name)
+
+            if exists_remotely:
+                logger.info("Remote graph already exists for '%s'; skip init_graph", graph_name)
+                continue
+
+            logger.warning("Remote graph missing for '%s'; calling init_graph()", graph_name)
+            KnowLion(MODEL_CONFIGS, graph_name=graph_name).init_graph()
+
+    def _fetch_remote_graph_names(self, knowlion: KnowLion):
+        try:
+            payload = knowlion.gdb_client.list_graph()
+        except Exception as e:
+            logger.warning(f"Failed to list remote graphs: {e}")
+            return None
+
+        names = self._extract_remote_graph_names(payload)
+        if not names:
+            logger.warning("Remote graph list returned no parseable graph names")
+        return names
+
+    def _remote_graph_exists(self, knowlion: KnowLion, graph_name: str):
+        try:
+            schema = knowlion.gdb_client.get_schema(graph_name)
+        except Exception as e:
+            logger.info("Remote graph '%s' schema lookup failed: %s", graph_name, e)
+            return False
+
+        if schema is None:
+            return False
+        if isinstance(schema, str) and not schema.strip():
+            return False
+        return True
+
+    def _extract_remote_graph_names(self, payload):
+        names = set()
+        self._collect_remote_graph_names(payload, names)
+        return names
+
+    def _collect_remote_graph_names(self, payload, names):
+        if payload is None:
+            return
+
+        if isinstance(payload, bytes):
+            try:
+                payload = payload.decode("utf-8")
+            except Exception:
+                payload = payload.decode(errors="ignore")
+
+        if isinstance(payload, str):
+            text = payload.strip()
+            if not text:
+                return
+            if text.startswith("{") or text.startswith("["):
+                try:
+                    self._collect_remote_graph_names(json.loads(text), names)
+                    return
+                except Exception:
+                    pass
+            if re.fullmatch(r"[\w.\-:]+", text):
+                names.add(text)
+            return
+
+        if isinstance(payload, dict):
+            for key in ("graphId", "graph_id", "graphName", "graph_name", "name"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    names.add(value.strip())
+            for value in payload.values():
+                self._collect_remote_graph_names(value, names)
+            return
+
+        if isinstance(payload, (list, tuple, set)):
+            for item in payload:
+                self._collect_remote_graph_names(item, names)
 
     def _poll_once(self):
         # expire SQLAlchemy session to avoid returning stale objects from previous commits
