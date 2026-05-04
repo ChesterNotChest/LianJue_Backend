@@ -496,6 +496,27 @@ def generate_final_material(material_id: int):
 		print(f"   ⚠️ [MATERIAL] 无法通过 material -> syllabus -> graph 反查图谱，将跳过 RAG: {e}")
 		kl = None
 
+	# Graph retrieval works in draft generation because it runs serially. Do the
+	# same here instead of sharing a single KnowLion/graph client across worker threads.
+	rag_text_by_question = {}
+	if kl is not None:
+		for q in questions:
+			q_index = q.get('question_index') or None
+			search_query = f"{q.get('related_knowledge', '')}\n{q.get('query_key', '')}".strip()
+			if not search_query:
+				continue
+			try:
+				rag_result = kl.search(search_query, top_k=4)
+				rag_text = json.dumps(
+					rag_result.get('reasoning_paths', []) or rag_result.get('paragraphs', []),
+					ensure_ascii=False,
+					indent=2
+				)
+				rag_text_by_question[q_index] = rag_text
+			except Exception as e:
+				print(f"   ⚠️ [MATERIAL] 题 {q_index} 的图谱检索失败，继续使用草稿内容生成: {e}")
+			time.sleep(0.1)
+
 	@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
 	def call_model_with_retry(sys_prompt: str, usr_prompt: str) -> str:
 		return model.call_text_model(sys_prompt, usr_prompt)
@@ -549,15 +570,9 @@ def generate_final_material(material_id: int):
 		if qtype not in allowed_types:
 			return (q_index, None, f"非法题型: {qtype}", None)
 		sys_p, usr_p = make_prompts(q)
-		if kl is not None:
-			try:
-				search_query = f"{q.get('related_knowledge', '')}\n{q.get('query_key', '')}".strip()
-				if search_query:
-					rag_result = kl.search(search_query, top_k=4)
-					rag_text = json.dumps(rag_result.get('reasoning_paths', []) or rag_result.get('paragraphs', []), ensure_ascii=False, indent=2)
-					usr_p = f"{usr_p}\n补充参考资料（来自图谱 {graph_name}）：\n{rag_text}"
-			except Exception as e:
-				print(f"   ⚠️ [MATERIAL] 题 {q_index} 的图谱检索失败，继续使用草稿内容生成: {e}")
+		rag_text = rag_text_by_question.get(q_index)
+		if rag_text:
+			usr_p = f"{usr_p}\n补充参考资料（来自图谱 {graph_name}）：\n{rag_text}"
 		try:
 			raw = call_model_with_retry(sys_p, usr_p)
 			cleaned = clean_llm_response(raw)

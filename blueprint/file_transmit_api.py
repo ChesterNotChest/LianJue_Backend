@@ -146,7 +146,8 @@ def upload_calendar():
     {
         "file_name": "calendar.pdf",   # 必须
         "file_bytes": "base64_encoded_content",  # 必须
-        "upload_time": "2023-10-01T12:00:00Z"  # 可选
+        "upload_time": "2023-10-01T12:00:00Z",  # 可选
+        "user_id": 7  # 可选，传入后会为该用户创建 syllabus owner 关联
     }
 
     输出：
@@ -173,6 +174,7 @@ def upload_calendar():
     file_name = data.get('file_name')
     file_bytes_b64 = data.get('file_bytes')
     upload_time = data.get('upload_time')
+    user_id = data.get('user_id')
 
     if not file_name or not file_bytes_b64:
         return jsonify({
@@ -201,7 +203,13 @@ def upload_calendar():
 
     # delegate to syllabus_task.upload_calendar which will register the file and create a syllabus
     try:
-        syllabus = syllabus_task.upload_calendar(file_path=file_path, file_name=file_name, file_bytes=file_bytes, upload_time=upload_time)
+        syllabus = syllabus_task.upload_calendar(
+            file_path=file_path,
+            file_name=file_name,
+            file_bytes=file_bytes,
+            upload_time=upload_time,
+            user_id=user_id,
+        )
         if syllabus is None:
             return jsonify({
                 "success": False,

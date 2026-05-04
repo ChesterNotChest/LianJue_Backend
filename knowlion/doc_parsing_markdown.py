@@ -57,6 +57,30 @@ logger = logging.getLogger(__name__)
 # easyocr_model_path = dify_config.DOCUMENT_MODEL_PATH+"/easyocr"
 # doc_to_md_model_path = dify_config.DOCUMENT_MODEL_PATH+"/doc2md"
 
+def _configure_docling_accelerator(pdf_pipeline_options, device_mode: str):
+    try:
+        from docling.datamodel.accelerator_options import AcceleratorDevice
+    except Exception:
+        return
+
+    normalized = str(device_mode or "cpu").lower()
+    if normalized in ("cuda", "gpu"):
+        target_device = AcceleratorDevice.CUDA
+    elif normalized == "mps":
+        target_device = AcceleratorDevice.MPS
+    elif normalized == "xpu":
+        target_device = AcceleratorDevice.XPU
+    else:
+        target_device = AcceleratorDevice.CPU
+
+    try:
+        pdf_pipeline_options.accelerator_options.device = target_device
+    except Exception:
+        try:
+            pdf_pipeline_options.accelerator_options.device = target_device.value
+        except Exception:
+            pass
+
 def get_document_converter(easyocr_model_path, pdf_artifacts_path):
     from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
     from docling.datamodel.base_models import InputFormat
@@ -74,6 +98,11 @@ def get_document_converter(easyocr_model_path, pdf_artifacts_path):
     # pdf_artifacts_path = json_input["docToMdModelPath"]
     pdf_pipeline_options = PdfPipelineOptions(
         artifacts_path=pdf_artifacts_path)  # , generate_page_images=True, generate_picture_images=True
+    try:
+        proc_cfg = get_config().get("PROCESSING_CONFIG", {})
+        _configure_docling_accelerator(pdf_pipeline_options, proc_cfg.get("device_mode", "cpu"))
+    except Exception:
+        pass
     pdf_pipeline_options.ocr_options = easyocr_options
     pdf_pipeline_options.do_ocr = True  # 启用 OCR
     ## 识别公式内容（默认调用模型ds4sd--CodeFormula
@@ -378,7 +407,7 @@ class Document2Markdown:
                 # If CJK ratio is very low on a multi-page doc, it may be an English PDF.
                 # Before treating as poor, check whether the result contains substantial
                 # English/Latin text; if so, do NOT mark as poor.
-                if pages > 0 and cjk_ratio < 0.02:
+                if pages > 0 and cjk_ratio < 0.1:
                     try:
                         is_english = self._contains_english_text(res)
                     except Exception:
@@ -950,15 +979,8 @@ class Document2Markdown:
             except Exception:
                 pass
 
-            # GPU / use flag - try common attribute names
-            for _attr in ('use_gpu', 'gpu', 'enable_gpu'):
-                try:
-                    setattr(easyocr_options, _attr, True if device_mode in ("cuda", "gpu") else False)
-                    break
-                except Exception:
-                    pass
-
             pdf_pipeline_options = PdfPipelineOptions(artifacts_path=self.model_path)
+            _configure_docling_accelerator(pdf_pipeline_options, device_mode)
             pdf_pipeline_options.ocr_options = easyocr_options
             pdf_pipeline_options.do_ocr = True
             pdf_pipeline_options.do_formula_enrichment = False

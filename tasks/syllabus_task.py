@@ -9,7 +9,7 @@ from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
 from repositories.syllabus_graph_repo import create_syllabus_graph, list_graphs_by_syllabus
 from repositories.graph_repo import get_graph_by_id, get_graph_by_graphId
-from repositories.user_syllabus_repo import list_user_syllabuses, list_user_syllabuses_by_syllabus
+from repositories.user_syllabus_repo import create_user_syllabus, list_user_syllabuses, list_user_syllabuses_by_syllabus
 from schemas.syllabus import Syllabus
 from constant import SyllabusPermission
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
@@ -21,7 +21,30 @@ from extensions import db
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
-def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None) -> Syllabus:
+def _reset_db_session():
+    # Force the next ORM read to use a brand-new Session/transaction so it can
+    # observe commits made by the background JobChecker thread.
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+    try:
+        db.session.remove()
+    except Exception:
+        pass
+
+
+def _get_latest_job_status(job_id: int):
+    _reset_db_session()
+    return get_status_by_job_id(job_id)
+
+
+def _get_latest_job(job_id: int):
+    _reset_db_session()
+    return get_job_by_id(job_id)
+
+
+def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None, user_id: int = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
@@ -30,6 +53,15 @@ def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time:
     fname = file_name
     file_id = add_file_task(save_dir, fname, file_bytes=file_bytes, upload_time=upload_time)
     syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
+    if syllabus is not None and user_id is not None:
+        try:
+            create_user_syllabus(
+                user_id=int(user_id),
+                syllabus_id=int(getattr(syllabus, 'syllabus_id', None)),
+                syllabus_permission=SyllabusPermission.OWNER.value,
+            )
+        except Exception as e:
+            print(f"   [SYLLABUS] failed to create owner binding for user_id={user_id}, syllabus_id={getattr(syllabus, 'syllabus_id', None)}: {e}")
     
     return syllabus
 
@@ -48,21 +80,36 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     '''
     # 构建syllabus草稿，生成一个新的syllabus记录
     syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        raise RuntimeError(f"Syllabus {syllabus_id} not found")
 
-    # TODO 加上 syllabusgraph 的记lu
+    syllabus_pk = int(getattr(syllabus, 'syllabus_id'))
+    syllabus_file_id = getattr(syllabus, 'file_id', None)
+    syllabus_calendar_path = getattr(syllabus, 'edu_calendar_path', None)
+
 
     # 1. 解析教学日历，提取关键信息
     file_id = syllabus.file_id
-    job = create_job(file_id=file_id, end_stage="pdf_to_md", graph_id=graph_id)
+    job = create_job(file_id=syllabus_file_id, end_stage="pdf_to_md", graph_id=graph_id)
+    job_id = int(getattr(job, 'job_id'))
 
-    while get_status_by_job_id(job.job_id) != "completed":
-        print(f"   ⏳ [POST] 等待 pdf_to_md 任务完成... 当前状态: {get_status_by_job_id(job.job_id)}")
+    while True:
+        job_status = _get_latest_job_status(job_id)
+        if job_status == "completed":
+            break
+        if job_status == "failed":
+            fresh_job = _get_latest_job(job_id)
+            error_message = getattr(fresh_job, 'error_message', '') if fresh_job else ''
+            raise RuntimeError(f"Job {job_id} 执行失败: {error_message or 'unknown error'}")
+
+        print(f"   ⏳ [POST] 等待 pdf_to_md 任务完成... 当前状态: {job_status}")
         time.sleep(5)  # 每5秒检查一次状态，直到pdf_to_md阶段完成
 
     # 2. 读取解析出来的markdown内容
-    md_path = job.markdown_path
+    job = _get_latest_job(job_id)
+    md_path = job.markdown_path if job else None
     if not md_path:
-        print(f"   ❌ [POST] Job {job.job_id} 没有 markdown_path，无法进行 md_to_triples")
+        print(f"   ❌ [POST] Job {job_id} 没有 markdown_path，无法进行 md_to_triples")
         return []
     
     # 读取md文件
@@ -166,12 +213,12 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
 
     # 补充 title 与 graph_name 字段
     title = None
-    if hasattr(syllabus, 'edu_calendar_path') and syllabus.edu_calendar_path:
-        title = os.path.basename(syllabus.edu_calendar_path)
+    if syllabus_calendar_path:
+        title = os.path.basename(syllabus_calendar_path)
     else:
-        title = f"syllabus_{syllabus.syllabus_id}"
+        title = f"syllabus_{syllabus_pk}"
 
-    graphId = get_graphId_by_job_id(job.job_id)
+    graphId = get_graphId_by_job_id(job_id)
     graph_name = graphId
     draft_obj["title"] = title
     draft_obj["graph_name"] = graph_name
@@ -181,10 +228,10 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
         drafts_dir = Path("./schedule/syllabus_draft")
         drafts_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d%H%M%S")
-        if getattr(syllabus, 'edu_calendar_path', None):
-            base_name = Path(syllabus.edu_calendar_path).stem
+        if syllabus_calendar_path:
+            base_name = Path(syllabus_calendar_path).stem
         else:
-            base_name = f"syllabus_{syllabus.syllabus_id}"
+            base_name = f"syllabus_{syllabus_pk}"
         draft_fname = f"{base_name}_{ts}.json"
         draft_path = drafts_dir / draft_fname
         with draft_path.open('w', encoding='utf-8') as f:
@@ -201,7 +248,7 @@ def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -
     except Exception as e:
         print(f"   ❌ 保存 syllabus 草稿失败: {e}")
 
-    return syllabus
+    return get_syllabus_by_id(syllabus_pk)
 
 
 def _validate_syllabus_period(period: list) -> bool:

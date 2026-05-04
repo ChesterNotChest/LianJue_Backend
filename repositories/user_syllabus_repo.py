@@ -27,6 +27,16 @@ def create_user_syllabus(user_id: int, syllabus_id: int, syllabus_permission: st
     """Create a UserSyllabus entry and return it. If it already exists, return the existing row."""
     existing = get_user_syllabus(user_id, syllabus_id)
     if existing:
+        updated = False
+        if syllabus_permission and getattr(existing, 'syllabus_permission', None) != syllabus_permission:
+            if syllabus_permission == 'owner' or not getattr(existing, 'syllabus_permission', None):
+                existing.syllabus_permission = syllabus_permission
+                updated = True
+        if personal_syllabus_path and getattr(existing, 'personal_syllabus_path', None) != personal_syllabus_path:
+            existing.personal_syllabus_path = personal_syllabus_path
+            updated = True
+        if updated:
+            db.session.commit()
         return existing
 
     us = UserSyllabus(
