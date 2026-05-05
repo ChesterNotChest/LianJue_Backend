@@ -1,13 +1,18 @@
 import json
 import os
 from collections import Counter, defaultdict
+<<<<<<< HEAD
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
+=======
+from datetime import datetime
+>>>>>>> ae8a1bcb39f93df391bccf4cc5aca0d024f0739f
 from statistics import mean
 from time import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+<<<<<<< HEAD
 from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
@@ -18,6 +23,11 @@ from repositories.syllabus_repo import get_syllabus_by_id
 from repositories.user_repo import get_user_by_id
 from repositories.user_syllabus_repo import list_user_syllabuses
 from utils.llm_utils import get_model_instance
+=======
+from repositories.syllabus_repo import get_syllabus_by_id
+from repositories.user_repo import get_user_by_id
+from repositories.user_syllabus_repo import list_user_syllabuses
+>>>>>>> ae8a1bcb39f93df391bccf4cc5aca0d024f0739f
 
 
 _COMPETANCE_SCORE = {
@@ -858,6 +868,7 @@ def _build_confidence(
 	return round(_clip(0.38 * sample_factor + 0.26 * source_factor + 0.24 * freshness_factor + week_factor), 4)
 
 
+<<<<<<< HEAD
 @dataclass
 class LearningProfileDeps:
 	state: Dict[str, Any] = field(default_factory=dict)
@@ -1126,6 +1137,39 @@ def _compute_learning_profile_bundle(state: Dict[str, Any]) -> Dict[str, Any]:
 	answer_events = normalized['answer_events']
 	resource_events = normalized['resource_events']
 	combined_goal = _build_goal_text(learning_goal, dialogue_texts, loaded_personal_syllabuses)
+=======
+def build_learning_profile(
+	user_id: int,
+	syllabus_id: Optional[int] = None,
+	dialogue_text: Any = None,
+	learning_goal: Optional[str] = None,
+	learning_records: Any = None,
+	answer_records: Any = None,
+	resource_usage: Any = None,
+) -> Optional[dict]:
+	user = get_user_by_id(user_id)
+	if not user:
+		return None
+
+	user_syllabuses = list_user_syllabuses(user_id)
+	if syllabus_id is not None:
+		user_syllabuses = [row for row in user_syllabuses if getattr(row, 'syllabus_id', None) == syllabus_id]
+
+	profile_scope = []
+	for row in user_syllabuses:
+		syllabus = get_syllabus_by_id(getattr(row, 'syllabus_id', None))
+		profile_scope.append({
+			'syllabus_id': getattr(row, 'syllabus_id', None),
+			'title': _safe_text(getattr(syllabus, 'title', None)) if syllabus else '',
+			'personal_syllabus_path': getattr(row, 'personal_syllabus_path', None),
+		})
+
+	now_ts = int(time())
+	history_entries = _collect_history_entries(user_id, syllabus_id=syllabus_id)
+	dialogue_texts = _flatten_text_inputs(dialogue_text)
+	loaded_personal_syllabuses = _load_personal_syllabus(user_id, syllabus_id)
+	combined_goal = _build_goal_text(_safe_text(learning_goal), dialogue_texts, loaded_personal_syllabuses)
+>>>>>>> ae8a1bcb39f93df391bccf4cc5aca0d024f0739f
 
 	week_signals = [_build_week_signals(personal_json, syllabus_json) for _, personal_json, syllabus_json in loaded_personal_syllabuses]
 	if week_signals:
@@ -1141,9 +1185,21 @@ def _compute_learning_profile_bundle(state: Dict[str, Any]) -> Dict[str, Any]:
 		all_mastered_weeks = []
 		all_concept_gaps = []
 
+<<<<<<< HEAD
 	dialogue_features = _extract_dialogue_features(dialogue_texts, learning_goal)
 	question_texts = normalized['question_texts']
 	all_texts = normalized['all_texts']
+=======
+	history_events = _normalize_history_events(history_entries)
+	learning_events = _normalize_learning_events(learning_records)
+	answer_events = _normalize_answer_events(answer_records)
+	resource_events = _normalize_resource_events(resource_usage)
+	all_events = [*history_events, *learning_events, *answer_events, *resource_events]
+
+	dialogue_features = _extract_dialogue_features(dialogue_texts, _safe_text(learning_goal))
+	all_texts = list(dict.fromkeys(_flatten_text_inputs(dialogue_texts, learning_records, answer_records, resource_usage, [event.get('texts') for event in history_events])))
+	question_texts = _flatten_text_inputs([item.get('question') for item in history_entries], dialogue_texts)
+>>>>>>> ae8a1bcb39f93df391bccf4cc5aca0d024f0739f
 	activity_summary = _summarize_activity(all_events, now_ts)
 	latest_ts = int(activity_summary.get('latest_ts') or 0) or now_ts
 
@@ -1252,7 +1308,11 @@ def _compute_learning_profile_bundle(state: Dict[str, Any]) -> Dict[str, Any]:
 		'updated_at': latest_ts,
 		'signals': {
 			'history_count': len(history_entries),
+<<<<<<< HEAD
 			'history_sources': 1 if state.get('syllabus_id') is not None else len(state.get('user_syllabuses') or []),
+=======
+			'history_sources': 1 if syllabus_id is not None else len(user_syllabuses),
+>>>>>>> ae8a1bcb39f93df391bccf4cc5aca0d024f0739f
 			'question_text_count': len(question_texts),
 			'profile_scope_count': len(profile_scope),
 			'learning_record_count': len(learning_events),
@@ -1263,6 +1323,7 @@ def _compute_learning_profile_bundle(state: Dict[str, Any]) -> Dict[str, Any]:
 			'avg_duration_minutes': activity_summary['avg_duration_minutes'],
 		},
 	}
+<<<<<<< HEAD
 
 	return {
 		'now_ts': now_ts,
@@ -1378,3 +1439,6 @@ def build_learning_profile(
 	if isinstance(result, LearningProfileResult):
 		return result.profile
 	return None
+=======
+	return profile
+>>>>>>> ae8a1bcb39f93df391bccf4cc5aca0d024f0739f
