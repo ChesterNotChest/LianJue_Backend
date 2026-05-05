@@ -1,0 +1,7 @@
+README.md
+setup.py
+knowlion.egg-info/PKG-INFO
+knowlion.egg-info/SOURCES.txt
+knowlion.egg-info/dependency_links.txt
+knowlion.egg-info/requires.txt
+knowlion.egg-info/top_level.txt

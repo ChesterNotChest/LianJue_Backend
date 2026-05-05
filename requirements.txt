@@ -1,0 +1,21 @@
+abutionpy>=1.0.0
+sentry-sdk>=1.0.0
+litellm>=1.0.0
+pydantic-ai-slim[openai]
+openpyxl>=3.0.0
+pandoc>=2.0.0
+docling
+python-docx>=0.8.0
+torch>=1.0.0
+tenacity
+html5lib
+easyocr
+pypdf
+tomlkit
+flask
+flask_sqlalchemy
+pymysql
+pypandoc
+pytest
+# sudo apt update
+# sudo apt install -y pandoc texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended texlive-lang-chinese fonts-noto-cjk texlive-xetex
