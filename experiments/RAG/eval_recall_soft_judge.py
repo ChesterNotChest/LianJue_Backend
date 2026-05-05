@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "eval_outputs"
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 
-from scripts.rag_eval_common import get_default_model, parse_json_response
+from rag_eval_common import get_default_model, parse_json_response
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,12 +24,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input-json",
-        default=str(Path(__file__).resolve().parents[1] / "scripts" / "eval_outputs" / "recall_eval.json"),
+        default=str(DEFAULT_OUTPUT_DIR / "recall_eval.json"),
         help="Path to recall_eval.json.",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(Path(__file__).resolve().parents[1] / "scripts" / "eval_outputs"),
+        default=str(DEFAULT_OUTPUT_DIR),
         help="Directory for generated CSV files.",
     )
     parser.add_argument(

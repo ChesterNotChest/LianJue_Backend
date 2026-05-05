@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Quick runner to test `KnowLion.search_call` locally without external services.
 Usage:
-    python scripts/test_search_call.py --text "你的问题"
+    python test_search_call.py --text "浣犵殑闂"
 
 This script injects a mock `model` and a mock `search` result to avoid network/LLM dependencies.
 """
@@ -102,3 +102,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

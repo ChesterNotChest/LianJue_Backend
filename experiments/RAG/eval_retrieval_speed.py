@@ -10,14 +10,14 @@ from time import perf_counter_ns
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_CASES_PATH = ROOT_DIR / "测试用例.md"
+DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "eval_outputs"
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-
-from config import MODEL_CONFIGS
-from knowlion.abution_knowlion_driver import KnowLion
-from scripts.rag_eval_common import get_output_dir, load_test_cases, write_json, write_markdown_table
+from rag_eval_common import get_output_dir, load_test_cases, write_json, write_markdown_table
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,12 +27,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--graph-name", required=True, help="Graph name used by KnowLion.")
     parser.add_argument(
         "--cases-path",
-        default=str(Path(__file__).resolve().parents[1] / "\u6d4b\u8bd5\u7528\u4f8b.md"),
+        default=str(DEFAULT_CASES_PATH),
         help="Path to test cases markdown file.",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(Path(__file__).resolve().parents[1] / "scripts" / "eval_outputs"),
+        default=str(DEFAULT_OUTPUT_DIR),
         help="Directory for report outputs.",
     )
     parser.add_argument("--top-k", type=int, default=5, help="Final retrieval top-k.")
@@ -207,6 +207,9 @@ def _summarize_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main() -> None:
     args = parse_args()
+    from config import MODEL_CONFIGS
+    from knowlion.abution_knowlion_driver import KnowLion
+
     cases = load_test_cases(args.cases_path)
     output_dir = get_output_dir(args.output_dir)
 

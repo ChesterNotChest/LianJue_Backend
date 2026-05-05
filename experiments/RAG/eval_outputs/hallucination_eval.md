@@ -1,6 +1,6 @@
 # Hallucination Evaluation
 
-- Reused RAG result: `/mnt/e/AI/Learning-Platform/Lianjue_Backend/scripts/eval_outputs/precision_top3.json`
+- Reused RAG result: `/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/RAG/eval_outputs/precision_top3.json`
 - Case count: `50`
 - Batch size: `20`
 - Phase: `generated`

@@ -8,13 +8,9 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
-
-
-from utils.llm_utils import get_model_instance
-from utils.markdown_utils import clean_llm_response
 
 
 @dataclass
@@ -118,6 +114,8 @@ def write_markdown_table(
 
 
 def parse_json_response(raw: str, default_key: str = "answer") -> dict[str, Any]:
+    from utils.markdown_utils import clean_llm_response
+
     cleaned = clean_llm_response(raw or "")
     if not cleaned:
         return {default_key: ""}
@@ -314,6 +312,8 @@ def judge_hallucination(
 
 
 def get_default_model() -> Any:
+    from utils.llm_utils import get_model_instance
+
     return get_model_instance()
 
 

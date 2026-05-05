@@ -8,12 +8,14 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "eval_outputs"
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 
-from scripts.rag_eval_common import call_json_llm, get_default_model, get_output_dir, load_json_if_exists, write_json
+from rag_eval_common import call_json_llm, get_default_model, get_output_dir, load_json_if_exists, write_json
 
 
 VALID_STATUSES = {"hit", "miss", "dirty"}
@@ -23,12 +25,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run LLM judge for recall evaluation and export CSV reports.")
     parser.add_argument(
         "--input-json",
-        default=str(Path(__file__).resolve().parents[1] / "scripts" / "eval_outputs" / "recall_eval.json"),
+        default=str(DEFAULT_OUTPUT_DIR / "recall_eval.json"),
         help="Path to retrieval-only recall json.",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(Path(__file__).resolve().parents[1] / "scripts" / "eval_outputs"),
+        default=str(DEFAULT_OUTPUT_DIR),
         help="Directory for output reports.",
     )
     parser.add_argument(

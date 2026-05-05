@@ -1,7 +1,7 @@
 {
   "summary": {
     "case_count": 50,
-    "rag_results_path": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/scripts/eval_outputs/precision_top3.json",
+    "rag_results_path": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/RAG/eval_outputs/precision_top3.json",
     "status": "generated",
     "offset": 40,
     "limit": 20,

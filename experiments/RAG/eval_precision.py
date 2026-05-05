@@ -19,18 +19,23 @@ from rag_eval_common import (
     write_markdown_table,
 )
 
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_CASES_PATH = ROOT_DIR / "测试用例.md"
+DEFAULT_OUTPUT_DIR = SCRIPT_DIR / "eval_outputs"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate answer precision with RAG top-k contexts.")
     parser.add_argument("--graph-name", required=True, help="Graph name used by KnowLion.")
     parser.add_argument(
         "--cases-path",
-        default=str(Path(__file__).resolve().parents[1] / "\u6d4b\u8bd5\u7528\u4f8b.md"),
+        default=str(DEFAULT_CASES_PATH),
         help="Path to test cases markdown file.",
     )
     parser.add_argument(
         "--output-dir",
-        default=str(Path(__file__).resolve().parents[1] / "scripts" / "eval_outputs"),
+        default=str(DEFAULT_OUTPUT_DIR),
         help="Directory for markdown/json outputs.",
     )
     parser.add_argument(

@@ -1,7 +1,7 @@
 {
   "summary": {
-    "top1_source_json": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/scripts/eval_outputs/precision_top1.json",
-    "top3_source_json": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/scripts/eval_outputs/precision_top3.json",
+    "top1_source_json": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/RAG/eval_outputs/precision_top1.json",
+    "top3_source_json": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/RAG/eval_outputs/precision_top3.json",
     "case_count": 50,
     "topk_summary": [
       {

@@ -1,6 +1,6 @@
 {
   "summary": {
-    "source_json": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/scripts/eval_outputs/recall_eval.json",
+    "source_json": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/RAG/eval_outputs/recall_eval.json",
     "case_count": 50,
     "topk_summary": [
       {
