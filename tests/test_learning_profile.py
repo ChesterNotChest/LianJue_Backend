@@ -72,7 +72,8 @@ def test_build_learning_profile_uses_behavior_answer_and_resource_signals(
         syllabus_id=19,
         dialogue_text=(
             "我最近在学 Python，"
-            "函数参数总是搞不懂，"
+            "函数参数总是看不懂，"
+            "练习时经常卡住，感觉很吃力，"
             "想两周内掌握循环和函数。"
         ),
         learning_goal="掌握 Python 基础语法",
