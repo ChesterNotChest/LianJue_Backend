@@ -1,0 +1,2010 @@
+{
+  "序前": {
+    "chapter_abstracts": "文章发表信息",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "41\n\n5\n\n2023\n\n10\n\nVol. 41\n\nNo. 5\n\nOct.  2023",
+        "index": 1,
+        "title": "文章发表信息",
+        "abstracts": "该段落提供了文章的发表信息，包括卷号、期号和出版月份及年份。",
+        "entities": [
+          {
+            "vertex": "41",
+            "label": "VOLUME",
+            "properties": {
+              "volume_number": "41"
+            }
+          },
+          {
+            "vertex": "5",
+            "label": "ISSUE",
+            "properties": {
+              "issue_number": "5"
+            }
+          },
+          {
+            "vertex": "2023",
+            "label": "YEAR",
+            "properties": {
+              "year": "2023"
+            }
+          },
+          {
+            "vertex": "Oct.  2023",
+            "label": "DATE",
+            "properties": {
+              "month": "October",
+              "year": "2023"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "41",
+            "target": "5",
+            "label": "PUBLISHED_IN",
+            "properties": {
+              "description": "卷41包含第5期"
+            }
+          },
+          {
+            "source": "5",
+            "target": "Oct.  2023",
+            "label": "PUBLISHED_ON",
+            "properties": {
+              "description": "第5期于2023年10月出版"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "# 不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土效应": {
+    "chapter_abstracts": "不同刈割强度下芒萁的超补偿生长及稀土净化效应研究\n研究区概况：福建省龙岩市长汀县河田镇的地理与气候特征\n芒萁刈割实验设计及处理方法\n芒萁样品采集与处理方法\n数据处理方法及软件\n数据处理方法及统计分析工具\n数据处理方法及统计分析\n数据处理方法及统计分析\n公式描述芒萁生物量计算方法\n芒萁生物量计算及补偿生长指数\n芒萁生物量计算及补偿生长指数\n芒萁叶片稀土积累量及其生物量的计算方法\n刈割对芒萁生长的影响\n刈割处理对芒萁总生物量的影响\n刈割强度对芒萁补偿指数的影响\n刈割对芒萁净化稀土的影响\n刈割对芒萁叶片稀土元素含量的影响\n刈割处理对芒萁叶片稀土元素积累量的影响\n刈割对芒萁超补偿生长的影响\n不同刈割强度下芒萁的轻稀土与重稀土积累量\n芒萁刈割后的超补偿生长机制及生态修复特性\n刈割促进芒萁吸收稀土及提高生产力\n刈割后芒萁的稀土积累特征及与生物量的关系\n芒萁在不同刈割强度下的补偿生长及稀土净化效应\n稀土超富集植物芒萁在不同刈割强度下的超补偿生长及净化效应",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "*\n\n林 榆， 陈志强 ， 陈志彪， 尚艳琼， 冯柳俊 （福建师范大学地理科学学院， 湿润亚热带山地生态国家重点实验室培育基地， 福建 福州 350007 ）\n\n100%\n\n75%\n\n50%\n\n25%\n\n5\n\n摘要： 以南方离子型稀土矿区长汀为研究区， 计算芒萁（ Dicranopteris dichotoma ）分 ， ， ， 、 不刈割共 个强度刈割半年后新 生芒萁和未刈割芒萁生物量、 稀土元素含量， 以揭示不同刈割强度处理下芒萁的超补偿生长以及芒萁净化稀土的效应。 结果表明， 所有刈割 处理的芒萁生物量均高于对照无刈割处理， 均发生超补偿生长， 刈割强度越大补偿效应越明显， 100% 刈割处理下芒萁生物量显著大于其他 处理， 表明刈割增强了芒萁的克隆繁殖能力， 为稀土积累提供了良好条件。 所有刈割处理的新生芒萁叶片稀土元素总量均显著大于对照无刈 割处理， 但不同刈割强度之间无显著差异， 样方内留下未刈割部分的芒萁叶片稀土元素总量显著大于对照未刈割， 75% 刈割和 50% 刈割样方 内未刈割的芒萁叶片稀土元素总量略大于刈割后新生叶片稀土元素总量， 说明残留未刈割的芒萁根系以吸收稀土应答刈割的干扰。 刈割处 理后芒萁新生叶片的轻稀土和重稀土的积累量均有所上升， 100% 刈割处理下的稀土积累量显著大于其他刈割强度， 说明提升芒萁净化稀土 效率主要取决于诱导芒萁补偿生长以提升生物量。 刈割后芒萁对稀土的积累特征保持稳定， 仍然呈现为轻稀土＞重稀土。 芒萁的生物量与除 了 Ce 以外的轻稀土元素呈强相关， 与重稀土 Gd ， Tb 中等相关， 与其余稀土元素无相关性， 芒萁对 Ce 的吸收受到了土壤 Ce 含量的限制。 刈割后 芒萁叶片的轻稀土元素之间呈强相关， 重稀土元素之间也呈强相关， 轻稀土与 Gd 和 Tb 强相关， 说明芒萁吸收重稀土受到了轻稀土的影响。\n\n关键词： 芒萁； 稀土元素； 超补偿生长； 刈割； 长汀 中图分类号： Q948 文献标识码： A 文章编号： 1000-4343 （ 2023 ） 05-0997-09\n\n15\n\n稀土元素是指镧系元素的 种金属元素以及 化学性质上相似的钇和钪［ 1 ］ 。 稀土元素良好的理化 性质， 使其享有 '工业维生素' 的美称， 是一种珍贵 的战略性资源［ 2 ］ 。 然而， 不合理的开采措施往往导 致稀土矿区生态环境急剧恶化， 对附近居民的财产 和生命健康造成威胁［ 3-6 ］ 。 基于长远的生态效益和 经济考虑， 植物修复技术（ Phytoremediation ）是目前 最适用于修复矿区土壤污染的方法［ 7-10 ］ 。 超富集植 物（ Hyperaccumulator ）的发现使得植物修复技术取 得了革命性进步， 被广泛运用于矿区生态修复 ［ 7 ， 10 ］ 。\n\n刈割是一种人为干扰栽培利用技术， 是常见的 草地利用和管理的主要方式［ 11 ］ 。 合理的刈割可以 利用植物补偿性生长， 以促进植物生长来增强草地 生产力； 其次刈割可以利用植物的均衡性生长特 性， 改变营养物质的沉积和分配方向进而影响植物 品质； 刈割还可以通过植物根系影响土壤多种理化 性质， 进而起到调节植物 -土壤系统的作用［ 12-15 ］ 。\n\n2022-01-17\n\n2022-03-22\n\n收稿日期： ； 修订日期：\n\nMSK202201\n\n2020J01143\n\nSC\n\n291\n\n基金项目： 福建省水利科技项目 （ ）； 福建省自然科学基金项目 （ ）； 福建省厅级项目 （ -） 资助 作者简介： 林 榆 （ 1998-） ， 女， 硕士研究生\n\nE\n\nmail soiltuqiang061@163.com\n\n* 通讯联系人： 陈志强， 男， 教授； 研究方向： 自然资源与生态修复。 -： DOI ： 10.11785/S1000-4343.20230517\n\n中国南方离子型稀土矿区长汀的乡土植被芒萁 （ Dicranopteris dichotoma ）是目前已知富集稀土能力 最强的超富集植物， 芒萁叶片对稀土元素的积累量 可达 3000 μg · g-1 以上， 同时芒萁具有很强的抗逆 性， 是治理土壤稀土污染的理想植被［ 16-19 ］ 。 然而， 迄今为止对于稀土矿区刈割芒萁分析其生长能力 和净化稀土能力的相关研究鲜见报道， 因此本文以 野外刈割芒萁实验研究了不同刈割强度对芒萁生 长和富集稀土能力的影响， 以期为南方离子稀土矿 区稀土污染修复提供参考借鉴。\n\n1",
+        "index": 1,
+        "title": "不同刈割强度下芒萁的超补偿生长及稀土净化效应研究",
+        "abstracts": "本文以南方离子型稀土矿区长汀为研究区，通过不同刈割强度处理下的芒萁实验，研究了芒萁的超补偿生长及其对稀土元素的净化效应。结果表明，所有刈割处理的芒萁生物量均高于无刈割处理，且刈割强度越大，补偿效应越明显。同时，所有刈割处理的新生芒萁叶片稀土元素总量显著大于对照无刈割处理，但不同刈割强度之间无显著差异。此外，刈割后芒萁叶片的轻稀土和重稀土积累量均有所上升，主要取决于诱导芒萁补偿生长以提升生物量。",
+        "entities": [
+          {
+            "vertex": "林榆",
+            "label": "PERSON",
+            "properties": {
+              "role": "作者",
+              "性别": "女",
+              "学位": "硕士研究生"
+            }
+          },
+          {
+            "vertex": "陈志强",
+            "label": "PERSON",
+            "properties": {
+              "role": "通讯联系人",
+              "职称": "教授",
+              "研究方向": "自然资源与生态修复"
+            }
+          },
+          {
+            "vertex": "福建师范大学地理科学学院",
+            "label": "ORGANIZATION",
+            "properties": {
+              "类型": "大学院系"
+            }
+          },
+          {
+            "vertex": "湿润亚热带山地生态国家重点实验室培育基地",
+            "label": "ORGANIZATION",
+            "properties": {
+              "类型": "国家重点实验室"
+            }
+          },
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "学名": "Dicranopteris dichotoma",
+              "特性": "超富集植物",
+              "作用": "治理土壤稀土污染"
+            }
+          },
+          {
+            "vertex": "长汀",
+            "label": "LOCATION",
+            "properties": {
+              "类型": "南方离子型稀土矿区"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "林榆",
+            "target": "陈志强",
+            "label": "合作者",
+            "properties": {
+              "关系描述": "共同进行研究"
+            }
+          },
+          {
+            "source": "福建师范大学地理科学学院",
+            "target": "湿润亚热带山地生态国家重点实验室培育基地",
+            "label": "合作机构",
+            "properties": {
+              "关系描述": "共同进行研究"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "长汀",
+            "label": "研究对象",
+            "properties": {
+              "关系描述": "在长汀进行芒萁的超补偿生长及稀土净化效应研究"
+            }
+          },
+          {
+            "source": "林榆",
+            "target": "福建师范大学地理科学学院",
+            "label": "所属机构",
+            "properties": {
+              "关系描述": "林榆是该学院的研究人员"
+            }
+          },
+          {
+            "source": "陈志强",
+            "target": "福建师范大学地理科学学院",
+            "label": "所属机构",
+            "properties": {
+              "关系描述": "陈志强是该学院的研究人员"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "## 研究区概况": {
+    "chapter_abstracts": "研究区概况：福建省龙岩市长汀县河田镇的地理与气候特征",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "2021\n\n1\n\n~7\n\n本研究于 年 月 月在福建省龙岩市长 汀县河田镇内进行（ 25°33 -25°48'N ， 116°18' -116°31'E ）， 实验样地为稀土元素偏中度污染的牛 屎塘［ 20 ］ ， 土壤稀土含量介于 700~800 mg · kg-1 。 该样 地位于朱溪流域， 地带性土壤为红壤， 酸性强， 土\n\n998\n\n层深厚但易受侵蚀， 地形以低山和丘陵为主， 总体 地势由东北向西南倾斜， 海拔介于 270~680 ｍ之 间。 该地属中亚热带季风性湿润气候， 年降水量 1700~2000 mm ， 年均温 18.3 ℃ ［ 21 ］ 。 实验样地的主 要植被为长势均匀的芒萁， 另有少量宽叶雀稗 （ Paspalum wetsfeteini ）、 胡枝子（ Lespedeza bicolor ）、 枫香（ Liquidambar formosana ）、 木荷（ Schima super⁃ ba ） 和马尾松 （ Pinus massoniana Lamb ） 。\n\n2",
+        "index": 1,
+        "title": "研究区概况：福建省龙岩市长汀县河田镇的地理与气候特征",
+        "abstracts": "本段落描述了2021年在福建省龙岩市长汀县河田镇进行的研究，实验样地为稀土元素偏中度污染的牛屎塘，土壤稀土含量介于700~800 mg·kg-1。该样地位于朱溪流域，地带性土壤为红壤，酸性强，土层深厚但易受侵蚀，地形以低山和丘陵为主，总体地势由东北向西南倾斜，海拔介于270~680米之间。该地属中亚热带季风性湿润气候，年降水量1700~2000 mm，年均温18.3℃。主要植被为长势均匀的芒萁，另有少量宽叶雀稗、胡枝子、枫香、木荷和马尾松。",
+        "entities": [
+          {
+            "vertex": "福建省龙岩市长汀县河田镇",
+            "label": "LOCATION",
+            "properties": {
+              "coordinates": "25°33' - 25°48'N, 116°18' - 116°31'E"
+            }
+          },
+          {
+            "vertex": "牛屎塘",
+            "label": "LOCATION",
+            "properties": {
+              "soil_re_content": "700~800 mg·kg-1"
+            }
+          },
+          {
+            "vertex": "朱溪流域",
+            "label": "LOCATION",
+            "properties": {
+              "soil_type": "红壤",
+              "soil_acidity": "强酸性"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "福建省龙岩市长汀县河田镇",
+            "target": "牛屎塘",
+            "label": "CONTAINS",
+            "properties": {
+              "description": "牛屎塘位于福建省龙岩市长汀县河田镇内"
+            }
+          },
+          {
+            "source": "牛屎塘",
+            "target": "朱溪流域",
+            "label": "LOCATED_IN",
+            "properties": {
+              "description": "牛屎塘位于朱溪流域内"
+            }
+          },
+          {
+            "source": "朱溪流域",
+            "target": "红壤",
+            "label": "HAS_SOIL_TYPE",
+            "properties": {
+              "description": "朱溪流域的地带性土壤为红壤"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "## 研究方法": {
+    "chapter_abstracts": "芒萁刈割实验设计及处理方法\n芒萁样品采集与处理方法\n数据处理方法及软件\n数据处理方法及统计分析工具\n数据处理方法及统计分析\n数据处理方法及统计分析\n公式描述芒萁生物量计算方法\n芒萁生物量计算及补偿生长指数\n芒萁生物量计算及补偿生长指数\n芒萁叶片稀土积累量及其生物量的计算方法",
+    "paragraphs": []
+  },
+  "### 2.1 实验设计": {
+    "chapter_abstracts": "芒萁刈割实验设计及处理方法",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "2021\n\n1\n\n于 年 月中旬对芒萁进行刈割， 在牛屎塘 选择地形平坦的地带， 采用 Z 字型布设 15 个 1 m×1 m 的样方， 设置 5 种刈割强度（图 1 ）， 按面积比例进 行刈割， 每种刈割强度设 3 次重复处理， 连根刨除 样方外围 30 cm 的芒萁留作隔离带避免外围干扰， 期间没有采取任何措施。",
+        "index": 1,
+        "title": "芒萁刈割实验设计及处理方法",
+        "abstracts": "本段描述了2021年中旬在牛屎塘进行的芒萁刈割实验的设计，包括样方设置、刈割强度和隔离带的处理方法。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "location": "牛屎塘",
+              "year": "2021"
+            }
+          },
+          {
+            "vertex": "Z 字型布设",
+            "label": "METHOD",
+            "properties": {
+              "description": "采用Z字型布设15个1 m×1 m的样方"
+            }
+          },
+          {
+            "vertex": "刈割强度",
+            "label": "EXPERIMENTAL_CONDITION",
+            "properties": {
+              "number_of_levels": "5种",
+              "replicates": "3次重复处理"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "Z 字型布设",
+            "label": "EXPERIMENT_METHOD",
+            "properties": {
+              "description": "芒萁在牛屎塘采用Z字型布设样方"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "刈割强度",
+            "label": "EXPERIMENT_CONDITION",
+            "properties": {
+              "description": "芒萁设置了5种刈割强度"
+            }
+          },
+          {
+            "source": "Z 字型布设",
+            "target": "刈割强度",
+            "label": "EXPERIMENT_DESIGN",
+            "properties": {
+              "description": "Z字型布设样方并设置不同刈割强度"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "### 2.2 样品采集与测定": {
+    "chapter_abstracts": "芒萁样品采集与处理方法",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "2021\n\n7\n\n年 月中旬， 量取样方内芒萁株高， 随机 采集样方内新生的芒萁叶片带回实验室。 室内实验 处理过程中， 将芒萁叶片放置于温度为 65 ℃ 的烘 箱中烘干至恒重， 磨碎过 100 目尼龙筛之后称取 0.04  g 样品于聚四氟乙烯（ PTFE ）内胆中， 采用 HNO 3 -H 2 O 2 法消解， 加入 2 ml HNO 3 ， 2 mL H 2 O 2 之 后， 将内胆密封， 置于涂有 PTFE 涂层的防腐高效 溶液管套内， 于烘箱中 150 ℃ 加热 15 h 。 冷却后， 将内胆中的溶液过滤到塑料瓶中， 用去离子水稀释 至 40 ml ， 放置在温度大约 4 ℃ 的环境下保存待测。 全部样品均用电感耦合等离子体质谱仪（ ICP -MS ） 测定， 并采用国家标准样品（灌木枝叶 GBW07603 和大米 GBW10010 ） 进行质量控制。",
+        "index": 1,
+        "title": "芒萁样品采集与处理方法",
+        "abstracts": "该段落描述了2021年7月中旬对芒萁叶片的采集及实验室处理过程。包括测量株高、烘干、磨碎、消解等步骤，最终使用ICP-MS进行测定，并采用国家标准样品进行质量控制。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "采集时间": "2021年7月中旬",
+              "处理方法": "烘干、磨碎、消解"
+            }
+          },
+          {
+            "vertex": "HNO3-H2O2法",
+            "label": "METHOD",
+            "properties": {
+              "用途": "消解芒萁叶片"
+            }
+          },
+          {
+            "vertex": "ICP-MS",
+            "label": "INSTRUMENT",
+            "properties": {
+              "用途": "测定稀土元素含量"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "HNO3-H2O2法",
+            "label": "USE_METHOD",
+            "properties": {
+              "步骤": "消解"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "ICP-MS",
+            "label": "MEASURED_BY",
+            "properties": {
+              "目的": "测定稀土元素含量"
+            }
+          },
+          {
+            "source": "HNO3-H2O2法",
+            "target": "ICP-MS",
+            "label": "PREPARATION_FOR",
+            "properties": {
+              "作用": "为ICP-MS测定做准备"
+            }
+          },
+          {
+            "source": "ICP-MS",
+            "target": "GBW07603",
+            "label": "QUALITY_CONTROL",
+            "properties": {
+              "标准样品": "灌木枝叶"
+            }
+          },
+          {
+            "source": "ICP-MS",
+            "target": "GBW10010",
+            "label": "QUALITY_CONTROL",
+            "properties": {
+              "标准样品": "大米"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "### 2.3 数据处理": {
+    "chapter_abstracts": "数据处理方法及软件\n数据处理方法及统计分析工具\n数据处理方法及统计分析\n数据处理方法及统计分析\n公式描述芒萁生物量计算方法\n芒萁生物量计算及补偿生长指数\n芒萁生物量计算及补偿生长指数\n芒萁叶片稀土积累量及其生物量的计算方法",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "Excel 2016\n\nOrigin 2018\n\nR\n\n41\n\n析软件进行数据处理和制图。 运用单因素方差分析 （ One -Way ANOVA ）进行显著性差异分析比较， 采 用 LSD 多重比较显著性检验（ P ＜ 0.05 ）， 方差不齐 时采用未假定方差齐性 Tamhane 检验（ P ＜ 0.05 ）， 运用皮尔逊（ Pearson ）相关性分析分析各指标之间 的关系， 数据使用平均值 ± 标准误差表示。 部分测 定值做以下数据处理。\n\n1\n\n（ ）芒萁生物量采用回归模拟计算［ ］ ， R 0.875 。\n\n22\n\n2=\n\n=\n\n6151.812-396.165*\n\n+8.048*\n\n/1000\n\nW 地上 （ X X X ）\n\n2-0.044*\n\n3\n\n1\n\n（\n\n）\n\n=\n\n*0.743\n\n2",
+        "index": 1,
+        "title": "数据处理方法及软件",
+        "abstracts": "本段落介绍了在实验中使用的数据处理和分析软件，包括Excel 2016、Origin 2018和R。详细描述了统计分析方法，如单因素方差分析（One-Way ANOVA）、LSD多重比较显著性检验、Tamhane检验以及皮尔逊相关性分析。此外，还提供了芒萁生物量的回归模型。",
+        "entities": [
+          {
+            "vertex": "Excel 2016",
+            "label": "SOFTWARE",
+            "properties": {
+              "version": "2016",
+              "function": "数据处理"
+            }
+          },
+          {
+            "vertex": "Origin 2018",
+            "label": "SOFTWARE",
+            "properties": {
+              "version": "2018",
+              "function": "制图"
+            }
+          },
+          {
+            "vertex": "R",
+            "label": "SOFTWARE",
+            "properties": {
+              "function": "数据处理"
+            }
+          },
+          {
+            "vertex": "单因素方差分析",
+            "label": "METHOD",
+            "properties": {
+              "type": "统计分析",
+              "缩写": "One-Way ANOVA"
+            }
+          },
+          {
+            "vertex": "LSD多重比较显著性检验",
+            "label": "METHOD",
+            "properties": {
+              "type": "统计分析",
+              "条件": "P < 0.05"
+            }
+          },
+          {
+            "vertex": "Tamhane检验",
+            "label": "METHOD",
+            "properties": {
+              "type": "统计分析",
+              "条件": "方差不齐时使用",
+              "阈值": "P < 0.05"
+            }
+          },
+          {
+            "vertex": "皮尔逊相关性分析",
+            "label": "METHOD",
+            "properties": {
+              "type": "统计分析",
+              "功能": "分析各指标之间的关系"
+            }
+          },
+          {
+            "vertex": "芒萁生物量",
+            "label": "MEASUREMENT",
+            "properties": {
+              "计算方法": "回归模拟",
+              "相关系数": "R² = 0.875"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "Excel 2016",
+            "target": "数据处理",
+            "label": "FUNCTION",
+            "properties": {
+              "描述": "用于数据处理"
+            }
+          },
+          {
+            "source": "Origin 2018",
+            "target": "制图",
+            "label": "FUNCTION",
+            "properties": {
+              "描述": "用于制图"
+            }
+          },
+          {
+            "source": "R",
+            "target": "数据处理",
+            "label": "FUNCTION",
+            "properties": {
+              "描述": "用于数据处理"
+            }
+          },
+          {
+            "source": "单因素方差分析",
+            "target": "显著性差异分析",
+            "label": "APPLIED_FOR",
+            "properties": {
+              "描述": "用于进行显著性差异分析"
+            }
+          },
+          {
+            "source": "LSD多重比较显著性检验",
+            "target": "显著性差异分析",
+            "label": "APPLIED_FOR",
+            "properties": {
+              "描述": "用于显著性差异分析"
+            }
+          },
+          {
+            "source": "Tamhane检验",
+            "target": "方差不齐时的显著性差异分析",
+            "label": "APPLIED_FOR",
+            "properties": {
+              "描述": "用于方差不齐时的显著性差异分析"
+            }
+          },
+          {
+            "source": "皮尔逊相关性分析",
+            "target": "指标间关系分析",
+            "label": "APPLIED_FOR",
+            "properties": {
+              "描述": "用于分析各指标之间的关系"
+            }
+          },
+          {
+            "source": "芒萁生物量",
+            "target": "回归模拟",
+            "label": "CALCULATED_BY",
+            "properties": {
+              "描述": "通过回归模拟计算"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Formulas",
+        "original": "\\lambda \\# \\quad W _ { n + 1 } = W _ { \\ast",
+        "index": 2,
+        "title": "数据处理方法及统计分析工具",
+        "abstracts": "本段落介绍了数据处理和统计分析的方法，包括使用Excel 2016、Origin 2018和R软件进行数据处理和制图。采用单因素方差分析（One-Way ANOVA）和LSD多重比较显著性检验（P＜0.05），方差不齐时采用Tamhane检验（P＜0.05）。还进行了皮尔逊相关性分析，数据以平均值±标准误差表示。部分测定值通过回归模拟计算芒萁生物量。",
+        "entities": [
+          {
+            "vertex": "Excel 2016",
+            "label": "SOFTWARE",
+            "properties": {
+              "用途": "数据处理和制图"
+            }
+          },
+          {
+            "vertex": "Origin 2018",
+            "label": "SOFTWARE",
+            "properties": {
+              "用途": "数据处理和制图"
+            }
+          },
+          {
+            "vertex": "R",
+            "label": "SOFTWARE",
+            "properties": {
+              "用途": "数据处理和制图"
+            }
+          },
+          {
+            "vertex": "One-Way ANOVA",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "用途": "显著性差异分析"
+            }
+          },
+          {
+            "vertex": "LSD多重比较显著性检验",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "用途": "多重比较显著性检验",
+              "条件": "P＜0.05"
+            }
+          },
+          {
+            "vertex": "Tamhane检验",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "用途": "未假定方差齐性的显著性检验",
+              "条件": "P＜0.05"
+            }
+          },
+          {
+            "vertex": "皮尔逊相关性分析",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "用途": "分析各指标之间的关系"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "Excel 2016",
+            "target": "数据处理和制图",
+            "label": "用于",
+            "properties": {
+              "工具类型": "软件"
+            }
+          },
+          {
+            "source": "Origin 2018",
+            "target": "数据处理和制图",
+            "label": "用于",
+            "properties": {
+              "工具类型": "软件"
+            }
+          },
+          {
+            "source": "R",
+            "target": "数据处理和制图",
+            "label": "用于",
+            "properties": {
+              "工具类型": "软件"
+            }
+          },
+          {
+            "source": "One-Way ANOVA",
+            "target": "显著性差异分析",
+            "label": "用于",
+            "properties": {
+              "分析类型": "单因素方差分析"
+            }
+          },
+          {
+            "source": "LSD多重比较显著性检验",
+            "target": "显著性差异分析",
+            "label": "用于",
+            "properties": {
+              "条件": "P＜0.05"
+            }
+          },
+          {
+            "source": "Tamhane检验",
+            "target": "显著性差异分析",
+            "label": "用于",
+            "properties": {
+              "条件": "P＜0.05",
+              "前提": "方差不齐"
+            }
+          },
+          {
+            "source": "皮尔逊相关性分析",
+            "target": "分析各指标之间的关系",
+            "label": "用于",
+            "properties": {
+              "分析类型": "相关性分析"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Formulas",
+        "original": "\\underset {. \\. } { 1 } \\, \\, \\,",
+        "index": 3,
+        "title": "数据处理方法及统计分析",
+        "abstracts": "本段落介绍了使用Excel 2016、Origin 2018和R软件进行数据处理和制图。通过单因素方差分析（One-Way ANOVA）和LSD多重比较显著性检验（P＜0.05），以及未假定方差齐性的Tamhane检验（P＜0.05）进行显著性差异分析。皮尔逊相关性分析用于研究各指标之间的关系，数据以平均值±标准误差表示。部分测定值如芒萁生物量采用回归模拟计算。",
+        "entities": [
+          {
+            "vertex": "Excel 2016",
+            "label": "SOFTWARE",
+            "properties": {
+              "function": "数据处理和制图"
+            }
+          },
+          {
+            "vertex": "Origin 2018",
+            "label": "SOFTWARE",
+            "properties": {
+              "function": "数据处理和制图"
+            }
+          },
+          {
+            "vertex": "R",
+            "label": "SOFTWARE",
+            "properties": {
+              "function": "数据处理和制图"
+            }
+          },
+          {
+            "vertex": "单因素方差分析",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "type": "One-Way ANOVA",
+              "purpose": "显著性差异分析"
+            }
+          },
+          {
+            "vertex": "LSD多重比较显著性检验",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "threshold": "P < 0.05",
+              "purpose": "显著性差异分析"
+            }
+          },
+          {
+            "vertex": "Tamhane检验",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "condition": "方差不齐时",
+              "threshold": "P < 0.05",
+              "purpose": "显著性差异分析"
+            }
+          },
+          {
+            "vertex": "皮尔逊相关性分析",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "purpose": "分析各指标之间的关系"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "Excel 2016",
+            "target": "数据处理和制图",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "Excel 2016 用于数据处理和制图"
+            }
+          },
+          {
+            "source": "Origin 2018",
+            "target": "数据处理和制图",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "Origin 2018 用于数据处理和制图"
+            }
+          },
+          {
+            "source": "R",
+            "target": "数据处理和制图",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "R 用于数据处理和制图"
+            }
+          },
+          {
+            "source": "单因素方差分析",
+            "target": "显著性差异分析",
+            "label": "PERFORMS",
+            "properties": {
+              "description": "单因素方差分析用于显著性差异分析"
+            }
+          },
+          {
+            "source": "LSD多重比较显著性检验",
+            "target": "显著性差异分析",
+            "label": "PERFORMS",
+            "properties": {
+              "description": "LSD多重比较显著性检验用于显著性差异分析"
+            }
+          },
+          {
+            "source": "Tamhane检验",
+            "target": "显著性差异分析",
+            "label": "PERFORMS",
+            "properties": {
+              "description": "Tamhane检验用于显著性差异分析"
+            }
+          },
+          {
+            "source": "皮尔逊相关性分析",
+            "target": "分析各指标之间的关系",
+            "label": "PERFORMS",
+            "properties": {
+              "description": "皮尔逊相关性分析用于分析各指标之间的关系"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "original": "=\n\n+\n\n4",
+        "index": 4,
+        "title": "数据处理方法及统计分析",
+        "abstracts": "本段落介绍了在研究中使用Excel 2016、Origin 2018和R软件进行数据处理和制图，并详细描述了所采用的统计分析方法，包括单因素方差分析（One-Way ANOVA）和皮尔逊相关性分析等。",
+        "entities": [
+          {
+            "vertex": "Excel 2016",
+            "label": "SOFTWARE",
+            "properties": {
+              "purpose": "数据处理"
+            }
+          },
+          {
+            "vertex": "Origin 2018",
+            "label": "SOFTWARE",
+            "properties": {
+              "purpose": "制图"
+            }
+          },
+          {
+            "vertex": "R",
+            "label": "SOFTWARE",
+            "properties": {
+              "purpose": "数据分析"
+            }
+          },
+          {
+            "vertex": "One-Way ANOVA",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "purpose": "显著性差异分析"
+            }
+          },
+          {
+            "vertex": "LSD多重比较显著性检验",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "purpose": "显著性检验"
+            }
+          },
+          {
+            "vertex": "Tamhane检验",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "purpose": "方差不齐时的显著性检验"
+            }
+          },
+          {
+            "vertex": "皮尔逊相关性分析",
+            "label": "STATISTICAL_METHOD",
+            "properties": {
+              "purpose": "分析各指标之间的关系"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "Excel 2016",
+            "target": "数据处理",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于数据处理"
+            }
+          },
+          {
+            "source": "Origin 2018",
+            "target": "制图",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于制图"
+            }
+          },
+          {
+            "source": "R",
+            "target": "数据分析",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于数据分析"
+            }
+          },
+          {
+            "source": "One-Way ANOVA",
+            "target": "显著性差异分析",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于显著性差异分析"
+            }
+          },
+          {
+            "source": "LSD多重比较显著性检验",
+            "target": "显著性检验",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于显著性检验"
+            }
+          },
+          {
+            "source": "Tamhane检验",
+            "target": "方差不齐时的显著性检验",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于方差不齐时的显著性检验"
+            }
+          },
+          {
+            "source": "皮尔逊相关性分析",
+            "target": "分析各指标之间的关系",
+            "label": "USED_FOR",
+            "properties": {
+              "description": "用于分析各指标之间的关系"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Formulas",
+        "original": "\\stackrel { r \\simeq } { \\| \\sqrt { \\lambda",
+        "index": 5,
+        "title": "公式描述芒萁生物量计算方法",
+        "abstracts": "该段落通过一个公式展示了如何计算芒萁的地上部分、叶片部分和地下部分的生物量，以及总生物量。公式中涉及了芒萁株高和其他相关参数。",
+        "entities": [
+          {
+            "vertex": "芒萁地上部分生物量",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2"
+            }
+          },
+          {
+            "vertex": "芒萁株高",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "cm"
+            }
+          },
+          {
+            "vertex": "芒萁叶片部分生物量",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2"
+            }
+          },
+          {
+            "vertex": "芒萁地下部分生物量",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2"
+            }
+          },
+          {
+            "vertex": "芒萁总生物量",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁地上部分生物量",
+            "target": "芒萁总生物量",
+            "label": "CONTRIBUTES_TO",
+            "properties": {
+              "description": "芒萁地上部分生物量是总生物量的一部分"
+            }
+          },
+          {
+            "source": "芒萁叶片部分生物量",
+            "target": "芒萁总生物量",
+            "label": "CONTRIBUTES_TO",
+            "properties": {
+              "description": "芒萁叶片部分生物量是总生物量的一部分"
+            }
+          },
+          {
+            "source": "芒萁地下部分生物量",
+            "target": "芒萁总生物量",
+            "label": "CONTRIBUTES_TO",
+            "properties": {
+              "description": "芒萁地下部分生物量是总生物量的一部分"
+            }
+          },
+          {
+            "source": "芒萁株高",
+            "target": "芒萁地上部分生物量",
+            "label": "AFFECTS",
+            "properties": {
+              "description": "芒萁株高影响地上部分生物量"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "original": "kg\n\n式中： W 地上 为芒萁地上部分生物量（ · ）， X 为芒 萁株高 （ cm ） ， W 叶片 为芒萁叶片部分生物量 （ kg · m-2 ） ， W 地下为芒萁地下部分生物量（ kg · m-2 ）， W 为芒萁总 生物量。\n\nm-2\n\n2\n\nBelsky\n\n23\n\n（ ）芒萁的补偿生长采用 ［ ］ 提出的补偿 指数 G / C 表示。 本文中， G 为不同刈割强度下芒萁 新生地上部分的生物量， C 为不刈割的对照处理地 上部分生物量均值。 若 G / C >1 ， 则为超补偿； 若 G / C =1 ， 则为等补偿； 若 G / C <1 ， 则为低补偿。\n\n3\n\n∑REE\n\n∑LREE\n\n∑HREE\n\n（ ） ， ， 分别代表稀土元 素总量、 轻稀土元素总量、 重稀土元素总量。 ∑REE 表示由 15 种稀土元素（ La -Y ）单个稀土元素含量之 和； ∑LREE 和 ∑HREE 分别是 La ~ Eu 和 Gd ~ Y 单个 稀土元素含量之和。\n\n4\n\n（ ）芒萁的净化稀土效应采用叶片稀土积累量 表示， 计算公式［ 3 ］ 如下： *",
+        "index": 6,
+        "title": "芒萁生物量计算及补偿生长指数",
+        "abstracts": "该段落介绍了芒萁地上、地下和总生物量的计算方法，以及采用Belsky提出的补偿指数G/C来评估不同刈割强度下的补偿生长情况。还定义了稀土元素总量（∑REE）、轻稀土元素总量（∑LREE）和重稀土元素总量（∑HREE），并说明了它们的具体组成。",
+        "entities": [
+          {
+            "vertex": "W地上",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2",
+              "description": "芒萁地上部分生物量"
+            }
+          },
+          {
+            "vertex": "W叶片",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2",
+              "description": "芒萁叶片部分生物量"
+            }
+          },
+          {
+            "vertex": "W地下",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg · m-2",
+              "description": "芒萁地下部分生物量"
+            }
+          },
+          {
+            "vertex": "W",
+            "label": "MEASUREMENT",
+            "properties": {
+              "unit": "kg",
+              "description": "芒萁总生物量"
+            }
+          },
+          {
+            "vertex": "G/C",
+            "label": "INDEX",
+            "properties": {
+              "definition": "补偿指数，用于表示不同刈割强度下芒萁的补偿生长情况"
+            }
+          },
+          {
+            "vertex": "∑REE",
+            "label": "MEASUREMENT",
+            "properties": {
+              "description": "稀土元素总量，由15种稀土元素（La - Y）单个稀土元素含量之和"
+            }
+          },
+          {
+            "vertex": "∑LREE",
+            "label": "MEASUREMENT",
+            "properties": {
+              "description": "轻稀土元素总量，由La ~ Eu单个稀土元素含量之和"
+            }
+          },
+          {
+            "vertex": "∑HREE",
+            "label": "MEASUREMENT",
+            "properties": {
+              "description": "重稀土元素总量，由Gd ~ Y单个稀土元素含量之和"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "W地上",
+            "target": "W",
+            "label": "PART_OF",
+            "properties": {
+              "description": "W地上是芒萁总生物量的一部分"
+            }
+          },
+          {
+            "source": "W叶片",
+            "target": "W",
+            "label": "PART_OF",
+            "properties": {
+              "description": "W叶片是芒萁总生物量的一部分"
+            }
+          },
+          {
+            "source": "W地下",
+            "target": "W",
+            "label": "PART_OF",
+            "properties": {
+              "description": "W地下是芒萁总生物量的一部分"
+            }
+          },
+          {
+            "source": "G/C",
+            "target": "超补偿",
+            "label": "EVALUATES",
+            "properties": {
+              "condition": "G / C > 1时，表示超补偿"
+            }
+          },
+          {
+            "source": "G/C",
+            "target": "等补偿",
+            "label": "EVALUATES",
+            "properties": {
+              "condition": "G / C = 1时，表示等补偿"
+            }
+          },
+          {
+            "source": "G/C",
+            "target": "低补偿",
+            "label": "EVALUATES",
+            "properties": {
+              "condition": "G / C < 1时，表示低补偿"
+            }
+          },
+          {
+            "source": "∑REE",
+            "target": "∑LREE",
+            "label": "INCLUDES",
+            "properties": {
+              "description": "∑REE包括∑LREE"
+            }
+          },
+          {
+            "source": "∑REE",
+            "target": "∑HREE",
+            "label": "INCLUDES",
+            "properties": {
+              "description": "∑REE包括∑HREE"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Formulas",
+        "original": "T = \\frac { c _ { a t t } \\cdot \\cdot \\",
+        "index": 7,
+        "title": "芒萁生物量计算及补偿生长指数",
+        "abstracts": "该段落介绍了芒萁生物量的计算公式及其补偿生长指数的定义。通过公式计算芒萁地上、地下和总生物量，并根据Belsky提出的补偿指数G/C来判断芒萁在不同刈割强度下的补偿生长情况。此外，还介绍了稀土元素总量、轻稀土元素总量和重稀土元素总量的定义。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "description": "一种超富集植物"
+            }
+          },
+          {
+            "vertex": "Belsky",
+            "label": "PERSON",
+            "properties": {
+              "description": "提出补偿指数G/C的科学家"
+            }
+          },
+          {
+            "vertex": "∑REE",
+            "label": "CHEMICAL_ELEMENT",
+            "properties": {
+              "description": "稀土元素总量，由15种稀土元素（La-Y）单个稀土元素含量之和"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "Belsky",
+            "label": "REFERENCE",
+            "properties": {
+              "description": "芒萁的补偿生长采用Belsky提出的补偿指数G/C表示"
+            }
+          },
+          {
+            "source": "∑REE",
+            "target": "稀土元素总量",
+            "label": "DEFINITION",
+            "properties": {
+              "description": "∑REE代表稀土元素总量，由15种稀土元素（La-Y）单个稀土元素含量之和"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "G/C",
+            "label": "MEASURED_BY",
+            "properties": {
+              "description": "G/C用于衡量芒萁在不同刈割强度下的补偿生长情况"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "original": "g\n\nm-2\n\n采用 ， ， 语言等统计分\n\n式中： T 表示芒萁叶片对稀土元素的积累量 （ · ） ，\n\nFig.1\n\nSchematic diagram of the cutting method of\n\nDicranopteris dichotoma\n\n5\n\nmg c 叶片表示芒萁叶片稀土元素含量（ · ）， W 叶片 表 示芒萁叶片的生物量（ kg · m-2 ） 。\n\nkg-1\n\n3",
+        "index": 8,
+        "title": "芒萁叶片稀土积累量及其生物量的计算方法",
+        "abstracts": "段落介绍了芒萁叶片对稀土元素积累量的计算公式，以及相关参数如叶片稀土含量和生物量的定义。还提到了补偿指数G/C的概念，用于评估不同刈割强度下芒萁的补偿生长情况。",
+        "entities": [
+          {
+            "vertex": "T",
+            "label": "PARAMETER",
+            "properties": {
+              "description": "芒萁叶片对稀土元素的积累量"
+            }
+          },
+          {
+            "vertex": "S",
+            "label": "PARAMETER",
+            "properties": {
+              "description": "芒萁叶片稀土元素含量"
+            }
+          },
+          {
+            "vertex": "W_叶片",
+            "label": "PARAMETER",
+            "properties": {
+              "description": "芒萁叶片的生物量（kg·m-2）"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "T",
+            "target": "S",
+            "label": "DEPENDENCY",
+            "properties": {
+              "description": "T依赖于S进行计算"
+            }
+          },
+          {
+            "source": "T",
+            "target": "W_叶片",
+            "label": "DEPENDENCY",
+            "properties": {
+              "description": "T依赖于W_叶片进行计算"
+            }
+          },
+          {
+            "source": "G/C",
+            "target": "G",
+            "label": "DEFINITION",
+            "properties": {
+              "description": "G为不同刈割强度下芒萁新生地上部分的生物量"
+            }
+          },
+          {
+            "source": "G/C",
+            "target": "C",
+            "label": "DEFINITION",
+            "properties": {
+              "description": "C为不刈割的对照处理地上部分生物量均值"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "## 结果分析": {
+    "chapter_abstracts": "刈割对芒萁生长的影响\n刈割处理对芒萁总生物量的影响\n刈割强度对芒萁补偿指数的影响\n刈割对芒萁净化稀土的影响\n刈割对芒萁叶片稀土元素含量的影响\n刈割处理对芒萁叶片稀土元素积累量的影响",
+    "paragraphs": []
+  },
+  "### 3.1 刈割对芒萁生长的影响": {
+    "chapter_abstracts": "刈割对芒萁生长的影响\n刈割处理对芒萁总生物量的影响\n刈割强度对芒萁补偿指数的影响",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "3.1.1",
+        "index": 1,
+        "title": "刈割对芒萁生长的影响",
+        "abstracts": "该段落介绍了不同刈割强度下，稀土超富集植物芒萁的生长情况。",
+        "entities": [
+          {
+            "vertex": "刈割",
+            "label": "ACTION",
+            "properties": {
+              "type": "农业操作"
+            }
+          },
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "type": "稀土超富集植物"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "刈割",
+            "target": "芒萁",
+            "label": "AFFECTS",
+            "properties": {
+              "effect": "影响生长"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "#### 刈割对芒萁总生物量的影响": {
+    "chapter_abstracts": "刈割处理对芒萁总生物量的影响",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "2\n\n100%\n\n如图 所示， 刈割处理的新生芒萁总生 物量显著大于其他处理方式（ P ＜ 0.05 ）， 75% 样方 内未刈割的芒萁生物量显著小于其他刈割处理， 但 与其他未刈割处理无显著差异（ P ＜ 0.05 ）。 经过刈 割处理的芒萁生物量， 随着刈割强度的增大呈现递 增的趋势， 其中 100% 刈割处理下新生芒萁生物量 显著大于其他刈割强度（ P ＜ 0.05 ）。 而各个样方内 未刈割处理的芒萁生物量之间无显著差异（ P ＞ 0.05 ）。 图中大写字母表示同一样方下刈割与未刈 割两种处理方式组内在 0.05 水平上的显著差异性， 小写字母表示所有处理方式在 0.05 水平上的显著 差异性， 以下均同。\n\n3.1.2",
+        "index": 1,
+        "title": "刈割处理对芒萁总生物量的影响",
+        "abstracts": "该段落描述了不同刈割强度下芒萁的总生物量变化。结果显示，刈割处理的新生芒萁总生物量显著大于未刈割处理，且随着刈割强度的增大，生物量呈现递增趋势。未刈割处理的芒萁生物量之间无显著差异。",
+        "entities": [
+          {
+            "vertex": "刈割处理",
+            "label": "EXPERIMENTAL_TREATMENT",
+            "properties": {
+              "description": "对芒萁进行的不同强度的刈割"
+            }
+          },
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "description": "一种植物，本研究中的实验对象"
+            }
+          },
+          {
+            "vertex": "总生物量",
+            "label": "BIOMASS",
+            "properties": {
+              "description": "芒萁的总体生物量"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "刈割处理",
+            "target": "芒萁",
+            "label": "AFFECTS",
+            "properties": {
+              "description": "刈割处理影响芒萁的总生物量"
+            }
+          },
+          {
+            "source": "刈割处理",
+            "target": "总生物量",
+            "label": "INCREASES",
+            "properties": {
+              "description": "刈割处理使芒萁的总生物量增加"
+            }
+          },
+          {
+            "source": "100% 刈割处理",
+            "target": "总生物量",
+            "label": "MAXIMIZES",
+            "properties": {
+              "description": "100% 刈割处理下新生芒萁生物量显著大于其他刈割强度"
+            }
+          },
+          {
+            "source": "未刈割处理",
+            "target": "总生物量",
+            "label": "MINIMIZES",
+            "properties": {
+              "description": "未刈割处理的芒萁生物量显著小于其他刈割处理"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "#### 刈割对芒萁补偿指数的影响": {
+    "chapter_abstracts": "刈割强度对芒萁补偿指数的影响",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "3\n\n如图 所示， 所有刈割处理过的新生芒萁补偿 指数均大于 1 ， 均发生了超补偿生长。 经过 100% 刈 割处理的芒萁补偿指数显著大于其他处理方式（ P ＜ 0.05 ） 。 刈割处理的芒萁随着刈割强度的增大， 补 偿指数呈现递增的趋势， 100% 刈割处理的补偿指 数显著大于其他刈割强度（ P ＜ 0.05 ）。 各个样方未 刈割处理的芒萁补偿指数无显著性差异（ P ＞ 0.05 ） ， 部分发生低补偿生长。\n\n2\n\n图 不同处理措施下的芒萁总生物量\n\nTotal  biomass  of treated  with\n\nDicranopteris  dichotoma different treatment measures\n\nFig.2\n\nFig.3\n\n999\n\n3\n\n图 不同处理措施下的芒萁补偿指数\n\nCompensation  index  of\n\nDicranopteris  dichotoma with different treatment measures",
+        "index": 1,
+        "title": "刈割强度对芒萁补偿指数的影响",
+        "abstracts": "所有刈割处理过的新生芒萁均发生了超补偿生长，100%刈割处理的补偿指数显著大于其他处理方式。随着刈割强度的增大，补偿指数呈现递增趋势。未刈割处理的芒萁补偿指数无显著性差异。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "特性": "超富集植物"
+            }
+          },
+          {
+            "vertex": "补偿指数",
+            "label": "INDEX",
+            "properties": {
+              "定义": "衡量植物在受到刈割后的生长恢复能力"
+            }
+          },
+          {
+            "vertex": "100% 刈割处理",
+            "label": "TREATMENT",
+            "properties": {
+              "效果": "显著提高补偿指数"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "补偿指数",
+            "label": "MEASURED_BY",
+            "properties": {
+              "描述": "芒萁的补偿指数用于衡量其在不同刈割处理下的生长恢复能力"
+            }
+          },
+          {
+            "source": "100% 刈割处理",
+            "target": "补偿指数",
+            "label": "INCREASES",
+            "properties": {
+              "描述": "100%刈割处理显著提高了芒萁的补偿指数"
+            }
+          },
+          {
+            "source": "刈割强度",
+            "target": "补偿指数",
+            "label": "AFFECTS",
+            "properties": {
+              "描述": "随着刈割强度的增大，补偿指数呈现递增趋势"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "### 3.2 刈割对芒萁净化稀土的影响": {
+    "chapter_abstracts": "刈割对芒萁净化稀土的影响\n刈割对芒萁叶片稀土元素含量的影响\n刈割处理对芒萁叶片稀土元素积累量的影响",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "3.2.1",
+        "index": 1,
+        "title": "刈割对芒萁净化稀土的影响",
+        "abstracts": "该段落介绍了研究中关于刈割对芒萁净化稀土效果的具体影响。",
+        "entities": [
+          {
+            "vertex": "刈割",
+            "label": "ACTION",
+            "properties": {
+              "context": "实验操作"
+            }
+          },
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "type": "稀土超富集植物"
+            }
+          },
+          {
+            "vertex": "稀土",
+            "label": "MINERAL",
+            "properties": {
+              "context": "净化对象"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "刈割",
+            "target": "芒萁",
+            "label": "AFFECTS",
+            "properties": {
+              "effect": "影响净化效果"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "稀土",
+            "label": "PURIFIES",
+            "properties": {
+              "function": "净化作用"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "#### 刈割对芒萁叶片稀土元素含量的影响": {
+    "chapter_abstracts": "刈割对芒萁叶片稀土元素含量的影响",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "4\n\n如图 所示， 无刈割处理样方的芒萁叶片稀土 元素含量显著小于其他处理方式（ P ＜ 0.05 ）， 不同 刈割强度处理过的新生芒萁叶片稀土元素含量并 无显著差异（ P ＞ 0.05 ）， 对照组无刈割处理样方的 芒萁叶片稀土元素含量显著小于 75% 和 50% 样方 内未刈割的芒萁（ P ＜ 0.05 ） 。\n\n3.2.2",
+        "index": 1,
+        "title": "刈割对芒萁叶片稀土元素含量的影响",
+        "abstracts": "无刈割处理样方的芒萁叶片稀土元素含量显著低于其他处理方式，不同刈割强度处理过的新生芒萁叶片稀土元素含量无显著差异。对照组无刈割处理样方的芒萁叶片稀土元素含量显著小于75%和50%样方内未刈割的芒萁。",
+        "entities": [
+          {
+            "vertex": "芒萁叶片稀土元素含量",
+            "label": "MEASUREMENT",
+            "properties": {
+              "context": "在不同刈割强度下的变化"
+            }
+          },
+          {
+            "vertex": "无刈割处理样方",
+            "label": "TREATMENT",
+            "properties": {
+              "description": "不进行刈割处理的样方"
+            }
+          },
+          {
+            "vertex": "不同刈割强度处理",
+            "label": "TREATMENT",
+            "properties": {
+              "description": "包括75%和50%等不同强度的刈割处理"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "无刈割处理样方",
+            "target": "芒萁叶片稀土元素含量",
+            "label": "AFFECTS",
+            "properties": {
+              "effect": "显著小于其他处理方式"
+            }
+          },
+          {
+            "source": "不同刈割强度处理",
+            "target": "芒萁叶片稀土元素含量",
+            "label": "AFFECTS",
+            "properties": {
+              "effect": "无显著差异"
+            }
+          },
+          {
+            "source": "无刈割处理样方",
+            "target": "75% 和 50% 样方内未刈割的芒萁",
+            "label": "COMPARES_TO",
+            "properties": {
+              "comparison_result": "显著小于"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "#### 刈割对芒萁叶片稀土积累量的影响": {
+    "chapter_abstracts": "刈割处理对芒萁叶片稀土元素积累量的影响",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "5\n\n100%\n\n如图 所示， 经过 刈割处理的新生芒萁 叶片稀土元素积累量显著大于其他处理方式（ P ＜ 0.05 ）， 无刈割样方显著小于刈割样方（ P ＜ 0.05 ）。 随着刈割强度的增大， 芒萁新生叶片的稀土元素积\n\n4\n\n图 不同处理措施下的芒萁叶片稀土元素总量\n\nThe  total  amount  of  rare  earth  elements  in  the  leaves of Dicranopteris dichotoma treated with different treatment measures\n\nFig.4\n\ntreated\n\n1000\n\n5\n\n图 不同处理措施下的芒萁叶片稀土元素积累量\n\nFig.5 Accumulation  of  rare  earth  elements  in  the  leaves  of Dicranopteris dichotoma treated with different treatment measures\n\n累量增大趋势更明显， 样方内无刈割处理的芒萁叶 片稀土元素积累量无显著差异（ P ＞ 0.05 ）， A∑REE 表示总稀土元素积累量， A∑LREE 表示轻稀土元 素积累量， A∑HREE 表示重稀土元素积累量。\n\n不同处理措施的芒萁叶片稀土积累特征均表 现为： 轻稀土＞重稀土（表 1 ）。 100% 刈割处理的新 生芒萁叶片轻稀土积累量显著大于其他处理方式 （ P ＜ 0.05 ）。 100% 刈割处理的新生芒萁叶片重稀土 积累量显著大于其他处理方式（ P ＜ 0.05 ）。 刈割与 未刈割两种处理方式组内的芒萁叶片重稀土积累 量和轻稀土积累量都无显著差异（ P ＞ 0.05 ） 。\n\n3.2.3\n\n刈割后芒萁生物量与芒萁叶片稀土的相关性\n\n6\n\nLa\n\n如图 所示， 新生芒萁的生物量与叶片 ， Pr ， Nd ， Sm ， Eu 含量强度相关（ P ＜ 0.01 ）， 与 Ce ， Dy ， Ho ， Er ， Tm ， Yb ， Lu ， Y 含量无显著相关性（ P ＞ 0.01 ）。 而 La-Gd 之间相互具有强度相关性（ P ＜ 0.01 ）， Tb-Y 之间也相互具有强度相关性（ P ＜ 0.01 ） 。\n\n41\n\n6\n\n图 不同刈割强度下芒萁稀土元素与生物量的相关性\n\nFig.6 Correlations of  rare  earth  elements  and  biomass  of Dicranopteris  dichotoma treated  with  different  Cutting Intensities\n\n4",
+        "index": 1,
+        "title": "刈割处理对芒萁叶片稀土元素积累量的影响",
+        "abstracts": "本段落介绍了不同刈割强度下芒萁新生叶片中稀土元素的积累情况。经过刈割处理的新生芒萁叶片稀土元素积累量显著大于未刈割样方，且随着刈割强度的增加，积累量增大趋势更明显。轻稀土元素的积累量大于重稀土元素，100%刈割处理下的新生芒萁叶片轻稀土和重稀土积累量显著高于其他处理方式。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "species": "Dicranopteris dichotoma"
+            }
+          },
+          {
+            "vertex": "稀土元素",
+            "label": "ELEMENT",
+            "properties": {
+              "type": "rare earth elements"
+            }
+          },
+          {
+            "vertex": "刈割处理",
+            "label": "TREATMENT",
+            "properties": {
+              "intensity": "various levels, including 100%"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "刈割处理",
+            "target": "芒萁",
+            "label": "AFFECTS_ACCUMULATION",
+            "properties": {
+              "effect": "significantly increases the accumulation of rare earth elements in new leaves (P < 0.05)"
+            }
+          },
+          {
+            "source": "轻稀土",
+            "target": "重稀土",
+            "label": "GREATER_THAN",
+            "properties": {
+              "context": "accumulation in Dicranopteris dichotoma leaves under different treatment measures"
+            }
+          },
+          {
+            "source": "100% 刈割处理",
+            "target": "轻稀土",
+            "label": "SIGNIFICANTLY_INCREASES",
+            "properties": {
+              "comparison": "greater than other treatment methods (P < 0.05)"
+            }
+          },
+          {
+            "source": "100% 刈割处理",
+            "target": "重稀土",
+            "label": "SIGNIFICANTLY_INCREASES",
+            "properties": {
+              "comparison": "greater than other treatment methods (P < 0.05)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "## 讨论": {
+    "chapter_abstracts": "刈割对芒萁超补偿生长的影响\n不同刈割强度下芒萁的轻稀土与重稀土积累量\n芒萁刈割后的超补偿生长机制及生态修复特性\n刈割促进芒萁吸收稀土及提高生产力\n刈割后芒萁的稀土积累特征及与生物量的关系",
+    "paragraphs": []
+  },
+  "### 4.1 刈割后芒萁的超补偿生长机制": {
+    "chapter_abstracts": "刈割对芒萁超补偿生长的影响\n不同刈割强度下芒萁的轻稀土与重稀土积累量\n芒萁刈割后的超补偿生长机制及生态修复特性",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "刈割一方面会伤害植物组织， 抑制植物的生 长， 另一方面可以去除顶端和衰老组织促进植物的 生长， 这种促进与抑制间的净效应决定了植物的补 偿生长机制［ 24 ］ 。 本实验中刈割处理仅半年时间， 不 同的刈割强度均提高了芒萁的生物量， 大于对照组 无刈割处理的芒萁， 说明刈割可以促进芒萁超补偿 生长， 这与大多数学者对刈割植物的研究一 致［ 13 ， 25-26 ］ 。 随着刈割强度的增加补偿指数越高， 超 补偿生长效应越是明显， 本研究的刈割处理为不同 面积比例， 以面积比例进行刈割的研究鲜见报道， 同时本研究的刈割处理为冬季， 管东生［ 27 ］ 认为冬 季刈割芒萁可以减少对干物质生产和土壤侵蚀的 影响， 同时采样检测时间间隔较长， 为芒萁预留了充\n\n-\n\n表 1 不同处理措施下的芒萁叶片轻稀土与重稀土积累量 （ g · m 2 ）",
+        "index": 1,
+        "title": "刈割对芒萁超补偿生长的影响",
+        "abstracts": "本段落介绍了刈割对芒萁超补偿生长机制的影响。刈割虽然会伤害植物组织，但也能去除顶端和衰老组织，促进植物生长。实验中不同刈割强度均提高了芒萁的生物量，且随着刈割强度的增加，补偿指数越高，超补偿生长效应越明显。冬季刈割可以减少对干物质生产和土壤侵蚀的影响。",
+        "entities": [
+          {
+            "vertex": "刈割",
+            "label": "ACTION",
+            "properties": {
+              "作用": "既伤害植物组织又促进植物生长"
+            }
+          },
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "特性": "在不同刈割强度下表现出超补偿生长"
+            }
+          },
+          {
+            "vertex": "补偿指数",
+            "label": "MEASUREMENT",
+            "properties": {
+              "描述": "随着刈割强度的增加而提高"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "刈割",
+            "target": "芒萁",
+            "label": "PROMOTES",
+            "properties": {
+              "效果": "提高生物量并促进超补偿生长"
+            }
+          },
+          {
+            "source": "刈割强度",
+            "target": "补偿指数",
+            "label": "INCREASES",
+            "properties": {
+              "影响": "刈割强度越大，补偿指数越高"
+            }
+          },
+          {
+            "source": "冬季刈割",
+            "target": "干物质生产",
+            "label": "REDUCES",
+            "properties": {
+              "影响": "减少对干物质生产和土壤侵蚀的影响"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Table",
+        "original": "|    | 0      | 1     | 2   | 3            | 4             | 5            |\n|---:|:-------|:------|:----|:-------------|:--------------|:-------------|\n|  0 | A∑LREE | Uncut | -   | 0.56±0.08Acd | 0.69±0.23Abcd | 0.60±0.23Acd |\n|  1 |        | Uncut | -   | 0.09±0.02Ad  | 0.14±0.03Abcd | 0.12±0.06Acd |",
+        "index": 2,
+        "title": "不同刈割强度下芒萁的轻稀土与重稀土积累量",
+        "abstracts": "表格展示了在不同刈割处理下，芒萁叶片中轻稀土（A∑LREE）和重稀土的积累量。数据显示，无论是未刈割还是不同刈割强度处理，芒萁的轻稀土积累量均有所变化。刈割处理促进了芒萁的超补偿生长，且随着刈割强度的增加，补偿指数越高。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "特性": "超富集植物"
+            }
+          },
+          {
+            "vertex": "轻稀土",
+            "label": "ELEMENT",
+            "properties": {
+              "类型": "A∑LREE"
+            }
+          },
+          {
+            "vertex": "重稀土",
+            "label": "ELEMENT",
+            "properties": {
+              "类型": "未具体说明"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "轻稀土",
+            "label": "ACCUMULATION",
+            "properties": {
+              "影响因素": "刈割强度"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "重稀土",
+            "label": "ACCUMULATION",
+            "properties": {
+              "影响因素": "刈割强度"
+            }
+          },
+          {
+            "source": "刈割强度",
+            "target": "芒萁",
+            "label": "PROMOTION",
+            "properties": {
+              "效果": "促进超补偿生长"
+            }
+          }
+        ]
+      },
+      {
+        "type": "Text",
+        "original": "Table 1 Accumulation  of  light  rare  earth  elements  and  heavy  rare  earth  elements  in  leaves  of  Dicranopteris  dichotoma treated with different treatment measures （ g · m -2 ）\n\n5\n\n足的生长时间， 更有利于发挥芒萁的补偿生长潜力。\n\n20\n\n100%\n\n1\n\n邱洋［ ］ 对芒萁 齐地刈割 年后发现样方 内芒萁的覆盖度可以达到 62% 以上， 使用元胞自 动机模拟发现刈割后 2 年可以恢复到刈割前覆盖的 90% 左右。 芒萁能够如此快速恢复的原因， 主要原 因之一为芒萁是一种克隆植物， 刈割虽然移除了芒 萁的地上部分， 但是留下的根状茎依然储备养分具 有繁殖能力， 根系对地上部分的更新繁殖起主导作 用［ 28-29 ］ 。 样方内保留未刈割的芒萁根状茎与被刈割 的芒萁根状茎相连， 可以通过克隆内分工整合共享 资源， 充分利用光能和矿质养分， 分摊微小尺度异 质生境的基株死亡风险［ 30-31 ］ ， 这说明芒萁在生态修 复过程中可以利用克隆生长特性良好地应对环境 改变。 而且， 芒萁的生长具有趋光性［ 22 ］ ， 随着刈割 强度的增大地面预留的空间更多， 增加了原先被掩 盖于芒萁丛底层的矮小幼孢子体获得光照的机会， 为其提供了充足的生长空间。 这也说明了为何 100% 齐地刈割可以最大限度促进芒萁的克隆繁殖更新再 生， 增强芒萁的生产力， 最适宜芒萁的更新生长。",
+        "index": 3,
+        "title": "芒萁刈割后的超补偿生长机制及生态修复特性",
+        "abstracts": "本文探讨了不同刈割强度下芒萁的超补偿生长机制。研究发现，齐地刈割后芒萁能够快速恢复，主要原因是其克隆植物特性，根状茎保留养分并具有繁殖能力。此外，芒萁的趋光性使其在刈割后获得更多的光照机会，促进了其克隆繁殖和生产力的增强。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "特性": "克隆植物，具有趋光性"
+            }
+          },
+          {
+            "vertex": "邱洋",
+            "label": "PERSON",
+            "properties": {
+              "贡献": "研究发现刈割后芒萁的覆盖度可以达到62%以上"
+            }
+          },
+          {
+            "vertex": "100%齐地刈割",
+            "label": "TREATMENT",
+            "properties": {
+              "效果": "最大限度促进芒萁的克隆繁殖更新再生，增强生产力"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "克隆植物",
+            "label": "IS_A",
+            "properties": {
+              "描述": "芒萁是一种克隆植物，具有繁殖能力"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "趋光性",
+            "label": "HAS_PROPERTY",
+            "properties": {
+              "描述": "芒萁的生长具有趋光性，刈割后获得更多光照机会"
+            }
+          },
+          {
+            "source": "邱洋",
+            "target": "芒萁",
+            "label": "STUDIED",
+            "properties": {
+              "描述": "邱洋研究发现刈割后芒萁的覆盖度可以达到62%以上"
+            }
+          },
+          {
+            "source": "100%齐地刈割",
+            "target": "芒萁",
+            "label": "PROMOTES",
+            "properties": {
+              "描述": "100%齐地刈割可以最大限度促进芒萁的克隆繁殖更新再生，增强生产力"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "### 4.2 芒萁净化稀土效应对刈割的响应": {
+    "chapter_abstracts": "刈割促进芒萁吸收稀土及提高生产力",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "在植物修复技术的实际运用中， 植物的修复效 率主要取决于生物量和生物体内重金属含量［ 32-35 ］ 。 本研究的结果发现， 样方内刈割后新生的和留下未 刈割的芒萁叶片稀土元素总量都显著大于对照无 刈割样方， 说明刈割打破了该样地芒萁吸收稀土的 壁垒作用［ 36-37 ］ ， 促进了芒萁吸收稀土。 图 6 可见芒 萁生物量与 La 存在强度相关性。 有研究显示稀土 元素中的 La ， Ce 参与了芒萁的光合生理作 用［ 16 ， 38-39 ］ ， 推测刈割后留下的根系会通过吸收稀土 与叶绿素结合， 改进光合速率增加芒萁的生产力。 不同刈割强度处理的芒萁叶片稀土元素无显著差 异， 说明刈割强度的改变对芒萁的吸收稀土机制没 有产生影响， 而样方内留下未刈割的芒萁叶片稀土 总量也显著大于无刈割样方的芒萁， 75% 刈割处理 和 50% 刈割处理的样方新生芒萁叶片稀土元素含 量略小于未刈割的老叶， 这与魏正贵等［ 16 ］ 和王娟 等［ 40 ］ 的研究一致。 刈割处理后出现这种现象究其 原因是刈割改变了残留部分的根系的生理作用。 芒 萁通过克隆生理整合提高了根系的活力， 通过吸收 更多的稀土参与生理生态过程尤其是光合作用， 促 进有机质积累， 以保障自身生长发育， 抵御外界的 干扰胁迫， 也说明稀土参与了芒萁的抗逆生理过\n\n1001\n\n29-30\n\n41-44\n\n程［ ， ］ 。 因此， 刈割芒萁可以通过诱导其超补 偿生长有效地提高芒萁的稀土积累能力， 100% 刈 割可以最大限度地促进芒萁净化稀土。",
+        "index": 1,
+        "title": "刈割促进芒萁吸收稀土及提高生产力",
+        "abstracts": "本段介绍了在植物修复技术中，芒萁的生物量和体内重金属含量对修复效率的影响。研究发现，刈割后的芒萁叶片稀土元素总量显著增加，说明刈割打破了芒萁吸收稀土的壁垒作用，并促进了其吸收。此外，La和Ce等稀土元素参与了芒萁的光合作用，提高了其生产力。不同刈割强度处理下，芒萁叶片稀土元素无显著差异，但75%和50%刈割处理的样方新生芒萁叶片稀土元素含量略小于未刈割的老叶。刈割改变了残留根系的生理作用，通过克隆生理整合提高了根系活力，从而增强了芒萁的抗逆生理过程。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "role": "超富集植物",
+              "特性": "吸收稀土"
+            }
+          },
+          {
+            "vertex": "稀土元素",
+            "label": "CHEMICAL",
+            "properties": {
+              "种类": "La, Ce",
+              "功能": "参与光合作用"
+            }
+          },
+          {
+            "vertex": "刈割",
+            "label": "ACTION",
+            "properties": {
+              "效果": "打破吸收壁垒, 促进稀土吸收"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "稀土元素",
+            "label": "吸收",
+            "properties": {
+              "影响": "提高生物量和生产力"
+            }
+          },
+          {
+            "source": "刈割",
+            "target": "芒萁",
+            "label": "促进",
+            "properties": {
+              "结果": "增强稀土吸收能力"
+            }
+          },
+          {
+            "source": "La",
+            "target": "芒萁",
+            "label": "参与",
+            "properties": {
+              "过程": "光合作用"
+            }
+          },
+          {
+            "source": "Ce",
+            "target": "芒萁",
+            "label": "参与",
+            "properties": {
+              "过程": "光合作用"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "### 4.3 刈割后芒萁的稀土积累特征": {
+    "chapter_abstracts": "刈割后芒萁的稀土积累特征及与生物量的关系",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "刈割后新生的芒萁叶片呈现轻稀土积累量大 于重稀土的特征， 与未刈割的芒萁一致， 即刈割并 未改变芒萁积累轻稀土为主的特征， 这与魏正贵 等［ 37 ］ 、 张智勇等［ 17 ］ 的研究结果一致。 本研究发现刈 割后芒萁叶片轻稀土元素积累量大于未刈割的芒 萁， 而除了 Ce 以外芒萁叶片轻稀土元素含量与生 物量呈现强相关， 轻稀土元素之间又各具有强度相 关性， 这一结果表明除 Ce 以外的轻稀土元素极有 可能在芒萁受到刈割干扰时一同参与了芒萁的生 理生态过程， 对芒萁的生长恢复具有积极作用。 Ce 与芒萁生物量无相关性这一结果与洪法水等［ 45 ］ 的 研究相反， 洪法水认为芒萁叶绿素中 Ce 含量高是 因为 Ce 容易在芒萁体内运输， 且其双层结构有利 于光合作用。 出现这种现象的原因有可能是因为芒 萁对轻稀土的积累受到根系和土壤的双重影 响［ 46 ］ ， 虽然采样区稀土总量高但 Ce 相较其他矿区 偏低［ 20 ］ 。 刈割后的芒萁叶片重稀土含量虽然大于 未刈割的芒萁， 但只有重稀土元素 Gd ， Tb 含量和 芒萁生物量呈中等相关， Ce ， Dy ， Ho ， Er ， Tm ， Yb ， Lu ， Y 含量和芒萁生物量并无关系， Gd ， Tb 的 含量与各个轻稀土元素含量之间呈强相关， 芒萁对 Gd 、 Tb 的吸收可能受到轻稀土的影响。 有研究证 明轻、 重稀土结合叶绿素的结构具有差异性， 进而 影响两者在芒萁体内的生理作用［ 47-49 ］ ， 这可能是芒 萁积累轻稀土为主的一个原因。 综上所述， 芒萁更 适用于轻稀土污染区的生态修复。\n\n5",
+        "index": 1,
+        "title": "刈割后芒萁的稀土积累特征及与生物量的关系",
+        "abstracts": "本段落介绍了刈割后芒萁叶片的稀土积累特征，发现轻稀土积累量大于重稀土。除了Ce以外，轻稀土元素含量与生物量呈现强相关性，而重稀土元素中只有Gd和Tb与生物量呈中等相关。研究结果表明，芒萁更适用于轻稀土污染区的生态修复。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "特征": "轻稀土积累量大于重稀土"
+            }
+          },
+          {
+            "vertex": "Ce",
+            "label": "ELEMENT",
+            "properties": {
+              "特征": "与芒萁生物量无相关性"
+            }
+          },
+          {
+            "vertex": "Gd, Tb",
+            "label": "ELEMENTS",
+            "properties": {
+              "特征": "与芒萁生物量呈中等相关"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "芒萁",
+            "target": "轻稀土",
+            "label": "ACCUMULATION",
+            "properties": {
+              "描述": "刈割后芒萁叶片轻稀土积累量大于未刈割的芒萁"
+            }
+          },
+          {
+            "source": "Ce",
+            "target": "芒萁",
+            "label": "NO_CORRELATION",
+            "properties": {
+              "描述": "Ce与芒萁生物量无相关性"
+            }
+          },
+          {
+            "source": "Gd, Tb",
+            "target": "芒萁",
+            "label": "CORRELATION",
+            "properties": {
+              "描述": "Gd, Tb含量与芒萁生物量呈中等相关"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "## 结论": {
+    "chapter_abstracts": "芒萁在不同刈割强度下的补偿生长及稀土净化效应",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "随着刈割强度的增大， 芒萁的补偿生长指数越 大， 克隆繁殖能力增强， 芒萁可以通过克隆内整合 分摊刈割处理下基株的死亡风险。 芒萁可以通过吸 收稀土以应对刈割处理带来的干扰， 芒萁对稀土的 净化效应主要是通过诱导芒萁的补偿生长来促进 植物体对稀土的积累， 这种净化效应会随着刈割强 度的增大而逐渐增强； 100% 的刈割强度可以最大 限度地使芒萁积累稀土而达到净化稀土的目的， 最 适宜投入实际运用。 轻稀土参与了芒萁的光合生理 过程， 对芒萁超补偿生长起到了积极作用； 刈割处\n\n1002\n\n理没有改变芒萁轻稀土＞重稀土积累特征， 芒萁对 重稀土的吸收受到了轻稀土的影响。",
+        "index": 1,
+        "title": "芒萁在不同刈割强度下的补偿生长及稀土净化效应",
+        "abstracts": "随着刈割强度的增加，芒萁的补偿生长指数增大，克隆繁殖能力增强。通过克隆内整合分摊基株死亡风险，吸收稀土以应对刈割干扰。芒萁对稀土的净化效应通过诱导补偿生长促进稀土积累，随刈割强度增大而增强。100%刈割强度最适合实际应用，轻稀土参与光合生理过程，对超补偿生长有积极作用，且不影响轻稀土>重稀土积累特征。",
+        "entities": [
+          {
+            "vertex": "芒萁",
+            "label": "PLANT",
+            "properties": {
+              "特性": "超富集植物",
+              "功能": "吸收稀土"
+            }
+          },
+          {
+            "vertex": "刈割强度",
+            "label": "PARAMETER",
+            "properties": {
+              "影响": "补偿生长指数和克隆繁殖能力"
+            }
+          },
+          {
+            "vertex": "轻稀土",
+            "label": "CHEMICAL_ELEMENT",
+            "properties": {
+              "作用": "参与光合生理过程",
+              "影响": "对超补偿生长有积极作用"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "刈割强度",
+            "target": "芒萁",
+            "label": "INFLUENCES",
+            "properties": {
+              "效果": "补偿生长指数增大，克隆繁殖能力增强"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "稀土",
+            "label": "ABSORBS",
+            "properties": {
+              "目的": "应对刈割处理带来的干扰"
+            }
+          },
+          {
+            "source": "轻稀土",
+            "target": "芒萁",
+            "label": "PROMOTES",
+            "properties": {
+              "效果": "超补偿生长"
+            }
+          },
+          {
+            "source": "芒萁",
+            "target": "重稀土",
+            "label": "ABSORBS",
+            "properties": {
+              "影响": "受到轻稀土的影响"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "## 参考文献": {
+    "chapter_abstracts": "稀土超富集植物芒萁在不同刈割强度下的超补偿生长及净化效应",
+    "paragraphs": [
+      {
+        "type": "Text",
+        "original": "1\n\nJordens  A\n\nCheng  Y  P\n\nWaters  K  E.  A  review  of  the\n\n［ ］ ， ， beneficiation  of  rare  earth  element  bearing  minerals ［ J ］ . Miner. Eng. ， 2013 ， 41 ： 97.\n\n2\n\n［ ］ 王登红， 赵 芝， 于 扬， 赵 汀， 李建康， 代晶晶， 刘新星， 何晗晗 . 离子吸附型稀土资源研究进展、 存 在问题及今后研究方向 ［ J ］ . 岩矿测试， 2013 ， 32 （ 5 ） ： 796.\n\nWang D H\n\nZhao  Z\n\nYu  Y\n\nZhao  T\n\nLi  J  K\n\nDai  J  J\n\n， ， ， ， ， ， Liu X X ， He H H. Progress ， problems and research ori⁃ entation  of  ion -adsorption  type  rare  earth  resources ［ J ］ . Rock and Mineral Analysis ， 2013 ， 32 （ 5 ） ： 796.\n\n3\n\n.\n\n［ ］ 李小飞 稀土采矿治理地土壤和植被中稀土元素含量 及其健康风险评价 ［ D ］ . 福州： 福建师范大学， 2013. Li  X  F.  Concentrations  of  Rare  Earth  Elements  and Health  Risk  Assessment  in  Soil  and  Vegetation  System -a  Case  Study  of  REEs  Mining Area of Changting County ［ D ］ .  Fuzhou ： Fujian Normal University ， 2013.\n\n4\n\nLi  X F\n\nChen Z B\n\nChen Z Q. Distribution and fraction⁃\n\n［ ］ ， ， ation of rare earth elements in soil -water system and hu⁃ man blood and hair from a mining area in southwest Fu⁃ jian Province ， China ［ J ］ . Environ. Earth Sci. ， 2014 ， 72 （ 9 ） ： 3599.\n\n5\n\n.\n\n［ ］ 罗才贵， 罗仙平， 周娜娜， 张 艳， 邓扬悟 南方废 弃稀土矿区生态失衡状况及其成因 ［ J ］ . 中国矿业， 2014 ， 23 （ 10 ） ： 65. Luo  C  G ， Luo  X  P ， Zhou  N  N ， Zhang  Y ， Deng  Y  W. Status  and  causes  of  ecological  imbalance  of  abandoned rare -earth mine in South China ［ J ］ .  China Mining Maga⁃ zine ， 2014 ， 23 （ 10 ） ： 65.\n\n6\n\n.\n\n［ ］ 陈海滨， 陈志彪， 陈志强， 马秀丽 不同治理年限的 离子型稀土矿区土壤生态化学计量特征 ［ J ］ . 生态学 报， 2017 ， 37 （ 1 ） ： 258. Chen  H  B ， Chen  Z  B ， Chen  Z  Q ， Ma  X  L.  Ecological stoichiometry  characteristics  of  ionic  rare  earth  mining area  soil  in  different  management  years ［ J ］ .  Acta  Eco⁃ logica Sinica ， 2017 ， 37 （ 1 ） ： 258.\n\n7\n\nMahar A\n\nWang P\n\nAli  A\n\nAwasthi  M  K\n\nLahori  A  H\n\n［ ］ ， ， ， ， ， Wang  Q ， Li  R ， Zhang  Z  Q.  Challenges  and  opportuni⁃ ties  in  the  phytoremediation  of  heavy  metals  contaminat⁃ ed soils ： a  review ［ J ］ .  Ecotoxicol.  Environ.  Saf. ， 2016 ， 126 ： 111.\n\n8\n\nAli  H\n\nKhan  E\n\nSajad  M  A.  Phytoremediation  of  heavy\n\n［ ］ ， ， metals -concepts and applications ［ J ］ . Chemosphere ，\n\n2013\n\n91\n\n7\n\n869.\n\n， （ ） ：\n\n9\n\nChaney  R  L\n\nMalik  M\n\nLi  Y  M\n\nBrown  S  L\n\nBrewer  E\n\n［ ］ ， ， ， ， P ， Angle J S ， Bake A J M. Phytoremediation of soil met⁃ als ［ J ］ . Environ. Biotechnol. ， 1997 ， 8 （ 3 ） ： 84.\n\n10\n\n.\n\n［ ］ 韦朝阳， 陈同斌 重金属超富集植物及植物修复技术 研究进展 ［ J ］ . 生态学报， 2001 ， 21 （ 7 ） ： 1196. Wei  C  Y ， Chen  T  B.  Hyperaccumulators  and  phytore⁃ mediation  of  heavy  metal  contaminated  soil ： a  review  of studies in China and abroad ［ J ］ .  Acta  Ecologica Sinica ， 2001 ， 21 （ 7 ） ： 1196.\n\n11\n\n.\n\n［ ］ 朱 珏， 张 彬， 谭支良， 王 敏 刈割对牧草生物 量和品质影响的研究进展 ［ J ］ . 草业科学， 2009 ， 26 （ 2 ） ： 80. Zhu J ， Zhang B ， Tan  Z  L ， Wang M. Research progress of  clipping  effect  on  quality  and  biomass  of  grazing ［ J ］ . Pratacultural Science ， 2009 ， 26 （ 2 ） ： 80.\n\n12\n\nAkiyama T\n\nKawamura K. Grassland degradation in Chi⁃\n\n［ ］ ， na ： Methods  of  monitoring ， management  and  restora⁃ tion ［ J ］ .  Jpn Soc. Grassland Sci. ， 2007 ， 53 （ 1 ） ： 1.\n\n13\n\n.\n\n［ ］ 郭安琪， 周瑞莲， 宋 玉， 马会雷 刈割后黑麦草生 理保护作用对其补偿性生长的影响 ［ J ］ . 生态学报， 2018 ， 38 （ 10 ） ： 3495. Guo  A  Q ， Zhou  R  L ， Song  Y ， Ma  H  L.  Relationship\n\nbetween  physiological  protection  mechanisms  and  the compensatory  growth  of Lolium  perenne L.  at  different cutting treatment levels ［ J ］ . Acta Ecologica Sinica ， 2018 ， 38 （ 10 ） ： 3495.\n\n14\n\n.\n\n［ ］ 章家恩， 刘文高， 陈景青， 施耀才， 蔡燕飞 不同刈 割强度对牧草地上部和地下部生长性状的影响 ［ J ］ . 应用生态学报， 2005 ， 16 （ 9 ） ： 1740. Zhang J E ， Liu W G ， Chen J Q ， Shi Y C ， Cai Y F. Ef⁃ fects of different cutting intensities on above -and under⁃ ground  growth  of Stylosanthes  guianensis ［ J ］ .  Chinese Journal of Applied Ecology ， 2005 ， 16 （ 9 ） ： 1740.\n\n15\n\n［ ］ 王志锋， 王多伽， 于洪柱， 金春花， 齐宝林， 郑长月， 张营超 . 刈割时间与留茬高度对羊草草甸草产量和品 质的影响 ［ J ］ . 草业科学， 2016 ， 33 （ 2 ） ： 276. Wang  Z  F ， Wang  D  J ， Yu  H  Z ， Jin  C  H ， Qi  B  L ， Zheng  C  Y ， Zhang  Y  C.  Effects  of  cutting  time  and stubble  height  on  hay  yield  and  quality  of Leymus  chi⁃ nensis meadow ［ J ］ .  Pratacultural  Science ， 2016 ， 33 （ 2 ） ： 276.\n\n16\n\n.\n\n［ ］ 魏正贵， 张惠娟， 李辉信， 胡 锋 稀土元素超积累 植物研究进展 ［ J ］ . 中国稀土学报， 2006 ， 24 （ 1 ） ： 1. Wei  Z  G ， Zhang  H  J ， Li  H  X ， Hu  F.  Research  trends on  rare  earth  element  hyperaccumulator ［ J ］ .  Journal  of the Chinese Society of Rare Earths ， 2006 ， 24 （ 1 ） ： 1.\n\n17\n\n.\n\n［ ］ 张智勇， 王玉琦， 孙景信， 李福亮 稀土超量积累植\n\n41\n\n5\n\nJ\n\n.\n\n2000\n\n21\n\n物铁芒萁中稀土元素的赋存状态 ［ ］ 稀土， ， （ 3 ） ： 42.\n\nZhang Z Y\n\nWang Y Q\n\nSun J X\n\nLi F L. Chemical spe⁃\n\n， ， ， cies  of  rare  earth  elements  in  RE  hyperaccumulator Di⁃ cranopteris  dichotoma ［ J ］ .  Chinese  Rare  Earths ， 2000 ， 21 （ 3 ） ： 42.\n\n18\n\n.\n\n［ ］ 邓 恢， 林沁文， 滕华卿， 赵永建， 邓元德 强度水 土流失区芒萁生长规律分析 ［ J ］ . 福建林学院学报， 2004 ， 24 （ 3 ） ： 262. Deng  H ， Lin  Q  W ， Teng  H  Q ， Zhao  Y  J ， Deng  Y  D.\n\nAnalysis on the growth regularity of Dicranopteris dichot⁃ oma in  areas of intensive soil erosion ［ J ］ .  Journal of Fu⁃ jian College of Forestry ， 2004 ， 24 （ 3 ） ： 262.\n\n19\n\nChen Z Q\n\nChen Z B\n\nYan X Y\n\nBai  L  Y.  Stoichiomet⁃\n\n［ ］ ， ， ， ric  mechanisms  of Dicranopteris  Dichotoma growth  and resistance  to  nutrient  limitation  in  the  Zhuxi  watershed in  the  red  soil  hilly  region  of  China ［ J ］ .  Plant  Soil ， 2016 ， 398 （ 1 ） ： 367.\n\n20\n\n.\n\n［ ］ 邱 洋 南方离子型稀土矿区芒萁对稀土元素的净化 效应 ［ D ］ . 福州： 福建师范大学， 2017. Qiu  Y.  Purification  Effect  of Dicranopteris  dichotoma to Rare Earth Elements in Rare Earth Elements Mining Ar⁃ ea  of  Changting  County ， South  China ［ D ］ .  Fuzhou ： Fujian Normal University ， 2017.\n\n21\n\n.\n\n［ ］ 张巧玲 南方稀土矿区马尾松 -芒萁群落的稀土分布 特征及其稀土净化效应 ［ D ］ . 福州： 福建师范大学， 2020. Zhang  Q  L.  Distribution  Characteristics  and  Purification Effect  of  REEs  of Pinus  massoniana and Dicranopteris dichotoma in  Rare  Earth  Mining  Area ， Southern  China ［ D ］ .  Fuzhou ： Fujian Normal University ， 2020.\n\n22\n\n.\n\n［ ］ 刘迎春， 刘琪璟， 汪宏清， 马泽清， 徐雯佳 芒萁生 物量分布特征 ［ J ］ . 生态学杂志， 2008 ， 27 （ 5 ） ： 705. Liu Y C ， Liu Q J ， Wang H Q ， Ma Z Q ， Xu W J. Char⁃ acteristics  of  biomass  allocation  of Dicranopteris  dichoto⁃ ma ［ J ］ . Chinese Joumal of Ecology ， 2008 ， 27 （ 5 ） ： 705.\n\n23\n\nBelsky  A  J\n\nCarson  W  P\n\nJensen  C  L\n\nFox  G  A.  Over⁃\n\n［ ］ ， ， ， compensation  by  plants ： herbivore  optimization  or  red herring ？ ［ J ］ .  Evol. Ecol. ， 1993 ， 7 （ 1 ） ： 109.\n\n24\n\n.\n\n［ ］ 王丽华， 刘 尉， 王金牛， 干友民， 吴 彦 不同刈 割强度下草地群落、 层片及物种的补偿性生长 ［ J ］ . 草业学报， 2015 ， 24 （ 6 ） ： 35.\n\nWang L H\n\nLiu  W\n\nWang  J  N\n\nGan  Y  M\n\nWu  Y.  The\n\n， ， ， ， compensatory  growth  of  plant  community ， synusia  and species under different clipping intensity ［ J ］ . Acta Prataculturae Sinica ， 2015 ， 24 （ 6 ） ： 35.\n\n25\n\n.\n\n［ ］ 方向文， 王万鹏， 何小琴， 王 刚 扰动环境中不同 刈割方式对柠条营养生长补偿的影响 ［ J ］ . 植物生态\n\n2006\n\n30\n\n5\n\n810.\n\n学报， ， （ ） ：\n\nFang X W\n\nWang W P\n\nHe  X  Q\n\nWang G. A study on\n\n， ， ， vegetative compensatory growth of shrub ， Caragana koeshinskii under  different  clipping  treatments  in  distur⁃ bance environment ［ J ］ . Journal of Plant Ecology ， 2006 ， 30 （ 5 ） ： 810.\n\n26\n\n.\n\n［ ］ 张璐璐， 周晓松， 李英年， 袁芙蓉， 樊瑞俭， 朱志红 刈割、 施肥和浇水对矮嵩草补偿生长的影响 ［ J ］ . 植 物生态学报， 2011 ， 35 （ 6 ） ： 641. Zhang  L  L ， Zhou  X  S ， Li  Y  N ， Yuan  F  R ， Fan  R  J ， Zhu Z H. Effects of clipping ， fertilizing  and  watering  on compensatory  growth  of Kobresia  humilis ［ J ］ .  Chinese Journal of Plant Ecology ， 2011 ， 35 （ 6 ） ： 641.\n\n27\n\n.\n\nJ\n\n.\n\n［ ］ 管东生 刈割对香港草地干物质生产的影响［ ］ 农村 生态环境， 1996 ， 12 （ 1 ） ： 33. Guan  D  S.  Effects  of  clipping  on  production  of  grass⁃ land  dry  matter  in  Hong  Kong ［ J ］ .  Rural  Ecoenviron⁃ ment ， 1996 ， 12 （ 1 ） ： 33.\n\n28\n\nBenson  E  J\n\nHartnett  D  C\n\nMann  K  H.  Belowground\n\n［ ］ ， ， bud  banks  and  meristem  limitation  in  tallgrass  prairie⁃ plant populations ［ J ］ .  Am. J. Bot. ， 2004 ， 91 （ 3 ） ： 416.\n\n29\n\n.\n\nM\n\n.\n\n2011.\n\n［ ］ 董 鸣 克隆植物生态学 ［ ］ 北京： 科学出版社， Dong  M.  Clonal  Plant  Ecology ［ M ］ .  Beijing ： Science Press ， 2011.\n\n30\n\n.\n\n［ ］ 刘丽婷 芒萁克隆种群格局形成的生态过程研究 ［ D ］ . 北京： 北京林业大学， 2017. Liu  L  T.  Analysis  on  Population  Pattern  of Dicranopteris Beijing For⁃\n\npedata during Spread Process ［ D ］ .  Beijing ： estry University ， 2017.\n\n31\n\n.\n\n［ ］ 董 鸣 异质性生境中的植物克隆生长： 风险分摊 ［ J ］ . 植物生态学报， 1996 ， 20 （ 6 ） ： 543. Dong  M.  Plant  clonal  growth  in  heterogeneous  habitats ： risk -sbreading ［ J ］ .  Chinese  Journal  of  Plant  Ecology ， 1996 ， 20 （ 6 ） ： 543.\n\n32\n\n.\n\nMedicago  sativa\n\n［ ］ 孙宁骁 刈割对紫花苜蓿（ ）镉富集特 性及耐性生理影响研究 ［ D ］ . 北京： 北京林业大学， 2015.\n\nSun  N  X.  Physiological  Response  of  Cutting\n\nMedicago sativa to  Cadmium  Stress  and  Accumulation  Property ［ D ］ . Beijing ： Beijing Forestry University ， 2015.\n\n33\n\n.\n\nCd\n\n：\n\n［ ］ 曹文静 稻田轮作与植物刈割对土壤中 积累的研 究 ［ D ］ . 长沙： 湖南农业大学， 2017. Cao  W  J.  Paddy  Crop  Rotation  and  Plant  Mowing  the Study  of  Cd  Accumulation  in  the  Soil ［ D ］ .  Changsha Hunan Agricultural University ， 2017.\n\n34\n\n.\n\n［ ］ 李 贺 不同农艺措施对黑麦草、 地肤、 遏蓝菜修复 Cd 污染土壤的影响 ［ D ］ . 乌鲁木齐： 新疆农业大学， 2013.\n\n1003\n\n1004\n\nLi H. The Influence of perennial ryegrass ， kochia scopar⁃ ia ， thlaspi  arvense on  Cd  Contaminated  Soil  with  Differ⁃ ent  Agronomic  Measures ［ D ］ .  Urumqi ： Xinjiang  Agri⁃ cultural University ， 2013.\n\n35\n\n.\n\nD\n\n.\n\n［ ］ 李 娜 修剪对高羊茅镉、 铅富集的影响研究 ［ ］ 北京： 北京林业大学， 2017. Li  N.  Effects  of  Cutting  Frequency  on  Cadmium  and Lead  Accumulation  in  Tall  Fescue  under  Cadmium ， Lead  Stress ［ D ］ .  Beijing ： Beijing  Forestry  University ， 2017.\n\n36\n\n［ ］ 张巧玲， 陈志强， 林 强， 陈志彪， 冯柳俊， 邱 洋， 徐 芮 . 南方离子型稀土矿区芒萁的稀土提取能力 ［ J ］ . 稀土， 2020 ， 41 （ 4 ） ： 73. Zhang  Q  L ， Chen  Z  Q ， Lin  Q ， Chen  Z  B ， Feng  L  J ， Qiu  Y ， Xu  R.  Rare  earth  element  extraction  ability  of Dicranopreris  dichotoma in  ionic  type  rare  earth  mining area ， Southern  China ［ J ］ .  Chinese  Rare  Earths ， 2020 ， 41 （ 4 ） ： 73.\n\n37\n\n［ ］ 魏正贵， 宛寿康， 张 巽， 洪法水， 赵贵文， 陶 冶， 汪振立， 谢先求 . 感耦等离子体发射光谱法研究土壤 -铁芒萁系统中稀土元素的分布、 累积和迁移特征 ［ J ］ . 应用生态学报， 2001 ， 12 （ 6 ） ： 863. Wei Z G ， Wan S K ， Zhang  X ， Hong  F  S ， Zhao  G  W ， Tao Y ， Wang Z L ， Xie  X  Q.  ICP -AES studies on char⁃ acteristics  of  distribution  accumulation  and  transporta⁃ tion  of  rare  earth  elements  in  soil -Dicranopteris  dichoto⁃ ma system ［ J ］ .  Chinese  Journal  of  Applied  Ecology ， 2001 ， 12 （ 6 ） ： 863.\n\n38\n\n［ ］ 洪法水， 魏正贵， 陶 冶， 宛寿康， 杨跃涛， 曹心德， 赵贵文 . 天然植物铁芒萁体内稀土元素的分布及其叶 绿素镧的结构表征 ［ J ］ . 植物学报， 1999 ， 34 （ 8 ） ： 851. Hong  F  S ， Wei  Z  G ， Tao  Y ， Wan  S  K ， Yang  Y  T ， Cao X D ， Zhao G W. Distribution of rare earth elements and  structure  characterization  of  chlorophyll -lanthanum in  a  natural  plant  fern Dicranopteris dichotoma ［ J ］ .  Chi⁃ nese Bulletin of Botany ， 1999 ， 34 （ 8 ） ： 851.\n\n39\n\n［ ］ 赵贵文， 洪法水， 魏正贵， 顾月华， 胡天斗， 谢亚宁， 刘 涛， 陶 冶 . 天然蕨类植物铁芒萁叶绿素 a 中轻 稀土元素赋存状态的 EXAFS 研究 ［ J ］ . 自然科学进 展， 1999 ， 9 （ 12 ） ： 79. Zhao  G  W ， Hong  F  S ， Wei  Z  G ， Gu  Y  H ， Hu  T  D ， Xie  Y  N ， Liu  T ， Tao  Y.  EXAFS  study  of  the  fugacity state  of  light  rare  earth  elements  in  chlorophyll  a  in  nat⁃ ural  fern Dicranopteris  dichotoma ［ J ］ .  Progressin  Natu⁃ ral Science ， 1999 ， 9 （ 12 ） ： 79.\n\n40\n\n.\n\n［ ］ 王 娟， 王正海， 耿 欣， 何凤萍， 祖玉川， 王 磊 大宝山多金属矿区土壤 -植被稀土元素生物地球化学 特征 ［ J ］ . 地球科学（中国地质大学学报）， 2014 ， 39\n\n6\n\n733.\n\n（ ） ：\n\nWang J\n\nWang Z H\n\nGeng X\n\nHe F P\n\nZu  Y  C\n\nWang\n\n， ， ， ， ， L.  REE biogeochemistry of soil -vegetation  system  in  Da⁃ baoshan  polymetallic  mine ［ J ］ .  Earth  Science （ Journal of China University of Geosciences ） ， 2014 ， 39 （ 6 ） ： 733.\n\n41\n\n.\n\n［ ］ 王佳佳， 张明如， 伊力塔， 张汝民， 何云核 光照和 氮素对芒萁克隆繁殖特性及生物量分配的影响 ［ J ］ . 浙江农林大学学报， 2021 ， 38 （ 1 ） ： 74. Wang J J ， Zhang  M  R ， Yi  L  T ， Zhang  R  M ， He  Y  H. Effects of light and nitrogen on clonal reproduction char⁃ acteristics  and  biomass  allocation  of Dicranopteris  dicho⁃ toma ［ J ］ .  Journal  of  Zhejiang  A&F  University ， 2021 ， 38 （ 1 ） ： 74.\n\n42\n\n.\n\n［ ］ 何跃君， 薛 立 稀土元素对植物的生物效应及其作 用机理 ［ J ］ . 应用生态学报， 2005 ， 16 （ 10 ） ： 1983. He Y J ， Xue L. Biological effects of rare earth elements and  their  action  mechanisms ［ J ］ .  Chinese  Journal  of Applied Ecology ， 2005 ， 16 （ 10 ） ： 1983.\n\n43\n\n.\n\n［ ］ 郜红建， 常 江， 张自立， 丁士明， 魏俊岭 稀土在 植物抗逆中的生理作用 ［ J ］ . 中国稀土学报， 2003 ， 21 （ 5 ） ： 487. Gao  H  J ， Chang  J ， Zhang  Z  L ， Ding  S  M ， Wei  J  L.\n\nPhysiological  effects  of  rare  earth  elements  on  stress  re⁃ sistance  in  plant ［ J ］ .  Journal  of  the  Chinese  Society  of Rare Earths ， 2003 ， 21 （ 5 ） ： 487.\n\n44\n\nElbasan  F\n\nOzfidan konakci  C\n\nYildiztugay  E\n\nKucu⁃\n\n［ ］ ， -， ， koduk M. Rare -earth  element  scandium  improves  stoma⁃ tal  regulation and enhances salt and drought stress toler⁃ ance by up -regulating antioxidant responses of Oryza Sa⁃ tiva ［ J ］ .  Plant Physiol. Biochem. ， 2020 ， 152 ： 157.\n\n45\n\n.\n\n［ ］ 洪法水， 魏正贵， 赵贵文 稀土在天然植物铁芒萁体 内结合形式的光谱学研究 ［ J ］ . 高等学校化学学报， 2001 ， 22 （ 11 ） ： 1790. Hong F S ， Wei  Z  G ， Zhao  G  W.  Studies  of  bound  form on  rare  earths  in  a  natural  plant  fern Dicranopteris  di⁃ chotoma by  spectroscopy ［ J ］ .  Chemical  Journal  of  Chi⁃ nese Universities ， 2001 ， 22 （ 11 ） ： 1790.\n\n46\n\nShan  X  Q\n\nWang H\n\nZhang S Z\n\nZhou H F\n\nZheng Y\n\n［ ］ ， ， ， ， ， Yu  H ， Wen  B.  Accumulation  and  uptake  of  light  rare earth  elements in a hyperaccumulator Dicropteris  Dichot⁃ oma ［ J ］ .  Plant Sci. ， 2003 ， 165 （ 6 ） ： 1343.\n\n47\n\nWei  Z  G\n\nHong  F  S\n\nYin  M\n\nLi  H  X\n\nHu  F\n\nZhao  G\n\n［ ］ ， ， ， ， ， W ， Wong  J  W.  Structural  differences  between  light  and heavy rare earth element binding chlorophylls in natural⁃ ly grown fern ： Dicranopteris Linearis ［ J ］ .  Biol. Trace El⁃ em. Res. ， 2005 ， 106 （ 3 ） ： 279.\n\n48\n\n.\n\n［ ］ 樊连杰， 邹胜章， 解庆林， 卢 丽， 林永生， 裴建国 云南鹤庆盆地岩溶地下水稀土元素地球化学特征 ［ J ］ .\n\n41\n\n5\n\n2021\n\n39\n\n5\n\n805.\n\n中国稀土学报， ， （ ） ：\n\nFan  L  J\n\nZou  S  Z\n\nXie  Q  L\n\nLu  L\n\nLin  Y  S\n\nPei  J  G.\n\n， ， ， ， ， Rare  earth  element  geochemical  characteristics  of  Karst groundwater  in  Heqing  Basin ， Yunnan  Province ［ J ］ . Journal of the Chinese Society of Rare Earths ， 2021 ， 39 （ 5 ） ： 805.\n\n49\n\n.\n\n［ ］ 彭琳琳， 陈斌锋， 邹新勇， 邹志强， 肖文刚， 阙兴华\n\n1005\n\nJ\n\n.\n\n离子型稀土矿稀土配分特征及类型划分新方案 ［ ］ 中国稀土学报， 2021 ， 39 （ 4 ） ： 624.\n\nPeng L L\n\nChen  B  F\n\nZou  X  Y\n\nZou  Z  Q\n\nXiao  W  G\n\n， ， ， ， ， Que  X  H.  Rare  earth  partitioning  characteristics  and new scheme for classification  of  ion -adsorption  type  rare earth  ore ［ J ］ .  Journal  of  the  Chinese  Society  of  Rare Earths ， 2021 ， 39 （ 4 ） ： 624.\n\nEffect  of  Super -Compensation  Growth  and  Rare -Earth  Purification  of  Rare Earth  Elements  Hyperaccumulator Dicranopteris  Dichotoma under  Different Cutting Intensity Treatments\n\nLin Yu\n\nChen Zhiqiang *\n\nChen Zhibiao\n\nShang Yanqiong\n\nFeng Liujun\n\n， ， ， ， （ College of Geographical Sci⁃ ences ， Fujian Normal University ， Key Laboratory for Subtropical Mountain Ecology ， Ministry of Sci⁃ ence and Technology and Fujian Province ， Fuzhou 350007 ， China ） To  reveal the super compensatory growth of and the effect of\n\nAbstract ： Dicranopteris dichotoma Dicranopteris di⁃ chotoma in  purifying  rare  earth  elements  under  different  cutting  intensity  treatments ， using  Changting ， a  south⁃ ern ionic rare earth mining area ， as  the  study  area ， the  biomass and rare earth element contents of new and un⁃ cut Dicranopteris  dichotoma were  calculated  after  six  months  of Dicranopteris  dichotoma cutting  at  five  intensi⁃ ties ： 100% ， 75% ， 50% ， 25%  and  no  cutting.  The  results  show  that  the  biomass  of Dicranopteris  dichotoma of all cut treatments is higher than that of the uncut control and that super compensatory growth occurrs in all treat⁃ ments.  The  greater  the  intensity  of  cutting  is  the  more  pronounced  the  compensatory  effect  is ， and  the  biomass of Dicranopteris  dichotoma is  significantly  greater  in  the  100%  cutting  treatment  than  that  in  the  other  treat⁃ ments. The above indicates that cutting significantly enhances the clonal reproduction of Dicranopteris dichotoma and  provides  good  conditions  for  rare  earth  elements  accumulation.  The  total  amount  of  rare  earth  elements  in the  new Dicranopteris  dichotoma leaves  is  significantly  greater  in  all  cut  treatments  than  that  in  the  uncut  con⁃ trol ， but  there  is  no  significant  difference  between the different cutting intensities. The total amount of rare earth elements in uncut Dicranopteris dichotoma leaves  left  in  the  sample  is  significantly  greater  than  that  in  the  uncut control ， and  the  total  amount  of  rare  earth  elements  in  uncut Dicranopteris dichotoma leaves  in  the  75%  cut  and 50%  cut  samples  is  slightly  greater  than  the  total  amount  of  rare  earth  elements  in  new  leaves  after  cutting. These  suggest  that  the  residual  uncut Dicranopteris  dichotoma root  system  respondes  to  the  cutting  disturbance by  absorbing  rare  earth  elements.  The  accumulation  of  both  light  and  heavy  rare  earth  elements  in  the  new leaves  of Dicranopteris  dichotoma increases  after  the  cutting  treatment ， and  the  accumulation  of  rare  earth  ele⁃ ments under 100% cutting treatment is significantly greater than other cutting intensities ， indicating that enhanc⁃ ing  the  efficiency  of Dicranopteris  dichotoma in  purifying  rare  earth  elements  depends  mainly  on  inducing  com⁃ pensatory growth in Dicranopteris dichotoma to  enhance  biomass. The accumulation of rare earth elements by Di⁃ cranopteris  dichotoma remained  stable  after  cutting.  It  is  still  showing  more  light  rare  earth  elements  than  heavy rare  earth  elements. Dicranopteris  dichotoma biomass  is  strongly  correlated  with  light  rare  earth  elements  except for Ce ， moderately correlated with the heavy rare earth elements Gd and Tb ， and not correlated with the remain⁃ ing  rare  earth  elements.  The  uptake  of  Ce  by Dicranopteris  dichotoma is  limited  by  the  Ce  content  of  the  soil. There  are  a  strong  correlation  between  light  rare  earth  elements  and  a  strong  correlation  between  heavy  rare earth elements in Dicranopteris dichotoma leaves  after  cutting ， and the light rare earth elements are strongly cor⁃ related with Gd and Tb ， indicating that the uptake of heavy rare earth elements by Dicranopteris dichotoma is  in⁃ fluenced by the light rare earth elements.\n\nrare earth elements compensatory growth\n\ncutting changting\n\nKeywords ： Dicranopteris dichotoma ； ； ； ；",
+        "index": 1,
+        "title": "稀土超富集植物芒萁在不同刈割强度下的超补偿生长及净化效应",
+        "abstracts": "研究了不同刈割强度下芒萁（Dicranopteris dichotoma）的超补偿生长及其对稀土元素的净化效果。结果表明，所有刈割处理的芒萁生物量均高于未刈割对照组，并且随着刈割强度的增加，补偿效应更加显著。100%刈割处理的芒萁生物量显著高于其他处理。刈割显著增强了芒萁的克隆繁殖，为稀土元素的积累提供了良好条件。所有刈割处理的新叶中稀土元素总量显著高于未刈割对照组，但不同刈割强度之间无显著差异。未刈割芒萁叶片中的稀土元素总量显著高于未刈割对照组，75%和50%刈割处理的未刈割叶片中的稀土元素总量略高于新叶中的稀土元素总量。",
+        "entities": [
+          {
+            "vertex": "Dicranopteris dichotoma",
+            "label": "PLANT",
+            "properties": {
+              "role": "研究对象"
+            }
+          },
+          {
+            "vertex": "Changting",
+            "label": "LOCATION",
+            "properties": {
+              "role": "研究区域"
+            }
+          },
+          {
+            "vertex": "rare earth elements",
+            "label": "CHEMICAL_ELEMENT",
+            "properties": {
+              "role": "研究目标"
+            }
+          }
+        ],
+        "relation": [
+          {
+            "source": "Dicranopteris dichotoma",
+            "target": "Changting",
+            "label": "STUDY_AREA",
+            "properties": {
+              "description": "研究地点"
+            }
+          },
+          {
+            "source": "Dicranopteris dichotoma",
+            "target": "rare earth elements",
+            "label": "ACCUMULATION",
+            "properties": {
+              "description": "芒萁积累稀土元素"
+            }
+          },
+          {
+            "source": "cutting intensity",
+            "target": "Dicranopteris dichotoma",
+            "label": "AFFECTS",
+            "properties": {
+              "description": "刈割强度影响芒萁生长"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

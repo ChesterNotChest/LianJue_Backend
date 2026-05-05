@@ -1,0 +1,67 @@
+﻿{
+    "error_code":  "",
+    "error_message":  "",
+    "profile":  {
+                    "answer_pattern":  "general",
+                    "attention_pattern":  "stable",
+                    "bottleneck_topics":  [
+
+                                          ],
+                    "comprehension_level":  {
+                                                "level":  "low",
+                                                "score":  0.15
+                                            },
+                    "concept_gaps":  [
+
+                                     ],
+                    "deadline":  null,
+                    "difficulty_tolerance":  "low",
+                    "dropout_risk":  "high",
+                    "email":  "3273897794@qq.com",
+                    "knowledge_mastery":  {
+                                              "mastered_weeks":  [
+
+                                                                 ],
+                                              "overall_level":  "none",
+                                              "overall_score":  0.0,
+                                              "weak_weeks":  [
+
+                                                             ],
+                                              "week_items":  [
+
+                                                             ]
+                                          },
+                    "learning_goal":  "60",
+                    "learning_style":  "balanced",
+                    "practice_ability":  {
+                                             "level":  "low",
+                                             "score":  0.0
+                                         },
+                    "recent_anomaly":  [
+
+                                       ],
+                    "resource_preference":  [
+
+                                            ],
+                    "signals":  {
+                                    "history_count":  0,
+                                    "history_sources":  1,
+                                    "profile_scope_count":  1,
+                                    "question_text_count":  0
+                                },
+                    "study_duration":  "unknown",
+                    "study_frequency":  "none",
+                    "syllabus_scope":  [
+                                           {
+                                               "personal_syllabus_path":  null,
+                                               "syllabus_id":  19,
+                                               "title":  ""
+                                           }
+                                       ],
+                    "target_level":  "入门",
+                    "updated_at":  1777960519,
+                    "user_id":  1,
+                    "user_name":  "r"
+                },
+    "success":  true
+}
