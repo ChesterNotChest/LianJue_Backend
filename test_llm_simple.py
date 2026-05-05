@@ -39,7 +39,7 @@ def test_llm_connection():
         print(f"模型配置:")
         print(f"  - 模型名: {model_name}")
         print(f"  - API Base: {api_base}")
-        print(f"  - API密钥: {api_key[:10]}...")
+        print(f"  - API密钥已配置: {bool(api_key)}")
         
         provider = OpenAIProvider(base_url=api_base, api_key=api_key)
         model = OpenAIModel(model_name, provider=provider)
