@@ -16,5 +16,8 @@ flask_sqlalchemy
 pymysql
 pypandoc
 pytest
+matplotlib>=3.8.0
+pandas>=2.2.0
+seaborn>=0.13.0
 # sudo apt update
 # sudo apt install -y pandoc texlive-latex-recommended texlive-latex-extra texlive-fonts-recommended texlive-lang-chinese fonts-noto-cjk texlive-xetex

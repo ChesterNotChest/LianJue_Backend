@@ -1,0 +1,3 @@
+priority,priority_label,review_count,focus_field_total,average_focus_field_count,review_ids,reasons
+high,High Priority,4,15,3.75,"[""manual_base_s02"", ""manual_base_s03"", ""manual_edge_s02_time_mix"", ""manual_edge_s03_week_mismatch""]","[""高风险样本，验证掉队风险是否过度或不足"", ""突击型样本，验证短期高活跃是否被错误识别成长期稳健"", ""规范化边界样本，验证异常报告是否明确且不误伤其他字段"", ""语义冲突样本，验证 week_index 与知识点映射冲突是否被暴露""]"
+medium,Medium Priority,2,7,3.5,"[""manual_base_s01"", ""manual_base_s04""]","[""基线稳定样本，验证画像是否能正确抓到稳定投入 + 局部薄弱点"", ""偏好明显样本，验证资源偏好和学习风格是否一致""]"

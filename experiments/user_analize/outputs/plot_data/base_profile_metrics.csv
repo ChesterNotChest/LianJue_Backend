@@ -1,0 +1,5 @@
+bundle_id,persona_id,confidence,dropout_risk,dropout_risk_score,overall_score,answer_score,syllabus_score,engagement_score,goal_clarity_score,term_familiarity_score,study_frequency,study_duration,attention_pattern,learning_style,resource_preference_1,resource_preference_2,concept_gap_count,weak_week_count
+profile_bundle_s01,steady_mastery_builder,0.84,medium,0.44,0.7928,0.775,0.665,1.0,1.0,1.0,high,medium,stable,practice-driven,practice,text_summary,4,1
+profile_bundle_s02,low_activity_risk,0.84,high,0.95,0.2442,0.1667,0.237,0.3781,0.55,0.4,low,short,stable,text-driven,text_summary,remedial_notes,11,2
+profile_bundle_s03,deadline_crammer,0.84,high,0.74,0.4871,0.5,0.3307,0.6856,0.8,1.0,low,long,sporadic,practice-driven,practice,video,6,3
+profile_bundle_s04,visual_practice_seeker,0.84,medium,0.45,0.6874,0.7,0.622,0.7589,0.55,0.6,medium,medium,stable,visual-driven,video,practice,4,1

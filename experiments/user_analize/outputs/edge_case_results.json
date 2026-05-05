@@ -1,0 +1,154 @@
+[
+  {
+    "case_id": "edge_s01_missing_goal",
+    "template_id": "edge_missing_learning_goal",
+    "expected_outcome": "可继续构建画像，但目标明确度与目标抽取置信度下降",
+    "expected_warnings": [
+      "missing_learning_goal"
+    ],
+    "profile_summary": {
+      "confidence": 0.81,
+      "dropout_risk": "medium",
+      "missing_field_report": [
+        "learning_goal"
+      ],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "edge_s01_missing_knowledge_points",
+    "template_id": "edge_missing_knowledge_points",
+    "expected_outcome": "知识点级掌握度下降，概念缺口更偏保守",
+    "expected_warnings": [
+      "missing_knowledge_points"
+    ],
+    "profile_summary": {
+      "confidence": 0.81,
+      "dropout_risk": "medium",
+      "missing_field_report": [
+        "answer_records[0].knowledge_points"
+      ],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [
+          "answer_records[0].knowledge_points"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "edge_s02_empty_behavior",
+    "template_id": "edge_empty_behavior_arrays",
+    "expected_outcome": "仅剩对话和答题负信号，风险仍可判断但行为特征降级",
+    "expected_warnings": [
+      "empty_learning_records",
+      "empty_resource_usage"
+    ],
+    "profile_summary": {
+      "confidence": 0.56,
+      "dropout_risk": "high",
+      "missing_field_report": [
+        "learning_records",
+        "resource_usage"
+      ],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_records",
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 2
+      }
+    }
+  },
+  {
+    "case_id": "edge_s02_nonstandard_time",
+    "template_id": "edge_nonstandard_time_mix",
+    "expected_outcome": "规范化模块应识别时间混乱并给出异常报告",
+    "expected_warnings": [
+      "nonstandard_time_format"
+    ],
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "high",
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "case_id": "edge_s03_invalid_event_type",
+    "template_id": "edge_invalid_event_type",
+    "expected_outcome": "未知行为类型应进入降级分支，而不是直接中断",
+    "expected_warnings": [
+      "unknown_event_type"
+    ],
+    "profile_summary": {
+      "confidence": 0.815,
+      "dropout_risk": "high",
+      "missing_field_report": [],
+      "format_issue_report": [
+        "unknown_event_type:mystery_event"
+      ],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [
+          "unknown_event_type:mystery_event"
+        ],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "edge_s03_week_mismatch",
+    "template_id": "edge_week_index_mismatch",
+    "expected_outcome": "课程周次与知识点冲突应进入 evidence 或 warning",
+    "expected_warnings": [
+      "week_index_topic_mismatch"
+    ],
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "high",
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "case_id": "edge_s04_duplicate_resource",
+    "template_id": "edge_duplicate_resource_events",
+    "expected_outcome": "资源偏好计算应具备去重或弱去重能力",
+    "expected_warnings": [
+      "duplicate_resource_event"
+    ],
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "medium",
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  }
+]

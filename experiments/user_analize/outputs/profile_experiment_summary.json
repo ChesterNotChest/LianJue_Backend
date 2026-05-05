@@ -1,0 +1,25 @@
+{
+  "base_profile_count": 4,
+  "ablation_case_count": 24,
+  "edge_case_count": 7,
+  "stability_target_count": 5,
+  "manual_review_count": 6,
+  "output_files": {
+    "base_profiles": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/base_profile_results.json",
+    "ablation_results": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/ablation_results.json",
+    "edge_case_results": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/edge_case_results.json",
+    "stability_results": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/stability_results.json",
+    "manual_review_packets": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/manual_review_packets.json"
+  },
+  "plot_csv_files": {
+    "base_profile_metrics_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/base_profile_metrics.csv",
+    "base_profile_concept_gaps_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/base_profile_concept_gaps.csv",
+    "concept_gap_stats_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/concept_gap_stats.csv",
+    "ablation_long_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/ablation_long.csv",
+    "ablation_matrix_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/ablation_confidence_matrix.csv",
+    "edge_case_metrics_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/edge_case_metrics.csv",
+    "stability_summary_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/stability_summary.csv",
+    "manual_review_packets_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/manual_review_packets.csv",
+    "manual_review_summary_csv": "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/plot_data/manual_review_summary.csv"
+  }
+}

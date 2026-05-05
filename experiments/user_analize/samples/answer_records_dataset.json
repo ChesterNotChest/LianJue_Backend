@@ -1,0 +1,170 @@
+{
+  "dataset_name": "answer_records_dataset",
+  "syllabus_id": 8,
+  "graph_name": "RAG",
+  "samples": [
+    {
+      "sample_id": "answer_s01",
+      "persona_id": "steady_mastery_builder",
+      "user_id": 2001,
+      "records": [
+        {
+          "question_id": "qb_011",
+          "week_index": "5",
+          "knowledge_points": ["HDFS架构", "NameNode", "DataNode"],
+          "correct": true,
+          "score": 1.0,
+          "answered_at": 1776507000,
+          "time_spent_seconds": 46
+        },
+        {
+          "question_id": "qb_014",
+          "week_index": "6",
+          "knowledge_points": ["HBase", "列式存储", "半结构化数据"],
+          "correct": true,
+          "score": 0.9,
+          "answered_at": "2026-04-19T20:15:00+08:00",
+          "time_spent_seconds": 72
+        },
+        {
+          "question_id": "qb_019",
+          "week_index": "8",
+          "knowledge_points": ["特征选择", "建模效果", "维度约简"],
+          "correct": false,
+          "score": 0.4,
+          "answered_at": 1776762300,
+          "time_spent_seconds": 128
+        },
+        {
+          "question_id": "qb_012",
+          "week_index": "9",
+          "knowledge_points": ["Apriori", "关联规则", "频繁项集"],
+          "correct": true,
+          "score": 0.8,
+          "answered_at": "2026-04-24T21:58:00+08:00",
+          "time_spent_seconds": 94
+        }
+      ]
+    },
+    {
+      "sample_id": "answer_s02",
+      "persona_id": "low_activity_risk",
+      "user_id": 2002,
+      "records": [
+        {
+          "question_id": "qb_014",
+          "week_index": "6",
+          "knowledge_points": ["HBase", "列式存储", "半结构化数据"],
+          "correct": false,
+          "score": 0.2,
+          "answered_at": "2026-04-10T21:05:00+08:00",
+          "time_spent_seconds": 143
+        },
+        {
+          "question_id": "qb_025",
+          "week_index": "7",
+          "knowledge_points": ["NoSQL", "扩展性", "关系型瓶颈"],
+          "correct": false,
+          "score": 0.3,
+          "answered_at": 1776254700,
+          "time_spent_seconds": 111
+        },
+        {
+          "question_id": "qb_011",
+          "week_index": "5",
+          "knowledge_points": ["HDFS架构", "NameNode", "DataNode"],
+          "correct": false,
+          "score": 0.0,
+          "answered_at": "2026/04/18 22:27",
+          "time_spent_seconds": 97
+        }
+      ]
+    },
+    {
+      "sample_id": "answer_s03",
+      "persona_id": "deadline_crammer",
+      "user_id": 2003,
+      "records": [
+        {
+          "question_id": "qb_015",
+          "week_index": "12",
+          "knowledge_points": ["MapReduce", "Spark", "内存计算"],
+          "correct": false,
+          "score": 0.4,
+          "answered_at": 1777369200,
+          "time_spent_seconds": 158
+        },
+        {
+          "question_id": "qb_016",
+          "week_index": "13",
+          "knowledge_points": ["GPU", "TPU", "FPGA"],
+          "correct": true,
+          "score": 0.7,
+          "answered_at": "2026-04-28T23:42:00+08:00",
+          "time_spent_seconds": 102
+        },
+        {
+          "question_id": "qb_017",
+          "week_index": "14",
+          "knowledge_points": ["差分隐私", "隐私保护", "噪声机制"],
+          "correct": false,
+          "score": 0.2,
+          "answered_at": "2026-04-29 23:58:00",
+          "time_spent_seconds": 149
+        },
+        {
+          "question_id": "qb_015",
+          "week_index": "12",
+          "knowledge_points": ["MapReduce", "Spark", "内存计算"],
+          "correct": true,
+          "score": 0.8,
+          "answered_at": 1777461000,
+          "time_spent_seconds": 88
+        }
+      ]
+    },
+    {
+      "sample_id": "answer_s04",
+      "persona_id": "visual_practice_seeker",
+      "user_id": 2004,
+      "records": [
+        {
+          "question_id": "qb_020",
+          "week_index": "11",
+          "knowledge_points": ["可视化原则", "交互展示", "信息表达"],
+          "correct": true,
+          "score": 0.9,
+          "answered_at": "2026-04-22T19:30:00+08:00",
+          "time_spent_seconds": 64
+        },
+        {
+          "question_id": "qb_015",
+          "week_index": "12",
+          "knowledge_points": ["MapReduce", "Spark", "内存计算"],
+          "correct": true,
+          "score": 0.8,
+          "answered_at": 1777039200,
+          "time_spent_seconds": 71
+        },
+        {
+          "question_id": "qb_017",
+          "week_index": "14",
+          "knowledge_points": ["差分隐私", "隐私保护", "噪声机制"],
+          "correct": false,
+          "score": 0.4,
+          "answered_at": "2026-04-25T17:12:00+08:00",
+          "time_spent_seconds": 121
+        },
+        {
+          "question_id": "qb_019",
+          "week_index": "8",
+          "knowledge_points": ["特征选择", "建模效果", "维度约简"],
+          "correct": true,
+          "score": 0.7,
+          "answered_at": 1777212300,
+          "time_spent_seconds": 83
+        }
+      ]
+    }
+  ]
+}

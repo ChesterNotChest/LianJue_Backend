@@ -1,0 +1,156 @@
+{
+  "dataset_name": "personal_syllabus_dataset",
+  "syllabus_id": 8,
+  "graph_name": "RAG",
+  "style_reference_path": "experiments/user_analize/samples/source_refs/student_alt_user_1_8_personal.json",
+  "profiles": [
+    {
+      "sample_id": "personal_s01",
+      "persona_id": "steady_mastery_builder",
+      "user_id": 2001,
+      "review_count": 4,
+      "reviewed_at": 1777105200,
+      "coverage": "focused_weeks_only",
+      "period": [
+        {
+          "week_index": "5",
+          "content": "大数据存储与管理：分布式文件系统及主流技术HDFS",
+          "importance": "high",
+          "competance": "normal",
+          "competance_progress": 4,
+          "suggested_competance_list": ["normal", "normal"],
+          "updated_at": 1776507600
+        },
+        {
+          "week_index": "6",
+          "content": "大数据存储与管理：分布式数据库中典型技术HBase",
+          "importance": "high",
+          "competance": "normal",
+          "competance_progress": 4,
+          "suggested_competance_list": ["normal", "normal"],
+          "updated_at": 1776679200
+        },
+        {
+          "week_index": "8",
+          "content": "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法",
+          "importance": "high",
+          "competance": "weak",
+          "competance_progress": 2,
+          "suggested_competance_list": ["normal"],
+          "updated_at": 1776763200
+        },
+        {
+          "week_index": "9",
+          "content": "大数据分析与挖掘：关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）",
+          "importance": "high",
+          "competance": "normal",
+          "competance_progress": 5,
+          "suggested_competance_list": ["normal", "normal", "normal"],
+          "updated_at": 1777105200
+        }
+      ]
+    },
+    {
+      "sample_id": "personal_s02",
+      "persona_id": "low_activity_risk",
+      "user_id": 2002,
+      "review_count": 1,
+      "reviewed_at": 1776255000,
+      "coverage": "focused_weeks_only",
+      "period": [
+        {
+          "week_index": "6",
+          "content": "大数据存储与管理：分布式数据库中典型技术HBase",
+          "importance": "high",
+          "competance": "none",
+          "competance_progress": 0,
+          "suggested_competance_list": [],
+          "updated_at": 0
+        },
+        {
+          "week_index": "7",
+          "content": "大数据存储与管理：非关系型数据库兴起的原因；与关系型数据库对比",
+          "importance": "medium",
+          "competance": "weak",
+          "competance_progress": 1,
+          "suggested_competance_list": ["normal"],
+          "updated_at": 1776255000
+        }
+      ]
+    },
+    {
+      "sample_id": "personal_s03",
+      "persona_id": "deadline_crammer",
+      "user_id": 2003,
+      "review_count": 2,
+      "reviewed_at": 1777461600,
+      "coverage": "focused_weeks_only",
+      "period": [
+        {
+          "week_index": "12",
+          "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+          "importance": "high",
+          "competance": "weak",
+          "competance_progress": 4,
+          "suggested_competance_list": ["normal", "normal"],
+          "updated_at": 1777461600
+        },
+        {
+          "week_index": "13",
+          "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+          "importance": "high",
+          "competance": "weak",
+          "competance_progress": 3,
+          "suggested_competance_list": ["normal"],
+          "updated_at": 1777459200
+        },
+        {
+          "week_index": "14",
+          "content": "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用",
+          "importance": "medium",
+          "competance": "none",
+          "competance_progress": 1,
+          "suggested_competance_list": ["normal"],
+          "updated_at": 1777459200
+        }
+      ]
+    },
+    {
+      "sample_id": "personal_s04",
+      "persona_id": "visual_practice_seeker",
+      "user_id": 2004,
+      "review_count": 3,
+      "reviewed_at": 1777213200,
+      "coverage": "focused_weeks_only",
+      "period": [
+        {
+          "week_index": "11",
+          "content": "大数据分析与挖掘：大数据可视化方法与技术；早期流行的集中式分布架构",
+          "importance": "medium",
+          "competance": "normal",
+          "competance_progress": 4,
+          "suggested_competance_list": ["normal", "normal"],
+          "updated_at": 1776948000
+        },
+        {
+          "week_index": "12",
+          "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+          "importance": "high",
+          "competance": "normal",
+          "competance_progress": 3,
+          "suggested_competance_list": ["normal", "normal"],
+          "updated_at": 1777040400
+        },
+        {
+          "week_index": "13",
+          "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+          "importance": "high",
+          "competance": "weak",
+          "competance_progress": 2,
+          "suggested_competance_list": ["normal"],
+          "updated_at": 1777213200
+        }
+      ]
+    }
+  ]
+}

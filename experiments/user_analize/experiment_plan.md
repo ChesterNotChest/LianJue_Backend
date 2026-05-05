@@ -245,6 +245,7 @@
 
 本目录建议后续逐步补充：
 
+- `README.md`
 - `experiment_plan.md`
 - `samples/`
 - `records/`
@@ -256,6 +257,11 @@
 - `records/` 记录每次实验的原始观察
 - `outputs/` 记录统计表、对比结果、可视化
 - `summary.md` 汇总适合回填到正式设计文档的结论
+
+### 执行方式约定
+
+- runner：负责真正运行画像实验并生成数据结果
+- 推送前检查：优先使用 `git status --short`、`git diff -- experiments/user_analize`、`git ls-files experiments/user_analize/samples`
 
 ## 9. 当前建议
 
