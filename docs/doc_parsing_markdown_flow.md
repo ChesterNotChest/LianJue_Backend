@@ -5,10 +5,11 @@
 
 ## ☆ 顶层流程
 1) 初始化与配置
-   - 设定 `DOCLING_ARTIFACTS_PATH=/thutmose/app/abution/model`
+    - 设定 `DOCLING_ARTIFACTS_PATH=<backend>/model`
+    - `model/` 下统一放置本地资源目录：`docling-project--CodeFormulaV2/`、`docling-project--DocumentFigureClassifier/`、`docling-project--docling-models/`、`docling-project--docling-layout-heron/`、`RapidOcr/`
    - `get_document_converter()` 创建 Docling 转换器：
-     - `do_ocr=True`（EasyOCR 路径=model_path）
-     - `do_formula_enrichment=False`
+       - `do_ocr=True`（优先使用 `RapidOcr/`，缺省回退到 EasyOCR）
+       - `do_formula_enrichment=True`
      - `do_code_enrichment=True`
      - `do_table_structure=True`
      - 生成页面/图片快照
@@ -41,8 +42,8 @@
    - `__main__` 中写入 `../markdowns/{original_filename}.md`，打印前 500 字符预览
 
 ## ☆ 关键默认值
-- OCR：开启（EasyOCR）
-- 公式增强：关闭；代码增强/表格结构：开启
+- OCR：开启（优先 RapidOCR，本地目录缺失时回退 EasyOCR）
+- 公式增强：开启；代码增强/表格结构：开启
 - 图片过滤：四边 Logo / 面积<1000 直接丢弃
 - 并发：图片描述用线程池，类默认 10 线程；示例中设 5 线程，重试 1 次
 - 设备：CPU-only，`CUDA_VISIBLE_DEVICES=''`

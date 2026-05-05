@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from io import BytesIO
 from typing import Dict, Any, List, Tuple, Optional
 import os
@@ -39,7 +40,10 @@ except Exception:
     PdfReader = None
     PdfWriter = None
 
-os.environ['DOCLING_ARTIFACTS_PATH'] = "/thutmose/app/abution/model"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL_DIR = (BACKEND_ROOT / "model").resolve()
+
+os.environ['DOCLING_ARTIFACTS_PATH'] = str(DEFAULT_MODEL_DIR)
 
 # 强制重新配置日志
 for handler in logging.root.handlers[:]:
@@ -81,16 +85,38 @@ def _configure_docling_accelerator(pdf_pipeline_options, device_mode: str):
         except Exception:
             pass
 
+def _build_ocr_options(model_root: str):
+    model_root_path = Path(model_root).resolve()
+    rapidocr_root = model_root_path / "RapidOcr"
+    if rapidocr_root.exists():
+        from docling.datamodel.pipeline_options import RapidOcrOptions
+
+        ocr_options = RapidOcrOptions(
+            backend="onnxruntime",
+            use_det=True,
+            use_cls=True,
+            use_rec=True,
+            det_model_path=str(rapidocr_root / "onnx/PP-OCRv4/det/ch_PP-OCRv4_det_infer.onnx"),
+            cls_model_path=str(rapidocr_root / "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_infer.onnx"),
+            rec_model_path=str(rapidocr_root / "onnx/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer.onnx"),
+            rec_keys_path=str(rapidocr_root / "paddle/PP-OCRv4/rec/ch_PP-OCRv4_rec_infer/ppocr_keys_v1.txt"),
+        )
+        return ocr_options, "rapidocr"
+
+    from docling.datamodel.pipeline_options import EasyOcrOptions
+
+    easyocr_options = EasyOcrOptions()
+    easyocr_options.model_storage_directory = str(model_root_path)
+    return easyocr_options, "easyocr"
+
 def get_document_converter(easyocr_model_path, pdf_artifacts_path):
-    from docling.datamodel.pipeline_options import PdfPipelineOptions, EasyOcrOptions
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.datamodel.base_models import InputFormat
     from docling.document_converter import PdfFormatOption, DocumentConverter, ImageFormatOption, \
         PowerpointFormatOption, WordFormatOption, ExcelFormatOption, HTMLFormatOption
 
     # 配置 OCR 模型路径
-    # easyocr_model_storage_directory = json_input["easyocrModelPath"]
-    easyocr_options = EasyOcrOptions()
-    easyocr_options.model_storage_directory = easyocr_model_path
+    ocr_options, ocr_backend = _build_ocr_options(easyocr_model_path)
     # # 配置 公式图片识别 模型路径
     # smolvlm_picture_description = PictureDescriptionVlmOptions(repo_id="cubeai/blip-image-captioning-base",prompt="解释图片内容") # ds4sd/SmolDocling-256M-preview "Salesforce/blip-image-captioning-base" cubeai/blip-image-captioning-base HuggingFaceTB/SmolVLM-256M-Instruct ibm-granite/granite-vision-3.1-2b-preview
     # 配置 Docling 模型路径
@@ -103,7 +129,7 @@ def get_document_converter(easyocr_model_path, pdf_artifacts_path):
         _configure_docling_accelerator(pdf_pipeline_options, proc_cfg.get("device_mode", "cpu"))
     except Exception:
         pass
-    pdf_pipeline_options.ocr_options = easyocr_options
+    pdf_pipeline_options.ocr_options = ocr_options
     pdf_pipeline_options.do_ocr = True  # 启用 OCR
     ## 识别公式内容（默认调用模型ds4sd--CodeFormula
     pdf_pipeline_options.do_formula_enrichment = True
@@ -1381,7 +1407,7 @@ if __name__ == "__main__":
     # file_path = "/root/knowlion/pdfs/不同刈割强度下稀土超富集植物芒萁的超补偿生长及净化稀土效应.pdf"
     # file_path = "/root/knowlion/pdfs/基于RAG的维修手册智能问答系统研究与应用_郭超_象征性编辑.pdf"
     file_path = "/root/knowlion/pdfs/第1章+绪论.pdf"
-    model_path = "/thutmose/app/abution/model"
+    model_path = str(DEFAULT_MODEL_DIR)
 
     from config import MODEL_CONFIGS
 
