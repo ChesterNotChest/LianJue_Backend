@@ -1,0 +1,1059 @@
+[
+  {
+    "bundle_id": "profile_bundle_s01",
+    "persona_id": "steady_mastery_builder",
+    "expected_profile_labels": {
+      "goal_clarity": "high",
+      "risk_level": "low",
+      "emotion_state": "calm",
+      "resource_preference": [
+        "practice",
+        "text_summary"
+      ],
+      "behavior_pattern": "stable_high_engagement"
+    },
+    "references": {
+      "dialogue_sample_id": "dialogue_s01",
+      "learning_sample_id": "learning_s01",
+      "answer_sample_id": "answer_s01",
+      "resource_sample_id": "resource_s01",
+      "personal_syllabus_sample_id": "personal_s01"
+    },
+    "profile": {
+      "user_id": 2001,
+      "user_name": "steady_mastery_builder",
+      "email": "user_2001@example.local",
+      "syllabus_scope": [
+        {
+          "syllabus_id": 8,
+          "title": "大数据概论",
+          "personal_syllabus_path": null
+        }
+      ],
+      "learning_goal": "在下次小测前把 HDFS、HBase 和 Apriori 的核心概念串起来，并把相关习题正确率提到 80% 以上。",
+      "goal_clarity": {
+        "level": "high",
+        "score": 1.0,
+        "confidence": 0.8
+      },
+      "term_familiarity": {
+        "level": "high",
+        "score": 1.0,
+        "confidence": 0.75
+      },
+      "help_seeking_level": {
+        "level": "medium",
+        "score": 0.55
+      },
+      "self_reported_difficulty": {
+        "level": "medium",
+        "score": 0.28
+      },
+      "emotion_state": {
+        "label": "anxious",
+        "negative_hits": 1,
+        "positive_hits": 3
+      },
+      "target_level": "熟练",
+      "deadline": "upcoming_assessment",
+      "knowledge_mastery": {
+        "overall_level": "master",
+        "overall_score": 0.7928,
+        "syllabus_score": 0.665,
+        "answer_score": 0.775,
+        "engagement_score": 1.0,
+        "week_items": [
+          {
+            "week_index": 5,
+            "competance": "normal",
+            "competance_progress": 4,
+            "score": 0.746,
+            "content": "大数据存储与管理：分布式文件系统及主流技术HDFS"
+          },
+          {
+            "week_index": 6,
+            "competance": "normal",
+            "competance_progress": 4,
+            "score": 0.746,
+            "content": "大数据存储与管理：分布式数据库中典型技术HBase"
+          },
+          {
+            "week_index": 8,
+            "competance": "weak",
+            "competance_progress": 2,
+            "score": 0.398,
+            "content": "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法"
+          },
+          {
+            "week_index": 9,
+            "competance": "normal",
+            "competance_progress": 5,
+            "score": 0.77,
+            "content": "大数据分析与挖掘：关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）"
+          }
+        ],
+        "mastered_weeks": [],
+        "weak_weeks": [
+          8
+        ],
+        "by_knowledge_point": {
+          "Apriori": 0.8,
+          "DataNode": 1.0,
+          "HBase": 0.9,
+          "HDFS架构": 1.0,
+          "NameNode": 1.0,
+          "关联规则": 0.8,
+          "列式存储": 0.9,
+          "半结构化数据": 0.9,
+          "建模效果": 0.4,
+          "特征选择": 0.4,
+          "维度约简": 0.4,
+          "频繁项集": 0.8
+        },
+        "knowledge_point_details": {
+          "Apriori": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "DataNode": {
+            "score": 1.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "HBase": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "HDFS架构": {
+            "score": 1.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "NameNode": {
+            "score": 1.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "关联规则": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "列式存储": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "半结构化数据": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "建模效果": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "特征选择": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "维度约简": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "频繁项集": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          }
+        }
+      },
+      "concept_gaps": [
+        "建模效果",
+        "特征选择",
+        "维度约简",
+        "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法"
+      ],
+      "practice_ability": {
+        "level": "high",
+        "score": 0.8875
+      },
+      "comprehension_level": {
+        "level": "high",
+        "score": 0.8875
+      },
+      "study_frequency": "high",
+      "study_duration": "medium",
+      "resource_preference": [
+        "practice",
+        "text_summary"
+      ],
+      "answer_pattern": "mixed",
+      "learning_style": "practice-driven",
+      "attention_pattern": "stable",
+      "difficulty_tolerance": "high",
+      "bottleneck_topics": [
+        "建模效果",
+        "特征选择",
+        "维度约简",
+        "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法"
+      ],
+      "dropout_risk": "medium",
+      "dropout_risk_score": 0.44,
+      "recent_anomaly": [
+        "frustration_signal"
+      ],
+      "confidence": 0.84,
+      "evidence": [
+        "近7天活跃 6 天",
+        "平均单次学习时长约 32.33 分钟",
+        "知识点“建模效果”当前掌握度偏低",
+        "个人教学大纲显示第 8 周掌握较弱",
+        "近期资源偏好偏向 practice"
+      ],
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "knowledge_mapping": {
+        "mapped_nodes": [
+          "Apriori",
+          "DataNode",
+          "HBase",
+          "HDFS架构",
+          "NameNode",
+          "关联规则",
+          "列式存储",
+          "半结构化数据",
+          "建模效果",
+          "特征选择",
+          "维度约简",
+          "频繁项集"
+        ],
+        "mapped_node_count": 12,
+        "graph_binding": "knowledge_point_proxy_nodes"
+      },
+      "conflict_resolution": {
+        "alignment": "aligned",
+        "gap": 0.073,
+        "objective_priority": "behavior_and_answer_records"
+      },
+      "updated_at": 1777981394,
+      "signals": {
+        "history_count": 0,
+        "history_sources": 0,
+        "question_text_count": 4,
+        "profile_scope_count": 1,
+        "learning_record_count": 6,
+        "resource_event_count": 4,
+        "active_days_7d": 6,
+        "active_days_30d": 6,
+        "avg_duration_minutes": 32.33,
+        "answer_record_count": 4
+      },
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "bundle_id": "profile_bundle_s02",
+    "persona_id": "low_activity_risk",
+    "expected_profile_labels": {
+      "goal_clarity": "medium",
+      "risk_level": "high",
+      "emotion_state": "anxious",
+      "resource_preference": [
+        "text_summary",
+        "remedial_notes"
+      ],
+      "behavior_pattern": "low_activity_with_forgetting"
+    },
+    "references": {
+      "dialogue_sample_id": "dialogue_s02",
+      "learning_sample_id": "learning_s02",
+      "answer_sample_id": "answer_s02",
+      "resource_sample_id": "resource_s02",
+      "personal_syllabus_sample_id": "personal_s02"
+    },
+    "profile": {
+      "user_id": 2002,
+      "user_name": "low_activity_risk",
+      "email": "user_2002@example.local",
+      "syllabus_scope": [
+        {
+          "syllabus_id": 8,
+          "title": "大数据概论",
+          "personal_syllabus_path": null
+        }
+      ],
+      "learning_goal": "先把第六周和第七周补回来，至少别在基础概念题上连续失分。",
+      "goal_clarity": {
+        "level": "medium",
+        "score": 0.55,
+        "confidence": 0.8
+      },
+      "term_familiarity": {
+        "level": "medium",
+        "score": 0.4,
+        "confidence": 0.51
+      },
+      "help_seeking_level": {
+        "level": "high",
+        "score": 1.0
+      },
+      "self_reported_difficulty": {
+        "level": "high",
+        "score": 0.92
+      },
+      "emotion_state": {
+        "label": "frustrated",
+        "negative_hits": 4,
+        "positive_hits": 0
+      },
+      "target_level": "入门",
+      "deadline": null,
+      "knowledge_mastery": {
+        "overall_level": "weak",
+        "overall_score": 0.2442,
+        "syllabus_score": 0.237,
+        "answer_score": 0.1667,
+        "engagement_score": 0.3781,
+        "week_items": [
+          {
+            "week_index": 6,
+            "competance": "none",
+            "competance_progress": 0,
+            "score": 0.1,
+            "content": "大数据存储与管理：分布式数据库中典型技术HBase"
+          },
+          {
+            "week_index": 7,
+            "competance": "weak",
+            "competance_progress": 1,
+            "score": 0.374,
+            "content": "大数据存储与管理：非关系型数据库兴起的原因；与关系型数据库对比"
+          }
+        ],
+        "mastered_weeks": [],
+        "weak_weeks": [
+          6,
+          7
+        ],
+        "by_knowledge_point": {
+          "DataNode": 0.0,
+          "HBase": 0.2,
+          "HDFS架构": 0.0,
+          "NameNode": 0.0,
+          "NoSQL": 0.3,
+          "关系型瓶颈": 0.3,
+          "列式存储": 0.2,
+          "半结构化数据": 0.2,
+          "扩展性": 0.3
+        },
+        "knowledge_point_details": {
+          "DataNode": {
+            "score": 0.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "HBase": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "HDFS架构": {
+            "score": 0.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "NameNode": {
+            "score": 0.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "NoSQL": {
+            "score": 0.3,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "关系型瓶颈": {
+            "score": 0.3,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "列式存储": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "半结构化数据": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "扩展性": {
+            "score": 0.3,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          }
+        }
+      },
+      "concept_gaps": [
+        "DataNode",
+        "HBase",
+        "HDFS架构",
+        "NameNode",
+        "NoSQL",
+        "关系型瓶颈",
+        "列式存储",
+        "半结构化数据",
+        "扩展性",
+        "大数据存储与管理：分布式数据库中典型技术HBase",
+        "大数据存储与管理：非关系型数据库兴起的原因；与关系型数据库对比"
+      ],
+      "practice_ability": {
+        "level": "low",
+        "score": 0.2724
+      },
+      "comprehension_level": {
+        "level": "low",
+        "score": 0.2833
+      },
+      "study_frequency": "low",
+      "study_duration": "short",
+      "resource_preference": [
+        "text_summary",
+        "remedial_notes"
+      ],
+      "answer_pattern": "careful-but-uncertain",
+      "learning_style": "text-driven",
+      "attention_pattern": "stable",
+      "difficulty_tolerance": "low",
+      "bottleneck_topics": [
+        "DataNode",
+        "HBase",
+        "HDFS架构",
+        "NameNode",
+        "NoSQL"
+      ],
+      "dropout_risk": "high",
+      "dropout_risk_score": 0.95,
+      "recent_anomaly": [
+        "frustration_signal",
+        "accuracy_drop"
+      ],
+      "confidence": 0.84,
+      "evidence": [
+        "近7天活跃 2 天",
+        "平均单次学习时长约 8.67 分钟",
+        "知识点“DataNode”当前掌握度偏低",
+        "个人教学大纲显示第 6 周掌握较弱",
+        "近期资源偏好偏向 text_summary"
+      ],
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "knowledge_mapping": {
+        "mapped_nodes": [
+          "DataNode",
+          "HBase",
+          "HDFS架构",
+          "NameNode",
+          "NoSQL",
+          "关系型瓶颈",
+          "列式存储",
+          "半结构化数据",
+          "扩展性"
+        ],
+        "mapped_node_count": 9,
+        "graph_binding": "knowledge_point_proxy_nodes"
+      },
+      "conflict_resolution": {
+        "alignment": "aligned",
+        "gap": 0.0099,
+        "objective_priority": "behavior_and_answer_records"
+      },
+      "updated_at": 1777981394,
+      "signals": {
+        "history_count": 0,
+        "history_sources": 0,
+        "question_text_count": 4,
+        "profile_scope_count": 1,
+        "learning_record_count": 3,
+        "resource_event_count": 3,
+        "active_days_7d": 2,
+        "active_days_30d": 3,
+        "avg_duration_minutes": 8.67,
+        "answer_record_count": 3
+      },
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "bundle_id": "profile_bundle_s03",
+    "persona_id": "deadline_crammer",
+    "expected_profile_labels": {
+      "goal_clarity": "high",
+      "risk_level": "medium",
+      "emotion_state": "tense",
+      "resource_preference": [
+        "practice",
+        "exam_summary"
+      ],
+      "behavior_pattern": "short_term_cramming"
+    },
+    "references": {
+      "dialogue_sample_id": "dialogue_s03",
+      "learning_sample_id": "learning_s03",
+      "answer_sample_id": "answer_s03",
+      "resource_sample_id": "resource_s03",
+      "personal_syllabus_sample_id": "personal_s03"
+    },
+    "profile": {
+      "user_id": 2003,
+      "user_name": "deadline_crammer",
+      "email": "user_2003@example.local",
+      "syllabus_scope": [
+        {
+          "syllabus_id": 8,
+          "title": "大数据概论",
+          "personal_syllabus_path": null
+        }
+      ],
+      "learning_goal": "两天内完成 MapReduce/Spark、硬件加速和隐私保护的冲刺复习，优先覆盖高频混淆点。",
+      "goal_clarity": {
+        "level": "high",
+        "score": 0.8,
+        "confidence": 0.8
+      },
+      "term_familiarity": {
+        "level": "high",
+        "score": 1.0,
+        "confidence": 0.83
+      },
+      "help_seeking_level": {
+        "level": "high",
+        "score": 0.75
+      },
+      "self_reported_difficulty": {
+        "level": "medium",
+        "score": 0.36
+      },
+      "emotion_state": {
+        "label": "tense",
+        "negative_hits": 2,
+        "positive_hits": 1
+      },
+      "target_level": "进阶",
+      "deadline": "2 天",
+      "knowledge_mastery": {
+        "overall_level": "normal",
+        "overall_score": 0.4871,
+        "syllabus_score": 0.3307,
+        "answer_score": 0.5,
+        "engagement_score": 0.6856,
+        "week_items": [
+          {
+            "week_index": 12,
+            "competance": "weak",
+            "competance_progress": 4,
+            "score": 0.446,
+            "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark"
+          },
+          {
+            "week_index": 13,
+            "competance": "weak",
+            "competance_progress": 3,
+            "score": 0.422,
+            "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题"
+          },
+          {
+            "week_index": 14,
+            "competance": "none",
+            "competance_progress": 1,
+            "score": 0.124,
+            "content": "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用"
+          }
+        ],
+        "mastered_weeks": [],
+        "weak_weeks": [
+          12,
+          13,
+          14
+        ],
+        "by_knowledge_point": {
+          "FPGA": 0.7,
+          "GPU": 0.7,
+          "MapReduce": 0.6,
+          "Spark": 0.6,
+          "TPU": 0.7,
+          "内存计算": 0.6,
+          "噪声机制": 0.2,
+          "差分隐私": 0.2,
+          "隐私保护": 0.2
+        },
+        "knowledge_point_details": {
+          "FPGA": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "GPU": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "MapReduce": {
+            "score": 0.6,
+            "confidence": 0.59,
+            "attempt_count": 2,
+            "level": "medium"
+          },
+          "Spark": {
+            "score": 0.6,
+            "confidence": 0.59,
+            "attempt_count": 2,
+            "level": "medium"
+          },
+          "TPU": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "内存计算": {
+            "score": 0.6,
+            "confidence": 0.59,
+            "attempt_count": 2,
+            "level": "medium"
+          },
+          "噪声机制": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "差分隐私": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "隐私保护": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          }
+        }
+      },
+      "concept_gaps": [
+        "噪声机制",
+        "差分隐私",
+        "隐私保护",
+        "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+        "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+        "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用"
+      ],
+      "practice_ability": {
+        "level": "medium",
+        "score": 0.5928
+      },
+      "comprehension_level": {
+        "level": "high",
+        "score": 0.75
+      },
+      "study_frequency": "low",
+      "study_duration": "long",
+      "resource_preference": [
+        "practice",
+        "video"
+      ],
+      "answer_pattern": "mixed",
+      "learning_style": "practice-driven",
+      "attention_pattern": "sporadic",
+      "difficulty_tolerance": "high",
+      "bottleneck_topics": [
+        "噪声机制",
+        "差分隐私",
+        "隐私保护",
+        "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+        "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题"
+      ],
+      "dropout_risk": "high",
+      "dropout_risk_score": 0.74,
+      "recent_anomaly": [
+        "frustration_signal"
+      ],
+      "confidence": 0.84,
+      "evidence": [
+        "近7天活跃 2 天",
+        "平均单次学习时长约 69.4 分钟",
+        "知识点“噪声机制”当前掌握度偏低",
+        "个人教学大纲显示第 12 周掌握较弱",
+        "近期资源偏好偏向 practice"
+      ],
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "knowledge_mapping": {
+        "mapped_nodes": [
+          "FPGA",
+          "GPU",
+          "MapReduce",
+          "Spark",
+          "TPU",
+          "内存计算",
+          "噪声机制",
+          "差分隐私",
+          "隐私保护"
+        ],
+        "mapped_node_count": 9,
+        "graph_binding": "knowledge_point_proxy_nodes"
+      },
+      "conflict_resolution": {
+        "alignment": "mild_conflict",
+        "gap": 0.3337,
+        "objective_priority": "behavior_and_answer_records"
+      },
+      "updated_at": 1777981394,
+      "signals": {
+        "history_count": 0,
+        "history_sources": 0,
+        "question_text_count": 4,
+        "profile_scope_count": 1,
+        "learning_record_count": 5,
+        "resource_event_count": 4,
+        "active_days_7d": 2,
+        "active_days_30d": 2,
+        "avg_duration_minutes": 69.4,
+        "answer_record_count": 4
+      },
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "bundle_id": "profile_bundle_s04",
+    "persona_id": "visual_practice_seeker",
+    "expected_profile_labels": {
+      "goal_clarity": "high",
+      "risk_level": "low",
+      "emotion_state": "positive",
+      "resource_preference": [
+        "video",
+        "case_study"
+      ],
+      "behavior_pattern": "visual_case_driven"
+    },
+    "references": {
+      "dialogue_sample_id": "dialogue_s04",
+      "learning_sample_id": "learning_s04",
+      "answer_sample_id": "answer_s04",
+      "resource_sample_id": "resource_s04",
+      "personal_syllabus_sample_id": "personal_s04"
+    },
+    "profile": {
+      "user_id": 2004,
+      "user_name": "visual_practice_seeker",
+      "email": "user_2004@example.local",
+      "syllabus_scope": [
+        {
+          "syllabus_id": 8,
+          "title": "大数据概论",
+          "personal_syllabus_path": null
+        }
+      ],
+      "learning_goal": "通过可视化材料和案例题掌握大数据可视化原则，以及 MapReduce 和 Spark 的核心差异。",
+      "goal_clarity": {
+        "level": "medium",
+        "score": 0.55,
+        "confidence": 0.8
+      },
+      "term_familiarity": {
+        "level": "medium",
+        "score": 0.6,
+        "confidence": 0.59
+      },
+      "help_seeking_level": {
+        "level": "high",
+        "score": 0.75
+      },
+      "self_reported_difficulty": {
+        "level": "low",
+        "score": 0.0
+      },
+      "emotion_state": {
+        "label": "positive",
+        "negative_hits": 0,
+        "positive_hits": 2
+      },
+      "target_level": "进阶",
+      "deadline": null,
+      "knowledge_mastery": {
+        "overall_level": "normal",
+        "overall_score": 0.6874,
+        "syllabus_score": 0.622,
+        "answer_score": 0.7,
+        "engagement_score": 0.7589,
+        "week_items": [
+          {
+            "week_index": 11,
+            "competance": "normal",
+            "competance_progress": 4,
+            "score": 0.746,
+            "content": "大数据分析与挖掘：大数据可视化方法与技术；早期流行的集中式分布架构"
+          },
+          {
+            "week_index": 12,
+            "competance": "normal",
+            "competance_progress": 3,
+            "score": 0.722,
+            "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark"
+          },
+          {
+            "week_index": 13,
+            "competance": "weak",
+            "competance_progress": 2,
+            "score": 0.398,
+            "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题"
+          }
+        ],
+        "mastered_weeks": [],
+        "weak_weeks": [
+          13
+        ],
+        "by_knowledge_point": {
+          "MapReduce": 0.8,
+          "Spark": 0.8,
+          "交互展示": 0.9,
+          "信息表达": 0.9,
+          "内存计算": 0.8,
+          "可视化原则": 0.9,
+          "噪声机制": 0.4,
+          "差分隐私": 0.4,
+          "建模效果": 0.7,
+          "特征选择": 0.7,
+          "维度约简": 0.7,
+          "隐私保护": 0.4
+        },
+        "knowledge_point_details": {
+          "MapReduce": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "Spark": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "交互展示": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "信息表达": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "内存计算": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "可视化原则": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "噪声机制": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "差分隐私": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "建模效果": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "特征选择": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "维度约简": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "隐私保护": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          }
+        }
+      },
+      "concept_gaps": [
+        "噪声机制",
+        "差分隐私",
+        "隐私保护",
+        "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题"
+      ],
+      "practice_ability": {
+        "level": "high",
+        "score": 0.7294
+      },
+      "comprehension_level": {
+        "level": "medium",
+        "score": 0.65
+      },
+      "study_frequency": "medium",
+      "study_duration": "medium",
+      "resource_preference": [
+        "video",
+        "practice"
+      ],
+      "answer_pattern": "mixed",
+      "learning_style": "visual-driven",
+      "attention_pattern": "stable",
+      "difficulty_tolerance": "medium",
+      "bottleneck_topics": [
+        "噪声机制",
+        "差分隐私",
+        "隐私保护",
+        "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题"
+      ],
+      "dropout_risk": "medium",
+      "dropout_risk_score": 0.45,
+      "recent_anomaly": [],
+      "confidence": 0.84,
+      "evidence": [
+        "近7天活跃 4 天",
+        "平均单次学习时长约 28.6 分钟",
+        "知识点“噪声机制”当前掌握度偏低",
+        "个人教学大纲显示第 13 周掌握较弱",
+        "近期资源偏好偏向 video"
+      ],
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "knowledge_mapping": {
+        "mapped_nodes": [
+          "MapReduce",
+          "Spark",
+          "交互展示",
+          "信息表达",
+          "内存计算",
+          "可视化原则",
+          "噪声机制",
+          "差分隐私",
+          "建模效果",
+          "特征选择",
+          "维度约简",
+          "隐私保护"
+        ],
+        "mapped_node_count": 12,
+        "graph_binding": "knowledge_point_proxy_nodes"
+      },
+      "conflict_resolution": {
+        "alignment": "aligned",
+        "gap": 0.1116,
+        "objective_priority": "behavior_and_answer_records"
+      },
+      "updated_at": 1777981394,
+      "signals": {
+        "history_count": 0,
+        "history_sources": 0,
+        "question_text_count": 4,
+        "profile_scope_count": 1,
+        "learning_record_count": 5,
+        "resource_event_count": 4,
+        "active_days_7d": 4,
+        "active_days_30d": 4,
+        "avg_duration_minutes": 28.6,
+        "answer_record_count": 4
+      },
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  }
+]

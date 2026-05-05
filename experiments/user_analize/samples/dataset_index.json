@@ -1,0 +1,112 @@
+{
+  "dataset_name": "profile_experiment_samples_v1",
+  "version": "2026-05-05",
+  "base_dir": "experiments/user_analize/samples",
+  "course_context": {
+    "syllabus_id": 8,
+    "title": "大数据概论",
+    "graph_name": "RAG",
+    "syllabus_source_path": "experiments/user_analize/samples/source_refs/syllabus_大数据概论_20260322235507.json",
+    "question_source_path": "experiments/user_analize/samples/source_refs/测试用例.md",
+    "history_style_source_path": "experiments/user_analize/samples/source_refs/history_8_1.json",
+    "personal_syllabus_style_path": "experiments/user_analize/samples/source_refs/student_alt_user_1_8_personal.json",
+    "personal_syllabus_secondary_style_path": "experiments/user_analize/samples/source_refs/student_alt_user_1_17_personal.json"
+  },
+  "personas": [
+    {
+      "persona_id": "steady_mastery_builder",
+      "user_id": 2001,
+      "summary": "稳定投入，围绕 HDFS/HBase/Apriori 做持续复习和练习。",
+      "week_focus": ["5", "6", "8", "9"],
+      "expected_risk": "low"
+    },
+    {
+      "persona_id": "low_activity_risk",
+      "user_id": 2002,
+      "summary": "低活跃且遗忘明显，围绕 HBase 与 NoSQL 存在断档。",
+      "week_focus": ["6", "7"],
+      "expected_risk": "high"
+    },
+    {
+      "persona_id": "deadline_crammer",
+      "user_id": 2003,
+      "summary": "考试前集中冲刺，短期活跃高但掌握不稳定。",
+      "week_focus": ["12", "13", "14"],
+      "expected_risk": "medium"
+    },
+    {
+      "persona_id": "visual_practice_seeker",
+      "user_id": 2004,
+      "summary": "偏好视频与案例，通过可视化材料推进 Spark 与可视化主题学习。",
+      "week_focus": ["11", "12", "13"],
+      "expected_risk": "low"
+    }
+  ],
+  "files": [
+    {
+      "file": "source_refs/",
+      "type": "copied_reference_assets",
+      "description": "分发用原始参考源数据镜像，避免依赖仓库其它目录"
+    },
+    {
+      "file": "syllabus_base_dataset.json",
+      "type": "direct_plus_lightweight_derivation",
+      "description": "课程基准边界、周次主题和轻量关键词"
+    },
+    {
+      "file": "question_bank_dataset.json",
+      "type": "direct_mapping",
+      "description": "测试用例主题到课程周次与知识点的映射"
+    },
+    {
+      "file": "dialogue_profile_dataset.json",
+      "type": "generated",
+      "description": "多轮对话、学习目标、主观标签"
+    },
+    {
+      "file": "learning_records_dataset.json",
+      "type": "generated",
+      "description": "学习行为记录样本"
+    },
+    {
+      "file": "answer_records_dataset.json",
+      "type": "generated",
+      "description": "答题结果与知识点掌握样本"
+    },
+    {
+      "file": "resource_usage_dataset.json",
+      "type": "generated",
+      "description": "资源偏好与资源消费样本"
+    },
+    {
+      "file": "personal_syllabus_dataset.json",
+      "type": "generated_with_reference_structure",
+      "description": "personal syllabus 快照，字段风格对齐 student_alt"
+    },
+    {
+      "file": "profile_input_bundles.json",
+      "type": "assembled",
+      "description": "统一输入 bundle，可直接用于后续 normalize 实验"
+    },
+    {
+      "file": "ablation_bundles.json",
+      "type": "experiment_matrix",
+      "description": "字段消融实验配置矩阵"
+    },
+    {
+      "file": "edge_case_bundles.json",
+      "type": "experiment_matrix",
+      "description": "边界样本与脏数据实验配置矩阵"
+    },
+    {
+      "file": "stability_eval_set.json",
+      "type": "experiment_plan",
+      "description": "稳定性复跑实验清单"
+    },
+    {
+      "file": "manual_review_set.json",
+      "type": "experiment_plan",
+      "description": "人工复核实验抽样与审阅关注点"
+    }
+  ]
+}

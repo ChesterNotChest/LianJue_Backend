@@ -1,0 +1,554 @@
+[
+  {
+    "case_id": "ablation_s01_full",
+    "base_bundle_id": "profile_bundle_s01",
+    "variant": "full",
+    "expected_confidence_trend": "baseline",
+    "expected_primary_signal": "all_available",
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s01_no_dialogue",
+    "base_bundle_id": "profile_bundle_s01",
+    "variant": "no_dialogue_text",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "behavior_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.67,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text"
+        ],
+        "format_issues": [],
+        "warning_count": 2
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s01_no_answer",
+    "base_bundle_id": "profile_bundle_s01",
+    "variant": "no_answer_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "dialogue_and_behavior",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "answer_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s01_no_resource",
+    "base_bundle_id": "profile_bundle_s01",
+    "variant": "no_resource_usage",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "dialogue_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s01_no_learning",
+    "base_bundle_id": "profile_bundle_s01",
+    "variant": "no_learning_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "dialogue_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "medium",
+      "source_events": [
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s01_id_only",
+    "base_bundle_id": "profile_bundle_s01",
+    "variant": "id_only",
+    "expected_confidence_trend": "sharp_down",
+    "expected_primary_signal": "personal_syllabus_only",
+    "profile_summary": {
+      "confidence": 0.25,
+      "dropout_risk": "high",
+      "source_events": [],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text",
+          "learning_records",
+          "answer_records",
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 5
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s02_full",
+    "base_bundle_id": "profile_bundle_s02",
+    "variant": "full",
+    "expected_confidence_trend": "baseline",
+    "expected_primary_signal": "dialogue_and_risk_signals",
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s02_no_dialogue",
+    "base_bundle_id": "profile_bundle_s02",
+    "variant": "no_dialogue_text",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "negative_answer_records",
+    "profile_summary": {
+      "confidence": 0.67,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text"
+        ],
+        "format_issues": [],
+        "warning_count": 2
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s02_no_answer",
+    "base_bundle_id": "profile_bundle_s02",
+    "variant": "no_answer_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "low_activity_behavior",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "answer_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s02_no_resource",
+    "base_bundle_id": "profile_bundle_s02",
+    "variant": "no_resource_usage",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "dialogue_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s02_no_learning",
+    "base_bundle_id": "profile_bundle_s02",
+    "variant": "no_learning_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "dialogue_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "high",
+      "source_events": [
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s02_id_only",
+    "base_bundle_id": "profile_bundle_s02",
+    "variant": "id_only",
+    "expected_confidence_trend": "sharp_down",
+    "expected_primary_signal": "personal_syllabus_only",
+    "profile_summary": {
+      "confidence": 0.25,
+      "dropout_risk": "high",
+      "source_events": [],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text",
+          "learning_records",
+          "answer_records",
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 5
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s03_full",
+    "base_bundle_id": "profile_bundle_s03",
+    "variant": "full",
+    "expected_confidence_trend": "baseline",
+    "expected_primary_signal": "short_term_behavior_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s03_no_dialogue",
+    "base_bundle_id": "profile_bundle_s03",
+    "variant": "no_dialogue_text",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "recent_behavior_burst",
+    "profile_summary": {
+      "confidence": 0.67,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text"
+        ],
+        "format_issues": [],
+        "warning_count": 2
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s03_no_answer",
+    "base_bundle_id": "profile_bundle_s03",
+    "variant": "no_answer_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "deadline_behavior_only",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "answer_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s03_no_resource",
+    "base_bundle_id": "profile_bundle_s03",
+    "variant": "no_resource_usage",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "behavior_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "high",
+      "source_events": [
+        "learning_records",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s03_no_learning",
+    "base_bundle_id": "profile_bundle_s03",
+    "variant": "no_learning_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "dialogue_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "high",
+      "source_events": [
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s03_id_only",
+    "base_bundle_id": "profile_bundle_s03",
+    "variant": "id_only",
+    "expected_confidence_trend": "sharp_down",
+    "expected_primary_signal": "personal_syllabus_only",
+    "profile_summary": {
+      "confidence": 0.25,
+      "dropout_risk": "high",
+      "source_events": [],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text",
+          "learning_records",
+          "answer_records",
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 5
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s04_full",
+    "base_bundle_id": "profile_bundle_s04",
+    "variant": "full",
+    "expected_confidence_trend": "baseline",
+    "expected_primary_signal": "resource_preference_and_answer_records",
+    "profile_summary": {
+      "confidence": 0.84,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [],
+        "format_issues": [],
+        "warning_count": 0
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s04_no_dialogue",
+    "base_bundle_id": "profile_bundle_s04",
+    "variant": "no_dialogue_text",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "resource_usage_and_answers",
+    "profile_summary": {
+      "confidence": 0.67,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "answer_records"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text"
+        ],
+        "format_issues": [],
+        "warning_count": 2
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s04_no_answer",
+    "base_bundle_id": "profile_bundle_s04",
+    "variant": "no_answer_records",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "resource_preference_and_dialogue",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "resource_usage",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "answer_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s04_no_resource",
+    "base_bundle_id": "profile_bundle_s04",
+    "variant": "no_resource_usage",
+    "expected_confidence_trend": "down",
+    "expected_primary_signal": "dialogue_and_learning_records",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "medium",
+      "source_events": [
+        "learning_records",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s04_no_learning",
+    "base_bundle_id": "profile_bundle_s04",
+    "variant": "no_learning_records",
+    "expected_confidence_trend": "slightly_down",
+    "expected_primary_signal": "dialogue_and_resource_usage",
+    "profile_summary": {
+      "confidence": 0.7,
+      "dropout_risk": "medium",
+      "source_events": [
+        "resource_usage",
+        "answer_records",
+        "dialogue_text"
+      ],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_records"
+        ],
+        "format_issues": [],
+        "warning_count": 1
+      }
+    }
+  },
+  {
+    "case_id": "ablation_s04_id_only",
+    "base_bundle_id": "profile_bundle_s04",
+    "variant": "id_only",
+    "expected_confidence_trend": "sharp_down",
+    "expected_primary_signal": "personal_syllabus_only",
+    "profile_summary": {
+      "confidence": 0.25,
+      "dropout_risk": "high",
+      "source_events": [],
+      "normalization_report": {
+        "missing_fields": [
+          "learning_goal",
+          "dialogue_text",
+          "learning_records",
+          "answer_records",
+          "resource_usage"
+        ],
+        "format_issues": [],
+        "warning_count": 5
+      }
+    }
+  }
+]

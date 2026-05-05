@@ -1,0 +1,215 @@
+{
+  "dataset_name": "resource_usage_dataset",
+  "syllabus_id": 8,
+  "graph_name": "RAG",
+  "samples": [
+    {
+      "sample_id": "resource_s01",
+      "persona_id": "steady_mastery_builder",
+      "user_id": 2001,
+      "usages": [
+        {
+          "resource_id": "note_hdfs_pdf",
+          "action": "view",
+          "timestamp": 1776505200,
+          "duration_seconds": 600,
+          "source": "web",
+          "meta": {
+            "resource_type": "pdf",
+            "topic": "HDFS 架构",
+            "week_index": "5"
+          }
+        },
+        {
+          "resource_id": "hbase_lab_sheet",
+          "action": "complete",
+          "timestamp": "2026-04-19T19:05:00+08:00",
+          "duration_seconds": 840,
+          "source": "web",
+          "meta": {
+            "resource_type": "worksheet",
+            "topic": "HBase 数据模型",
+            "week_index": "6"
+          }
+        },
+        {
+          "resource_id": "apriori_quiz_pack",
+          "action": "submit",
+          "timestamp": "2026-04-24 22:20:00",
+          "duration_seconds": 300,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "quiz",
+            "topic": "Apriori 与频繁项集",
+            "week_index": "9"
+          }
+        },
+        {
+          "resource_id": "nosql_compare_mindmap",
+          "action": "bookmark",
+          "timestamp": 1776679800,
+          "duration_seconds": 40,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "mindmap",
+            "topic": "NoSQL 对比",
+            "week_index": "7"
+          }
+        }
+      ]
+    },
+    {
+      "sample_id": "resource_s02",
+      "persona_id": "low_activity_risk",
+      "user_id": 2002,
+      "usages": [
+        {
+          "resource_id": "week6_hbase_intro",
+          "action": "view",
+          "timestamp": "2026-04-10T20:55:00+08:00",
+          "duration_seconds": 240,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "summary_note",
+            "topic": "HBase 入门",
+            "week_index": "6"
+          }
+        },
+        {
+          "resource_id": "nosql_onepage_sheet",
+          "action": "download",
+          "timestamp": 1776254100,
+          "duration_seconds": 0,
+          "source": "web",
+          "meta": {
+            "resource_type": "cheatsheet",
+            "topic": "NoSQL 基础",
+            "week_index": "7"
+          }
+        },
+        {
+          "resource_id": "remedial_note_week6",
+          "action": "repeat_view",
+          "timestamp": "2026/04/18 22:21",
+          "duration_seconds": 190,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "remedial_note",
+            "topic": "第六周补课材料",
+            "week_index": "6"
+          }
+        }
+      ]
+    },
+    {
+      "sample_id": "resource_s03",
+      "persona_id": "deadline_crammer",
+      "user_id": 2003,
+      "usages": [
+        {
+          "resource_id": "mock_exam_12",
+          "action": "submit",
+          "timestamp": 1777368600,
+          "duration_seconds": 3600,
+          "source": "web",
+          "meta": {
+            "resource_type": "mock_exam",
+            "topic": "MapReduce 与 Spark 综合题",
+            "week_index": "12"
+          }
+        },
+        {
+          "resource_id": "spark_vs_mapreduce_slide",
+          "action": "view",
+          "timestamp": "2026-04-28T22:35:00+08:00",
+          "duration_seconds": 780,
+          "source": "tablet",
+          "meta": {
+            "resource_type": "slide",
+            "topic": "MapReduce 和 Spark 对比",
+            "week_index": "12"
+          }
+        },
+        {
+          "resource_id": "security_crash_video",
+          "action": "complete",
+          "timestamp": "2026-04-29 22:40:00",
+          "duration_seconds": 1200,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "video",
+            "topic": "差分隐私与安全",
+            "week_index": "14"
+          }
+        },
+        {
+          "resource_id": "exam_outline_card",
+          "action": "bookmark",
+          "timestamp": 1777458600,
+          "duration_seconds": 45,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "outline",
+            "topic": "冲刺提纲",
+            "week_index": "13"
+          }
+        }
+      ]
+    },
+    {
+      "sample_id": "resource_s04",
+      "persona_id": "visual_practice_seeker",
+      "user_id": 2004,
+      "usages": [
+        {
+          "resource_id": "viz_principle_video",
+          "action": "complete",
+          "timestamp": "2026-04-22T19:08:00+08:00",
+          "duration_seconds": 1320,
+          "source": "tablet",
+          "meta": {
+            "resource_type": "video",
+            "topic": "可视化设计原则",
+            "week_index": "11"
+          }
+        },
+        {
+          "resource_id": "spark_architecture_infographic",
+          "action": "view",
+          "timestamp": 1776946200,
+          "duration_seconds": 420,
+          "source": "mobile",
+          "meta": {
+            "resource_type": "infographic",
+            "topic": "Spark 架构",
+            "week_index": "12"
+          }
+        },
+        {
+          "resource_id": "case_dashboard_gallery",
+          "action": "repeat_view",
+          "timestamp": "2026-04-25T15:40:00+08:00",
+          "duration_seconds": 510,
+          "source": "web",
+          "meta": {
+            "resource_type": "case_gallery",
+            "topic": "可视化案例",
+            "week_index": "11"
+          }
+        },
+        {
+          "resource_id": "week12_quiz_set",
+          "action": "submit",
+          "timestamp": 1777040100,
+          "duration_seconds": 540,
+          "source": "web",
+          "meta": {
+            "resource_type": "quiz",
+            "topic": "MapReduce 与 Spark 区别",
+            "week_index": "12"
+          }
+        }
+      ]
+    }
+  ]
+}

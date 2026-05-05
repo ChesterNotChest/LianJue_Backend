@@ -1,0 +1,16 @@
+{
+  "generated_files": [
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/charts/concept_gap_frequency.svg",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/charts/concept_gap_frequency.png",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/charts/ablation_confidence_drop.svg",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/charts/ablation_confidence_drop.png",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/charts/stability_heatmap.svg",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/charts/stability_heatmap.png",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/tables/base_profile_summary.csv",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/tables/base_profile_summary.md",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/tables/edge_case_summary.csv",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/tables/edge_case_summary.md",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/tables/manual_review_summary.csv",
+    "/mnt/e/AI/Learning-Platform/Lianjue_Backend/experiments/user_analize/outputs/tables/manual_review_summary.md"
+  ]
+}

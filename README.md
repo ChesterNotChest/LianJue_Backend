@@ -44,7 +44,7 @@ Lianjue_Backend/
 ├─ markdowns/                文档解析产物
 ├─ triples/                  三元组产物
 ├─ knowledge/                知识产物
-├─ scripts/                  RAG 评测脚本
+├─ experiments/              实验计划、RAG 评测脚本与实验报告
 ├─ docs/                     补充文档
 └─ tests/ / test_*.py        各类测试与调试脚本
 ```
@@ -304,7 +304,7 @@ python run.py --host 0.0.0.0 --port 5000
 
 ## RAG 评测脚本
 
-`scripts/` 下保留了当前用于检索评测的脚本，例如：
+`experiments/RAG/` 下保留了当前用于检索评测的脚本，例如：
 
 - `eval_recall.py`
 - `eval_precision.py`

@@ -1,0 +1,91 @@
+{
+  "dataset_name": "dialogue_profile_dataset",
+  "syllabus_id": 8,
+  "graph_name": "RAG",
+  "samples": [
+    {
+      "sample_id": "dialogue_s01",
+      "persona_id": "steady_mastery_builder",
+      "user_id": 2001,
+      "week_focus": ["5", "6", "8", "9"],
+      "dialogue_text": [
+        "老师，我这周把 HDFS 和 HBase 过了一遍，NameNode、DataNode 这些还能说清楚，但一到 HBase 和普通关系库的对比我就会卡住。",
+        "我想在下次小测前把 HDFS、HBase 和 Apriori 串起来，最好能把相关习题正确率提到 80% 以上。",
+        "如果可以的话，先帮我按知识点给个复习顺序，我再自己去做题。"
+      ],
+      "learning_goal": "在下次小测前把 HDFS、HBase 和 Apriori 的核心概念串起来，并把相关习题正确率提到 80% 以上。",
+      "style_reference": "experiments/user_analize/samples/source_refs/history_8_1.json",
+      "expected_labels": {
+        "goal_clarity": "high",
+        "term_familiarity": "medium",
+        "help_seeking_level": "medium",
+        "emotion_state": "calm",
+        "dropout_risk": "low",
+        "resource_preference": ["practice", "text_summary"]
+      }
+    },
+    {
+      "sample_id": "dialogue_s02",
+      "persona_id": "low_activity_risk",
+      "user_id": 2002,
+      "week_focus": ["6", "7"],
+      "dialogue_text": [
+        "我完全忘记了第六周的内容，你能帮我推荐一些教学材料吗？",
+        "顺便告诉我一下，什么是 NoSQL，我现在一看到 HBase 和 NoSQL 的区别就有点慌。",
+        "这门课我先别挂就行，但我也不知道应该先补哪一块。"
+      ],
+      "learning_goal": "先把第六周和第七周补回来，至少别在基础概念题上连续失分。",
+      "style_reference": "experiments/user_analize/samples/source_refs/history_8_1.json",
+      "expected_labels": {
+        "goal_clarity": "medium",
+        "term_familiarity": "low",
+        "help_seeking_level": "high",
+        "emotion_state": "anxious",
+        "dropout_risk": "high",
+        "resource_preference": ["text_summary", "remedial_notes"]
+      }
+    },
+    {
+      "sample_id": "dialogue_s03",
+      "persona_id": "deadline_crammer",
+      "user_id": 2003,
+      "week_focus": ["12", "13", "14"],
+      "dialogue_text": [
+        "距离测验只剩两天了，我准备集中冲一下 MapReduce、Spark、GPU/TPU/FPGA，还有隐私保护这几块。",
+        "我能看很久，但现在时间太紧，你直接告诉我最容易混的点和最该做的题。",
+        "如果能给我一个 2 天冲刺顺序就最好，我怕自己复习得很散。"
+      ],
+      "learning_goal": "两天内完成 MapReduce/Spark、硬件加速和隐私保护的冲刺复习，优先覆盖高频混淆点。",
+      "style_reference": "experiments/user_analize/samples/source_refs/history_8_1.json",
+      "expected_labels": {
+        "goal_clarity": "high",
+        "term_familiarity": "medium",
+        "help_seeking_level": "high",
+        "emotion_state": "tense",
+        "dropout_risk": "medium",
+        "resource_preference": ["practice", "exam_summary"]
+      }
+    },
+    {
+      "sample_id": "dialogue_s04",
+      "persona_id": "visual_practice_seeker",
+      "user_id": 2004,
+      "week_focus": ["11", "12", "13"],
+      "dialogue_text": [
+        "我看图和案例会比看大段文字快很多，尤其是大数据可视化原则和 Spark 架构这种内容。",
+        "如果能用一两个典型业务场景把 MapReduce 和 Spark 的区别讲出来，我会更容易记住。",
+        "我想先通过视频和例题把框架搭起来，再去做题检查自己哪里没懂。"
+      ],
+      "learning_goal": "通过可视化材料和案例题掌握大数据可视化原则，以及 MapReduce 和 Spark 的核心差异。",
+      "style_reference": "experiments/user_analize/samples/source_refs/history_8_1.json",
+      "expected_labels": {
+        "goal_clarity": "high",
+        "term_familiarity": "medium",
+        "help_seeking_level": "medium",
+        "emotion_state": "positive",
+        "dropout_risk": "low",
+        "resource_preference": ["video", "case_study"]
+      }
+    }
+  ]
+}

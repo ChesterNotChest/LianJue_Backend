@@ -1,0 +1,16 @@
+﻿{
+    "generated_at":  "2026-05-05T18:48:09",
+    "checked_sample_file_count":  13,
+    "checked_report_file_count":  2,
+    "profile_bundle_count":  4,
+    "edge_case_count":  7,
+    "issue_count":  0,
+    "issues":  [
+
+               ],
+    "availability_status_counts":  {
+                                       "available":  2,
+                                       "partial":  5,
+                                       "missing":  4
+                                   }
+}

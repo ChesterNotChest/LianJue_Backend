@@ -1,0 +1,140 @@
+{
+  "report_name": "data_availability_matrix",
+  "generated_for": "user_profile_experiments",
+  "version": "2026-05-05",
+  "items": [
+    {
+      "field": "syllabus",
+      "status": "available",
+      "usage_mode": "direct",
+      "repo_sources": [
+        "experiments/user_analize/samples/source_refs/syllabus_大数据概论_20260322235507.json",
+        "schedule/syllabus/大数据概论_20260322235507.json",
+        "knowlion_full_20260504.sql:syllabus"
+      ],
+      "gap_summary": "课程边界、graph_name、周次内容均可直接使用",
+      "next_provider": "none"
+    },
+    {
+      "field": "question_theme_mapping",
+      "status": "available",
+      "usage_mode": "direct_plus_mapping",
+      "repo_sources": [
+        "experiments/user_analize/samples/source_refs/测试用例.md",
+        "测试用例.md"
+      ],
+      "gap_summary": "题目主题可直接映射到周次与知识点，但题目真实作答记录不存在",
+      "next_provider": "none"
+    },
+    {
+      "field": "personal_syllabus",
+      "status": "partial",
+      "usage_mode": "direct",
+      "repo_sources": [
+        "experiments/user_analize/samples/source_refs/student_alt_user_1_8_personal.json",
+        "experiments/user_analize/samples/source_refs/student_alt_user_1_17_personal.json",
+        "schedule/student_alt/user_1/8_personal.json",
+        "schedule/student_alt/user_1/17_personal.json",
+        "knowlion_full_20260504.sql:user_syllabus",
+        "tasks/learning_task.py"
+      ],
+      "gap_summary": "结构与更新逻辑存在，但真实用户覆盖面很窄，目前只有少量样本用户",
+      "next_provider": "学习问答 Agent / personal syllabus 维护链路"
+    },
+    {
+      "field": "history_dialogue",
+      "status": "partial",
+      "usage_mode": "direct_for_style_reference",
+      "repo_sources": [
+        "experiments/user_analize/samples/source_refs/history_8_1.json",
+        "history/8_1.json",
+        "tasks/learning_task.py"
+      ],
+      "gap_summary": "历史问答窗口机制存在，但当前仓库只有极少量样本，无法支撑大规模真实评估",
+      "next_provider": "学习问答 Agent"
+    },
+    {
+      "field": "dialogue_text",
+      "status": "partial",
+      "usage_mode": "runtime_input_or_history",
+      "repo_sources": [
+        "experiments/user_analize/samples/source_refs/history_8_1.json",
+        "docs/agent_tool_calling_minimal.md",
+        "learning_profile_agent_workflow.md",
+        "history/8_1.json"
+      ],
+      "gap_summary": "可以来自请求体，也可从 history 推导，但当前没有独立持久化存量池",
+      "next_provider": "画像编排 Agent / 会话采集层"
+    },
+    {
+      "field": "learning_goal",
+      "status": "partial",
+      "usage_mode": "runtime_input",
+      "repo_sources": [
+        "docs/agent_tool_calling_minimal.md",
+        "learning_profile_agent_workflow.md"
+      ],
+      "gap_summary": "字段契约存在，但当前仓库没有持久化来源，也没有历史积累",
+      "next_provider": "画像编排 Agent / 前端表单采集"
+    },
+    {
+      "field": "learning_records",
+      "status": "missing",
+      "usage_mode": "synthetic_only_for_now",
+      "repo_sources": [
+        "docs/agent_tool_calling_minimal.md",
+        "learning_profile_agent_workflow.md"
+      ],
+      "gap_summary": "仓库、SQL dump、接口定义中都没有稳定的学习行为记录落点",
+      "next_provider": "学习行为采集 Agent / 埋点服务"
+    },
+    {
+      "field": "answer_records",
+      "status": "missing",
+      "usage_mode": "synthetic_only_for_now",
+      "repo_sources": [
+        "docs/agent_tool_calling_minimal.md",
+        "learning_profile_agent_workflow.md"
+      ],
+      "gap_summary": "当前无答题事件表、无答题接口、无历史答题池",
+      "next_provider": "测验/题库 Agent"
+    },
+    {
+      "field": "resource_usage",
+      "status": "missing",
+      "usage_mode": "synthetic_only_for_now",
+      "repo_sources": [
+        "docs/agent_tool_calling_minimal.md",
+        "learning_profile_agent_workflow.md",
+        "knowlion_full_20260504.sql:material"
+      ],
+      "gap_summary": "资源实体存在，但用户对资源的点击/完成/停留等消费事件不存在",
+      "next_provider": "资源消费埋点 Agent / 前端事件采集"
+    },
+    {
+      "field": "expected_profile_labels",
+      "status": "missing",
+      "usage_mode": "manual_label_or_synthetic",
+      "repo_sources": [
+        "experiments/user_analize/samples/profile_input_bundles.json"
+      ],
+      "gap_summary": "真实世界没有现成金标准标签，实验期只能人工标注或规则生成",
+      "next_provider": "评测标注 Agent / 人工复核流程"
+    },
+    {
+      "field": "learning_profile_runtime",
+      "status": "partial",
+      "usage_mode": "implemented_but_not_fully_connected_to_real_event_streams",
+      "repo_sources": [
+        "tasks/learning_profile_task.py",
+        "experiments/user_analize/profile_runtime.py",
+        "experiments/user_analize/runner.py",
+        "blueprint/user_api.py:/api/user_learning_profile",
+        "learning_profile_agent_workflow.md",
+        "docs/agent_tool_calling_minimal.md"
+      ],
+      "gap_summary": "画像运行时、task、runner 与接口已入库，但真实行为流、答题流、资源流仍未接通",
+      "next_provider": "画像算法 Agent / API 实现 Agent"
+    }
+  ]
+}
