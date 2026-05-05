@@ -43,6 +43,51 @@
 
 **核心职责**：画像初始化、画像实时更新、标准化数据输出。
 
+**输入收口**：
+- 首次进入：用户对话文本、学生基本信息、课程/专业信息、学习目标
+- 增量更新：新对话、新答题结果、新资源使用记录、新学习事件
+
+**输出收口**：
+- 统一输出学生画像 JSON
+- 仅输出结构化结果，不直接生成教学内容
+- 不跨越到路径规划、资源生成、答疑生成等下游任务
+
+**画像标准字段**：
+- 基础信息：`student_id`、`grade`、`major`、`course_name`
+- 目标信息：`learning_goal`、`target_level`、`deadline`
+- 能力标签：`knowledge_mastery`、`concept_gaps`、`practice_ability`、`comprehension_level`
+- 行为标签：`study_frequency`、`study_duration`、`resource_preference`、`answer_pattern`
+- 风格标签：`learning_style`、`attention_pattern`、`difficulty_tolerance`
+- 风险标签：`bottleneck_topics`、`dropout_risk`、`recent_anomaly`
+
+**处理流程**：
+1. 接收用户对话与学习数据
+2. 抽取显式意图与隐式特征
+3. 合并历史画像与当前增量数据
+4. 计算六维以上画像标签
+5. 生成可供下游 Agent 直接消费的标准化画像
+
+**标准输出示例**：
+```json
+{
+	"student_id": "U10001",
+	"learning_goal": "掌握Python基础语法",
+	"target_level": "入门",
+	"knowledge_mastery": {
+		"variables": 0.6,
+		"loops": 0.3,
+		"functions": 0.2
+	},
+	"concept_gaps": ["函数参数", "循环嵌套"],
+	"study_frequency": "low",
+	"study_duration": "short",
+	"resource_preference": ["图文", "示例代码"],
+	"learning_style": "example-driven",
+	"difficulty_tolerance": "medium",
+	"dropout_risk": "medium"
+}
+```
+
 ### 2. 个性化学习路径规划Agent
 
 **定位**：个性化动态学习路径生成。

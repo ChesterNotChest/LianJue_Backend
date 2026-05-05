@@ -9,6 +9,7 @@ from tasks.user_task import (
     get_user_detail_info,
     list_all_user_brief_info,
 )
+from tasks.learning_profile_task import build_learning_profile
 
 
 
@@ -308,6 +309,64 @@ def list_users_api():
     return jsonify({
         'success': True,
         'users': rows,
+        'error_message': '',
+        'error_code': ''
+    })
+
+
+@bp.route('/user_learning_profile', methods=['POST'])
+def user_learning_profile_api():
+    '''
+    通讯格式：
+    输入：
+    {
+        "user_id": int,
+        "syllabus_id": int (optional),
+        "dialogue_text": string | [string, ...] (optional),
+        "learning_goal": string (optional),
+        "learning_records": any (optional),
+        "answer_records": any (optional),
+        "resource_usage": any (optional)
+    }
+    输出：
+    {
+        "success": boolean,
+        "profile": object | null,
+        "error_message": string,
+        "error_code": string
+    }
+    '''
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    syllabus_id = data.get('syllabus_id')
+    if not user_id:
+        return jsonify({
+            'success': False,
+            'profile': None,
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+
+    profile = build_learning_profile(
+        int(user_id),
+        int(syllabus_id) if syllabus_id is not None and str(syllabus_id).strip() != '' else None,
+        dialogue_text=data.get('dialogue_text'),
+        learning_goal=data.get('learning_goal'),
+        learning_records=data.get('learning_records'),
+        answer_records=data.get('answer_records'),
+        resource_usage=data.get('resource_usage'),
+    )
+    if profile is None:
+        return jsonify({
+            'success': False,
+            'profile': None,
+            'error_message': 'not found',
+            'error_code': 'not_found'
+        }), 404
+
+    return jsonify({
+        'success': True,
+        'profile': profile,
         'error_message': '',
         'error_code': ''
     })
