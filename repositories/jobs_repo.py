@@ -169,6 +169,15 @@ def update_error_message(job_id: int, error_message: str = "") -> Jobs:
     return job
 
 
+def delete_job(job_id: int) -> bool:
+    job = get_job_by_id(job_id)
+    if job:
+        db.session.delete(job)
+        db.session.commit()
+        return True
+    return False
+
+
 ###################
 # listing/details
 def list_all_jobs(**kwargs) -> list[Jobs]:

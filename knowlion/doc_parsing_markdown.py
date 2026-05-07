@@ -92,7 +92,6 @@ def _build_ocr_options(model_root: str):
         from docling.datamodel.pipeline_options import RapidOcrOptions
 
         ocr_options = RapidOcrOptions(
-            backend="onnxruntime",
             use_det=True,
             use_cls=True,
             use_rec=True,
@@ -265,6 +264,47 @@ class Document2Markdown:
 
         logging.info(f"PDF文件已保存到: {save_path}")
 
+    def _fallback_pdf_to_markdown(self, pdf_path_or_input: str | bytes, job_id: str = None) -> tuple:
+        """当 Docling 不可用或版本不兼容时，使用 pypdf 做最小可用的 Markdown 提取。"""
+        if PdfReader is None:
+            raise RuntimeError("pypdf 未安装，无法执行回退式 PDF 解析")
+
+        if isinstance(pdf_path_or_input, bytes):
+            reader = PdfReader(BytesIO(pdf_path_or_input))
+        else:
+            reader = PdfReader(pdf_path_or_input)
+
+        fragments = []
+        title = self.original_filename or (Path(pdf_path_or_input).stem if isinstance(pdf_path_or_input, str) else "document")
+        fragments.append(f"# {title}")
+
+        for page_index, page in enumerate(reader.pages, start=1):
+            try:
+                page_text = page.extract_text() or ""
+            except Exception:
+                page_text = ""
+
+            page_text = page_text.strip()
+            fragments.append(f"\n## 第 {page_index} 页")
+            if page_text:
+                fragments.append(page_text)
+            else:
+                fragments.append("(该页未能提取到文本)")
+
+        final_md = "\n\n".join(fragments).strip() + "\n"
+
+        if job_id:
+            try:
+                partial_dir = Path("./markdowns")
+                partial_dir.mkdir(parents=True, exist_ok=True)
+                partial_path = partial_dir / f"{job_id}_fallback.md"
+                partial_path.write_text(final_md, encoding="utf-8")
+                logger.info(f"💾 回退式 Markdown 已保存: {partial_path}")
+            except Exception as e:
+                logger.warning(f"保存回退式 Markdown 失败: {e}")
+
+        return final_md, [], 1
+
     def pdf_to_markdown(self, pdf_path_or_input: str | bytes, job_id: str = None, process_index: int = 0) -> tuple:
         """将PDF转换为Markdown，支持图片上下文提取和并行处理"""
         # 📊 记录开始时间和内存
@@ -274,9 +314,13 @@ class Document2Markdown:
         logging.info(f"🚀 开始 PDF->Markdown 转换，初始内存: {start_memory:.2f} MB")
         
         set_device_mode(self.device_gpu)
-        converter = get_document_converter(self.model_path, self.model_path)
-        print(f"当前OCR模型路径: {self.model_path}")
-        print(f"当前Doc2MD模型路径: {self.model_path}")
+        try:
+            converter = get_document_converter(self.model_path, self.model_path)
+            print(f"当前OCR模型路径: {self.model_path}")
+            print(f"当前Doc2MD模型路径: {self.model_path}")
+        except Exception as e:
+            logging.warning(f"Docling 转换器初始化失败，启用回退式 PDF 解析: {e}")
+            return self._fallback_pdf_to_markdown(pdf_path_or_input, job_id=job_id)
 
         # 处理PDF输入
         step_start = time.time()

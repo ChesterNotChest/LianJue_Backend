@@ -133,14 +133,14 @@ class LitellmMultiModel:
             raise Exception(f"向量模型调用失败: {msg}")
 
 
-from config import MODEL_CONFIGS
+from config import LITELLM_MODEL_CONFIGS
 
 # --------------------------
 # 3. 测试示例
 # --------------------------
 if __name__ == "__main__":
     # 创建模型实例
-    model_instance = LitellmMultiModel(MODEL_CONFIGS)
+    model_instance = LitellmMultiModel(LITELLM_MODEL_CONFIGS)
 
     # 测试文本模型
     print("文本模型结果:", model_instance.call_text_model("请介绍一下AI的发展历史",""))

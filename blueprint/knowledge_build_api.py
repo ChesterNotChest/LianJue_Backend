@@ -1,8 +1,146 @@
+from pathlib import Path
+
 from flask import Blueprint, request, jsonify
 from tasks import graph_task, jobs_task
+from extensions import db
+from repositories.filegraph_repo import remove_binding, get_bindings_by_file_id
+from repositories.file_repo import get_file_by_id, delete_file
+from repositories.jobs_repo import get_job_by_id, delete_job
+from schemas.material import Material
+from schemas.syllabus import Syllabus
+
+
+def _safe_remove_path(path_value):
+    if not path_value:
+        return
+    try:
+        path = Path(path_value)
+        if path.exists() and path.is_file():
+            path.unlink()
+    except Exception:
+        pass
+
+
+def _path_exists(path_value):
+    if not path_value:
+        return False
+
+    path = Path(path_value)
+    if path.is_absolute():
+        return path.exists()
+
+    base_dir = Path(__file__).resolve().parents[1]
+    return (base_dir / path).exists()
+
+
+def _job_needs_cleanup(job_detail):
+    if not job_detail:
+        return False
+
+    status = job_detail.get('status')
+    if status == 'failed':
+        return True
+
+    if status == 'completed':
+        markdown_path = job_detail.get('markdown_path')
+        knowledge_path = job_detail.get('knowledge_path')
+        return not _path_exists(markdown_path) or not _path_exists(knowledge_path)
+
+    return False
+
+
+def _purge_job_record(job_id):
+    job = get_job_by_id(job_id)
+    if not job:
+        return False
+
+    file_id = getattr(job, 'file_id', None)
+    graph_id = getattr(job, 'graph_id', None)
+    artifact_paths = [
+        getattr(job, 'partial_md_path', None),
+        getattr(job, 'markdown_path', None),
+        getattr(job, 'split_markdown_path', None),
+        getattr(job, 'partial_triples_path', None),
+        getattr(job, 'triples_path', None),
+        getattr(job, 'knowledge_path', None),
+    ]
+
+    try:
+        remove_binding(file_id, graph_id)
+    except Exception:
+        pass
+
+    delete_job(job_id)
+
+    for artifact_path in artifact_paths:
+        _safe_remove_path(artifact_path)
+
+    try:
+        file = get_file_by_id(file_id) if file_id is not None else None
+        if file is not None:
+            remaining_bindings = get_bindings_by_file_id(file_id)
+            syllabus_ref = Syllabus.query.filter_by(file_id=file_id).first()
+            material_ref = Material.query.filter_by(file_id=file_id).first()
+            if not remaining_bindings and syllabus_ref is None and material_ref is None:
+                _safe_remove_path(getattr(file, 'path', None))
+                delete_file(file_id)
+    except Exception:
+        pass
+
+    return True
 
 
 bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api')
+
+
+@bp.route('/job_delete', methods=['POST'])
+def delete_job_api():
+    data = request.get_json(silent=True) or {}
+    job_id = data.get('job_id')
+    force = bool(data.get('force', False))
+
+    if not job_id:
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'missing job_id',
+            'error_code': 'missing_fields',
+        }), 400
+
+    job = get_job_by_id(int(job_id))
+    if not job:
+        return jsonify({
+            'success': True,
+            'deleted': False,
+            'error_message': '',
+            'error_code': '',
+        }), 200
+
+    if not force and getattr(job, 'status', None) != 'failed':
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'only failed jobs can be deleted',
+            'error_code': 'invalid_state',
+        }), 400
+
+    try:
+        _purge_job_record(job.job_id)
+    except Exception:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'delete job failed',
+            'error_code': 'delete_failed',
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'deleted': True,
+        'error_message': '',
+        'error_code': '',
+    }), 200
 
 
 # 创建新的图谱
@@ -262,7 +400,11 @@ def list_jobs_api():
         out = []
         for r in rows:
             try:
-                out.append(jobs_task.get_job_detail_info(r.job_id))
+                detail = jobs_task.get_job_detail_info(r.job_id)
+                if _job_needs_cleanup(detail):
+                    _purge_job_record(r.job_id)
+                    continue
+                out.append(detail)
             except Exception:
                 out.append({'job_id': getattr(r, 'job_id', None)})
 
