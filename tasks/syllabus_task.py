@@ -5,6 +5,7 @@ import os
 import json
 import time
 import uuid
+import shutil
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
 from repositories.file_repo import create_file, delete_file, get_file_by_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
@@ -98,6 +99,7 @@ def _add_calendar_file(file_path: str, file_name: str, file_bytes: bytes = None,
     actual_path = _unique_calendar_path(save_dir, file_name)
     existed_before_create = File.query.filter_by(path=actual_path).first() is not None
     wrote_file = False
+    source_path = os.path.abspath(file_path)
 
     try:
         if file_bytes is not None:
@@ -108,6 +110,15 @@ def _add_calendar_file(file_path: str, file_name: str, file_bytes: bytes = None,
             with open(actual_path, 'wb') as wf:
                 wf.write(content)
             wrote_file = True
+        else:
+            if not os.path.isfile(source_path):
+                raise FileNotFoundError(f"calendar source file does not exist: {source_path}")
+            if os.path.abspath(actual_path) != source_path:
+                parent = os.path.dirname(actual_path)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                shutil.copy2(source_path, actual_path)
+                wrote_file = True
 
         file_record = create_file(actual_path, upload_time=upload_time)
         file_id = getattr(file_record, 'file_id', None)

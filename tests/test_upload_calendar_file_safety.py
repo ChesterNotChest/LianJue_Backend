@@ -39,6 +39,33 @@ def test_calendar_upload_uses_unique_path_when_original_exists(monkeypatch, tmp_
     assert created["path"] == uploaded["path"]
 
 
+def test_calendar_upload_without_bytes_copies_existing_source_to_unique_path(monkeypatch, tmp_path):
+    original_path = tmp_path / "calendar.pdf"
+    original_path.write_bytes(b"old calendar")
+    created = {}
+
+    monkeypatch.setattr(st, "File", SimpleNamespace(query=EmptyQuery()))
+    monkeypatch.setattr(st, "Syllabus", SimpleNamespace(query=EmptyQuery()))
+
+    def fake_create_file(path, upload_time):
+        created["path"] = path
+        return SimpleNamespace(file_id=14, path=path)
+
+    monkeypatch.setattr(st, "create_file", fake_create_file)
+
+    uploaded = st._add_calendar_file(
+        file_path=str(original_path),
+        file_name="calendar.pdf",
+        file_bytes=None,
+        upload_time="2026-05-07T00:00:00",
+    )
+
+    assert uploaded["path"] != str(original_path)
+    assert original_path.read_bytes() == b"old calendar"
+    assert created["path"] == uploaded["path"]
+    assert st.Path(uploaded["path"]).read_bytes() == b"old calendar"
+
+
 def test_calendar_cleanup_only_deletes_created_unreferenced_file(monkeypatch, tmp_path):
     uploaded_path = tmp_path / "calendar_unique.pdf"
     uploaded_path.write_bytes(b"new calendar")

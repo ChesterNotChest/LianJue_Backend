@@ -1,65 +1,27 @@
-from pathlib import Path
-
 from flask import Blueprint, request, jsonify
 from tasks import graph_task, jobs_task
-from extensions import db
-from repositories.filegraph_repo import remove_binding, get_bindings_by_file_id
-from repositories.file_repo import get_file_by_id, delete_file
-from repositories.jobs_repo import get_job_by_id, delete_job
-from schemas.material import Material
-from schemas.syllabus import Syllabus
 
 
-def _safe_remove_path(path_value):
-    if not path_value:
-        return
+def _parse_job_id(value):
     try:
-        path = Path(path_value)
-        if path.exists() and path.is_file():
-            path.unlink()
-    except Exception:
-        pass
+        job_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return job_id if job_id > 0 else None
 
 
-def _purge_job_record(job_id):
-    job = get_job_by_id(job_id)
-    if not job:
+def _parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
         return False
-
-    file_id = getattr(job, 'file_id', None)
-    graph_id = getattr(job, 'graph_id', None)
-    artifact_paths = [
-        getattr(job, 'partial_md_path', None),
-        getattr(job, 'markdown_path', None),
-        getattr(job, 'split_markdown_path', None),
-        getattr(job, 'partial_triples_path', None),
-        getattr(job, 'triples_path', None),
-        getattr(job, 'knowledge_path', None),
-    ]
-
-    try:
-        remove_binding(file_id, graph_id)
-    except Exception:
-        pass
-
-    delete_job(job_id)
-
-    for artifact_path in artifact_paths:
-        _safe_remove_path(artifact_path)
-
-    try:
-        file = get_file_by_id(file_id) if file_id is not None else None
-        if file is not None:
-            remaining_bindings = get_bindings_by_file_id(file_id)
-            syllabus_ref = Syllabus.query.filter_by(file_id=file_id).first()
-            material_ref = Material.query.filter_by(file_id=file_id).first()
-            if not remaining_bindings and syllabus_ref is None and material_ref is None:
-                _safe_remove_path(getattr(file, 'path', None))
-                delete_file(file_id)
-    except Exception:
-        pass
-
-    return True
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ('true', '1', 'yes'):
+            return True
+        if normalized in ('false', '0', 'no', ''):
+            return False
+    raise ValueError('invalid boolean value')
 
 
 bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api')
@@ -68,8 +30,7 @@ bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api')
 @bp.route('/job_delete', methods=['POST'])
 def delete_job_api():
     data = request.get_json(silent=True) or {}
-    job_id = data.get('job_id')
-    force = bool(data.get('force', False))
+    job_id = _parse_job_id(data.get('job_id'))
 
     if not job_id:
         return jsonify({
@@ -79,8 +40,18 @@ def delete_job_api():
             'error_code': 'missing_fields',
         }), 400
 
-    job = get_job_by_id(int(job_id))
-    if not job:
+    try:
+        force = _parse_bool(data.get('force', False))
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'invalid force',
+            'error_code': 'invalid_fields',
+        }), 400
+
+    job_status = jobs_task.get_job_status(job_id)
+    if job_status is None:
         return jsonify({
             'success': True,
             'deleted': False,
@@ -88,7 +59,7 @@ def delete_job_api():
             'error_code': '',
         }), 200
 
-    if not force and getattr(job, 'status', None) != 'failed':
+    if not force and job_status != 'failed':
         return jsonify({
             'success': False,
             'deleted': False,
@@ -97,9 +68,8 @@ def delete_job_api():
         }), 400
 
     try:
-        _purge_job_record(job.job_id)
+        jobs_task.purge_job_record(job_id)
     except Exception:
-        db.session.rollback()
         return jsonify({
             'success': False,
             'deleted': False,

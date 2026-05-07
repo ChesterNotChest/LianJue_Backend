@@ -55,7 +55,7 @@ def _normalize_openai_compatible_model_name(model_name, api_base):
     normalized_base = str(api_base or "")
 
     if "dashscope.aliyuncs.com" in normalized_base and normalized_name.startswith("openai/"):
-        return normalized_name.removeprefix("openai/")
+        return normalized_name[len("openai/"):]
 
     return normalized_name
 
