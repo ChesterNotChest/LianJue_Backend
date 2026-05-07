@@ -13,7 +13,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from config import MODEL_CONFIGS
+from config import OPENAI_COMPAT_MODEL_CONFIGS
 from repositories.syllabus_repo import get_syllabus_by_id
 from repositories.user_repo import get_user_by_id
 from repositories.user_syllabus_repo import list_user_syllabuses
@@ -871,7 +871,7 @@ class LearningProfileResult(BaseModel):
 
 
 def _build_learning_profile_model() -> OpenAIModel:
-	text_config = MODEL_CONFIGS.get('text') or {}
+	text_config = OPENAI_COMPAT_MODEL_CONFIGS.get('text') or {}
 	model_name = _safe_text(text_config.get('model_name') or text_config.get('name'))
 	if not model_name:
 		raise RuntimeError('missing MODEL_CONFIGS["text"]["model_name"] for learning profile agent')

@@ -9,7 +9,7 @@ from repositories.graph_repo import get_graph_by_id
 from repositories.filegraph_repo import list_graphs_by_file
 from repositories.file_repo import get_file_by_id
 from repositories.jobs_repo import create_job, get_job_by_id, update_job_stage, update_markdown_path, update_job_status
-from config import MODEL_CONFIGS, PROCESSING_CONFIG, get_config
+from config import PROCESSING_CONFIG, get_config
 
 
 # model_path can be configured via config.json PROCESSING_CONFIG.MODEL_PATH
@@ -61,9 +61,15 @@ def file_to_md(knowlion: KnowLion,  job_id: str, process_index: int = 0):
         # (md_content, partial_files, total_batches). We'll log the return value.
         print(f"   🔍 [DOC_PARSE] convert_to_markdown 返回: {type(ret)} {ret if isinstance(ret, (str, tuple, list, dict)) else ''}")
 
-        # debug 文件读取partial_files的数量
-        partial_path = job.partial_md_path
+        # 优先使用转换函数直接返回的 Markdown，回退模式下不会生成 partial_md_path
         md_content = ""
+        if isinstance(ret, (list, tuple)) and ret:
+            first_item = ret[0]
+            if isinstance(first_item, str) and first_item.strip():
+                md_content = first_item
+
+        # 如有 partial 文件，则以磁盘上的内容为准，便于断点续跑与分批保存
+        partial_path = job.partial_md_path
         if partial_path and Path(partial_path).exists():
             with open(partial_path, 'r', encoding='utf-8') as f:
                 md_content = f.read()

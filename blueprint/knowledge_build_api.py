@@ -2,7 +2,87 @@ from flask import Blueprint, request, jsonify
 from tasks import graph_task, jobs_task
 
 
+def _parse_job_id(value):
+    try:
+        job_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return job_id if job_id > 0 else None
+
+
+def _parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in ('true', '1', 'yes'):
+            return True
+        if normalized in ('false', '0', 'no', ''):
+            return False
+    raise ValueError('invalid boolean value')
+
+
 bp = Blueprint('knowledge_build_api', __name__, url_prefix='/api')
+
+
+@bp.route('/job_delete', methods=['POST'])
+def delete_job_api():
+    data = request.get_json(silent=True) or {}
+    job_id = _parse_job_id(data.get('job_id'))
+
+    if not job_id:
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'missing job_id',
+            'error_code': 'missing_fields',
+        }), 400
+
+    try:
+        force = _parse_bool(data.get('force', False))
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'invalid force',
+            'error_code': 'invalid_fields',
+        }), 400
+
+    job_status = jobs_task.get_job_status(job_id)
+    if job_status is None:
+        return jsonify({
+            'success': True,
+            'deleted': False,
+            'error_message': '',
+            'error_code': '',
+        }), 200
+
+    if not force and job_status != 'failed':
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'only failed jobs can be deleted',
+            'error_code': 'invalid_state',
+        }), 400
+
+    try:
+        jobs_task.purge_job_record(job_id)
+    except Exception:
+        return jsonify({
+            'success': False,
+            'deleted': False,
+            'error_message': 'delete job failed',
+            'error_code': 'delete_failed',
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'deleted': True,
+        'error_message': '',
+        'error_code': '',
+    }), 200
 
 
 # 创建新的图谱

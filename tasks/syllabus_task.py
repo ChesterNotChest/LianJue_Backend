@@ -4,13 +4,18 @@ from pathlib import Path
 import os
 import json
 import time
-from tasks.file_task import add_file as add_file_task
+import uuid
+import shutil
 from repositories.jobs_repo import create_job, get_job_by_id, get_status_by_job_id, get_graphId_by_job_id
+from repositories.file_repo import create_file, delete_file, get_file_by_id
 from repositories.syllabus_repo import create_syllabus, get_syllabus_by_id, set_syllabus_draft_path, set_syllabus_path, set_syllabus_day_one, set_syllabus_title, list_all_syllabuses
 from repositories.syllabus_graph_repo import create_syllabus_graph, list_graphs_by_syllabus
 from repositories.graph_repo import get_graph_by_id, get_graph_by_graphId
 from repositories.user_syllabus_repo import create_user_syllabus, list_user_syllabuses, list_user_syllabuses_by_syllabus
 from schemas.syllabus import Syllabus
+from schemas.user_syllabus import UserSyllabus
+from schemas.material import Material
+from schemas.file import File
 from constant import SyllabusPermission
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from utils.llm_utils import get_model_instance
@@ -44,26 +49,162 @@ def _get_latest_job(job_id: int):
     return get_job_by_id(job_id)
 
 
+def _has_file_references(file_id: int) -> bool:
+    if file_id is None:
+        return False
+    if Syllabus.query.filter_by(file_id=file_id).first() is not None:
+        return True
+    if Material.query.filter_by(file_id=file_id).first() is not None:
+        return True
+    try:
+        from repositories.filegraph_repo import get_bindings_by_file_id
+        return bool(get_bindings_by_file_id(file_id))
+    except Exception:
+        return True
+
+
+def _calendar_path_exists(path: str) -> bool:
+    abs_path = os.path.abspath(path)
+    return (
+        os.path.exists(abs_path)
+        or File.query.filter_by(path=abs_path).first() is not None
+        or Syllabus.query.filter_by(edu_calendar_path=abs_path).first() is not None
+    )
+
+
+def _unique_calendar_path(save_dir: str, file_name: str) -> str:
+    safe_name = os.path.basename(file_name or 'calendar.pdf')
+    if save_dir:
+        base_path = os.path.abspath(os.path.join(save_dir, safe_name))
+    else:
+        base_path = os.path.abspath(safe_name)
+
+    if not _calendar_path_exists(base_path):
+        return base_path
+
+    stem, ext = os.path.splitext(safe_name)
+    parent = os.path.dirname(base_path)
+    for _ in range(10):
+        suffix = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        candidate_name = f"{stem}_{suffix}{ext}"
+        candidate_path = os.path.abspath(os.path.join(parent, candidate_name))
+        if not _calendar_path_exists(candidate_path):
+            return candidate_path
+
+    raise RuntimeError("failed to allocate unique calendar file path")
+
+
+def _add_calendar_file(file_path: str, file_name: str, file_bytes: bytes = None, upload_time: str = None) -> dict:
+    save_dir = os.path.dirname(file_path)
+    actual_path = _unique_calendar_path(save_dir, file_name)
+    existed_before_create = File.query.filter_by(path=actual_path).first() is not None
+    wrote_file = False
+    source_path = os.path.abspath(file_path)
+
+    try:
+        if file_bytes is not None:
+            parent = os.path.dirname(actual_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            content = file_bytes if isinstance(file_bytes, (bytes, bytearray)) else str(file_bytes).encode('utf-8')
+            with open(actual_path, 'wb') as wf:
+                wf.write(content)
+            wrote_file = True
+        else:
+            if not os.path.isfile(source_path):
+                raise FileNotFoundError(f"calendar source file does not exist: {source_path}")
+            if os.path.abspath(actual_path) != source_path:
+                parent = os.path.dirname(actual_path)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                shutil.copy2(source_path, actual_path)
+                wrote_file = True
+
+        file_record = create_file(actual_path, upload_time=upload_time)
+        file_id = getattr(file_record, 'file_id', None)
+    except Exception:
+        if wrote_file and os.path.isfile(actual_path):
+            try:
+                os.remove(actual_path)
+            except Exception:
+                pass
+        raise
+
+    return {
+        'file_id': file_id,
+        'path': actual_path,
+        'created': not existed_before_create,
+    }
+
+
+def _delete_calendar_file_if_created(uploaded_file: dict) -> None:
+    if not uploaded_file or not uploaded_file.get('created'):
+        return
+
+    file_id = uploaded_file.get('file_id')
+    actual_path = uploaded_file.get('path')
+    if file_id is None or not actual_path:
+        return
+
+    file_record = get_file_by_id(file_id)
+    if file_record is None:
+        return
+
+    file_path_to_remove = getattr(file_record, 'path', None)
+    if os.path.abspath(file_path_to_remove or '') != os.path.abspath(actual_path):
+        return
+    if _has_file_references(file_id):
+        return
+
+    delete_file(file_id)
+    if file_path_to_remove and os.path.isfile(file_path_to_remove):
+        os.remove(file_path_to_remove)
+
+
 def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None, user_id: int = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
-    # persist file bytes if provided, otherwise just register path
-    save_dir = os.path.dirname(file_path)
-    fname = file_name
-    file_id = add_file_task(save_dir, fname, file_bytes=file_bytes, upload_time=upload_time)
-    syllabus = create_syllabus(edu_calendar_path=file_path, file_id=file_id)
-    if syllabus is not None and user_id is not None:
-        try:
+    uploaded_file = None
+    syllabus = None
+
+    try:
+        uploaded_file = _add_calendar_file(file_path, file_name, file_bytes=file_bytes, upload_time=upload_time)
+        syllabus = create_syllabus(
+            edu_calendar_path=uploaded_file['path'],
+            file_id=uploaded_file['file_id'],
+        )
+        if syllabus is not None and user_id is not None:
             create_user_syllabus(
                 user_id=int(user_id),
                 syllabus_id=int(getattr(syllabus, 'syllabus_id', None)),
                 syllabus_permission=SyllabusPermission.OWNER.value,
             )
-        except Exception as e:
-            print(f"   [SYLLABUS] failed to create owner binding for user_id={user_id}, syllabus_id={getattr(syllabus, 'syllabus_id', None)}: {e}")
-    
-    return syllabus
+
+        return syllabus
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+        try:
+            if syllabus is not None and getattr(syllabus, 'syllabus_id', None) is not None:
+                UserSyllabus.query.filter_by(syllabus_id=syllabus.syllabus_id).delete()
+                db.session.delete(syllabus)
+                db.session.commit()
+        except Exception:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+
+        try:
+            _delete_calendar_file_if_created(uploaded_file)
+        except Exception:
+            pass
+
+        raise
 
 
 def build_syllabus_draft(syllabus_id: int, graph_id: int, initial_prompt: str) -> Syllabus:
@@ -664,10 +805,10 @@ def build_syllabus(syllabus_id: int) -> Syllabus:
     # Try to initialize KnowLion for retrieval; if it fails, proceed with LLM-only enrichment
     kl = None
     try:
-        from config import MODEL_CONFIGS
+        from config import LITELLM_MODEL_CONFIGS
         from knowlion.abution_knowlion_driver import KnowLion
         if graph_name:
-            kl = KnowLion(MODEL_CONFIGS, graph_name=str(graph_name))
+            kl = KnowLion(LITELLM_MODEL_CONFIGS, graph_name=str(graph_name))
         else:
             # instantiate with a dummy graph id to allow model-only fallback
             kl = None

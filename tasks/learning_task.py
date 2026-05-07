@@ -126,12 +126,12 @@ def ask_question(user_id: int, syllabus_id: int, question: str):
         graph_name = syllabus_json.get('graph_name')
     
     
-    from config import MODEL_CONFIGS
+    from config import LITELLM_MODEL_CONFIGS
     from knowlion.abution_knowlion_driver import KnowLion
         
     kl = None
     try:
-        kl = KnowLion(MODEL_CONFIGS, graph_name=str(graph_name))
+        kl = KnowLion(LITELLM_MODEL_CONFIGS, graph_name=str(graph_name))
     except Exception:
         kl = None
 

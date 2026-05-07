@@ -92,7 +92,6 @@ def _build_ocr_options(model_root: str):
         from docling.datamodel.pipeline_options import RapidOcrOptions
 
         ocr_options = RapidOcrOptions(
-            backend="onnxruntime",
             use_det=True,
             use_cls=True,
             use_rec=True,
@@ -1409,9 +1408,9 @@ if __name__ == "__main__":
     file_path = "/root/knowlion/pdfs/第1章+绪论.pdf"
     model_path = str(DEFAULT_MODEL_DIR)
 
-    from config import MODEL_CONFIGS
+    from config import LITELLM_MODEL_CONFIGS
 
-    model_instance = LitellmMultiModel(MODEL_CONFIGS)
+    model_instance = LitellmMultiModel(LITELLM_MODEL_CONFIGS)
 
     # 创建实例，启用图片解释，设置最大并行数为5，最大重试次数为1
     parser = Document2Markdown(

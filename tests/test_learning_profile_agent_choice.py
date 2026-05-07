@@ -16,7 +16,7 @@ EXPECTED_TOOL_ORDER = [
 
 
 def _normalize_model_for_dashscope():
-    text_config = lpt.MODEL_CONFIGS.get("text") or {}
+    text_config = lpt.OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
     api_base = str(text_config.get("api_base") or text_config.get("base_url") or "")
     model_name = str(text_config.get("model_name") or "")
     if "dashscope.aliyuncs.com" in api_base and model_name.startswith("openai/"):

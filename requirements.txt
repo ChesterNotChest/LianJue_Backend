@@ -5,6 +5,7 @@ pydantic-ai-slim[openai]
 openpyxl>=3.0.0
 pandoc>=2.0.0
 docling
+onnxruntime
 python-docx>=0.8.0
 torch>=1.0.0
 tenacity

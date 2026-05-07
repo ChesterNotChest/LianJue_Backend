@@ -15,7 +15,7 @@ from repositories.syllabusmaterial_repo import create_syllabus_material, get_syl
 from utils.llm_utils import get_model_instance
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from knowlion.abution_knowlion_driver import KnowLion
-from config import MODEL_CONFIGS
+from config import LITELLM_MODEL_CONFIGS
 import time
 
 
@@ -128,7 +128,7 @@ def generate_material_draft(syllabus_id: int, involved_weeks: List[int], questio
 		graph_id = graph_ids[0] if graph_ids else None
 		graph = get_graph_by_id(graph_id) if graph_id is not None else None
 		graph_name = getattr(graph, 'graphId', None) if graph else None
-		kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name) if graph_name else None
+		kl = KnowLion(model_configs=LITELLM_MODEL_CONFIGS or {}, graph_name=graph_name) if graph_name else None
 	except Exception:
 		kl = None
 
@@ -491,7 +491,7 @@ def generate_final_material(material_id: int):
 		graph_id = graph_ids[0] if graph_ids else None
 		graph = get_graph_by_id(graph_id) if graph_id is not None else None
 		graph_name = getattr(graph, 'graphId', None) if graph else None
-		kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name) if graph_name else None
+		kl = KnowLion(model_configs=LITELLM_MODEL_CONFIGS or {}, graph_name=graph_name) if graph_name else None
 	except Exception as e:
 		print(f"   ⚠️ [MATERIAL] 无法通过 material -> syllabus -> graph 反查图谱，将跳过 RAG: {e}")
 		kl = None
