@@ -1,0 +1,104 @@
+{
+  "dataset_name": "question_bank_dataset",
+  "syllabus_id": 8,
+  "graph_name": "RAG",
+  "source_path": "experiments/user_analize/samples/source_refs/测试用例.md",
+  "questions": [
+    {
+      "question_id": "qb_011",
+      "source_case_id": 11,
+      "question_text": "HDFS 的主 / 从架构具体由哪些节点组成？",
+      "question_type": "专业性提问",
+      "week_index": "5",
+      "knowledge_points": ["HDFS架构", "NameNode", "DataNode"]
+    },
+    {
+      "question_id": "qb_012",
+      "source_case_id": 12,
+      "question_text": "Apriori 算法在关联规则挖掘中的核心原理是什么？",
+      "question_type": "专业性提问",
+      "week_index": "9",
+      "knowledge_points": ["Apriori", "关联规则", "频繁项集"]
+    },
+    {
+      "question_id": "qb_013",
+      "source_case_id": 13,
+      "question_text": "ETL 过程在大数据感知与获取中的具体步骤？",
+      "question_type": "专业性提问",
+      "week_index": "4",
+      "knowledge_points": ["ETL", "数据抽取", "数据装载"]
+    },
+    {
+      "question_id": "qb_014",
+      "source_case_id": 14,
+      "question_text": "HBase 数据库适合处理哪种类型的数据？",
+      "question_type": "专业性提问",
+      "week_index": "6",
+      "knowledge_points": ["HBase", "列式存储", "半结构化数据"]
+    },
+    {
+      "question_id": "qb_015",
+      "source_case_id": 15,
+      "question_text": "MapReduce 和 Spark 在计算效率上的核心差异？",
+      "question_type": "专业性提问",
+      "week_index": "12",
+      "knowledge_points": ["MapReduce", "Spark", "内存计算"]
+    },
+    {
+      "question_id": "qb_016",
+      "source_case_id": 16,
+      "question_text": "GPU/TPU/FPGA 加速大数据计算的技术原理？",
+      "question_type": "专业性提问",
+      "week_index": "13",
+      "knowledge_points": ["GPU", "TPU", "FPGA"]
+    },
+    {
+      "question_id": "qb_017",
+      "source_case_id": 17,
+      "question_text": "差分隐私保护技术如何保障大数据隐私？",
+      "question_type": "专业性提问",
+      "week_index": "14",
+      "knowledge_points": ["差分隐私", "隐私保护", "噪声机制"]
+    },
+    {
+      "question_id": "qb_019",
+      "source_case_id": 19,
+      "question_text": "特征选择在大数据分析与挖掘中的作用？",
+      "question_type": "专业性提问",
+      "week_index": "8",
+      "knowledge_points": ["特征选择", "建模效果", "维度约简"]
+    },
+    {
+      "question_id": "qb_020",
+      "source_case_id": 20,
+      "question_text": "大数据可视化技术的核心设计原则？",
+      "question_type": "专业性提问",
+      "week_index": "11",
+      "knowledge_points": ["可视化原则", "交互展示", "信息表达"]
+    },
+    {
+      "question_id": "qb_021",
+      "source_case_id": 21,
+      "question_text": "Hadoop 生态系统中 HDFS 与 MapReduce 的协同机制？",
+      "question_type": "专业性提问",
+      "week_index": "12",
+      "knowledge_points": ["Hadoop生态", "HDFS", "MapReduce"]
+    },
+    {
+      "question_id": "qb_023",
+      "source_case_id": 23,
+      "question_text": "关联规则挖掘中频繁项集的判定标准？",
+      "question_type": "专业性提问",
+      "week_index": "9",
+      "knowledge_points": ["频繁项集", "支持度", "关联规则"]
+    },
+    {
+      "question_id": "qb_025",
+      "source_case_id": 25,
+      "question_text": "NoSQL 数据库兴起的技术背景是什么？",
+      "question_type": "专业性提问",
+      "week_index": "7",
+      "knowledge_points": ["NoSQL", "扩展性", "关系型瓶颈"]
+    }
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "dataset_name": "edge_case_bundles",
+  "version": "2026-05-05",
+  "base_bundle_file": "profile_input_bundles.json",
+  "templates": [
+    {
+      "template_id": "edge_missing_learning_goal",
+      "mutation_type": "field_drop",
+      "mutations": [
+        {
+          "field": "learning_goal",
+          "action": "remove"
+        }
+      ],
+      "expected_warnings": ["missing_learning_goal"]
+    },
+    {
+      "template_id": "edge_empty_behavior_arrays",
+      "mutation_type": "replace",
+      "mutations": [
+        {
+          "field": "learning_records",
+          "action": "replace_with_empty_array"
+        },
+        {
+          "field": "resource_usage",
+          "action": "replace_with_empty_array"
+        }
+      ],
+      "expected_warnings": ["empty_learning_records", "empty_resource_usage"]
+    },
+    {
+      "template_id": "edge_nonstandard_time_mix",
+      "mutation_type": "time_format_mix",
+      "mutations": [
+        {
+          "field": "learning_records[*].started_at",
+          "action": "inject_nonstandard_time_strings"
+        },
+        {
+          "field": "answer_records[*].answered_at",
+          "action": "mix_timestamp_and_legacy_string"
+        }
+      ],
+      "expected_warnings": ["nonstandard_time_format"]
+    },
+    {
+      "template_id": "edge_missing_knowledge_points",
+      "mutation_type": "nested_field_drop",
+      "mutations": [
+        {
+          "field": "answer_records[*].meta.knowledge_points",
+          "action": "remove_from_one_record"
+        }
+      ],
+      "expected_warnings": ["missing_knowledge_points"]
+    },
+    {
+      "template_id": "edge_week_index_mismatch",
+      "mutation_type": "semantic_conflict",
+      "mutations": [
+        {
+          "field": "answer_records[*].meta.week_index",
+          "action": "set_conflicting_week_index"
+        }
+      ],
+      "expected_warnings": ["week_index_topic_mismatch"]
+    },
+    {
+      "template_id": "edge_invalid_event_type",
+      "mutation_type": "enum_error",
+      "mutations": [
+        {
+          "field": "learning_records[*].event_type",
+          "action": "set_unknown_event_type"
+        }
+      ],
+      "expected_warnings": ["unknown_event_type"]
+    },
+    {
+      "template_id": "edge_duplicate_resource_events",
+      "mutation_type": "duplication",
+      "mutations": [
+        {
+          "field": "resource_usage",
+          "action": "duplicate_first_record"
+        }
+      ],
+      "expected_warnings": ["duplicate_resource_event"]
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "edge_s01_missing_goal",
+      "base_bundle_id": "profile_bundle_s01",
+      "persona_id": "steady_mastery_builder",
+      "template_id": "edge_missing_learning_goal",
+      "expected_outcome": "可继续构建画像，但目标明确度与目标抽取置信度下降"
+    },
+    {
+      "case_id": "edge_s01_missing_knowledge_points",
+      "base_bundle_id": "profile_bundle_s01",
+      "persona_id": "steady_mastery_builder",
+      "template_id": "edge_missing_knowledge_points",
+      "expected_outcome": "知识点级掌握度下降，概念缺口更偏保守"
+    },
+    {
+      "case_id": "edge_s02_empty_behavior",
+      "base_bundle_id": "profile_bundle_s02",
+      "persona_id": "low_activity_risk",
+      "template_id": "edge_empty_behavior_arrays",
+      "expected_outcome": "仅剩对话和答题负信号，风险仍可判断但行为特征降级"
+    },
+    {
+      "case_id": "edge_s02_nonstandard_time",
+      "base_bundle_id": "profile_bundle_s02",
+      "persona_id": "low_activity_risk",
+      "template_id": "edge_nonstandard_time_mix",
+      "expected_outcome": "规范化模块应识别时间混乱并给出异常报告"
+    },
+    {
+      "case_id": "edge_s03_invalid_event_type",
+      "base_bundle_id": "profile_bundle_s03",
+      "persona_id": "deadline_crammer",
+      "template_id": "edge_invalid_event_type",
+      "expected_outcome": "未知行为类型应进入降级分支，而不是直接中断"
+    },
+    {
+      "case_id": "edge_s03_week_mismatch",
+      "base_bundle_id": "profile_bundle_s03",
+      "persona_id": "deadline_crammer",
+      "template_id": "edge_week_index_mismatch",
+      "expected_outcome": "课程周次与知识点冲突应进入 evidence 或 warning"
+    },
+    {
+      "case_id": "edge_s04_duplicate_resource",
+      "base_bundle_id": "profile_bundle_s04",
+      "persona_id": "visual_practice_seeker",
+      "template_id": "edge_duplicate_resource_events",
+      "expected_outcome": "资源偏好计算应具备去重或弱去重能力"
+    }
+  ]
+}

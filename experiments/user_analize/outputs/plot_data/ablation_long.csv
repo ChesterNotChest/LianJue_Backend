@@ -1,0 +1,25 @@
+case_id,base_bundle_id,variant,variant_label,expected_confidence_trend,expected_primary_signal,confidence,dropout_risk,warning_count,source_event_count
+ablation_s01_full,profile_bundle_s01,full,Full Input,baseline,all_available,0.84,medium,0,4
+ablation_s01_no_dialogue,profile_bundle_s01,no_dialogue_text,No Dialogue Text,slightly_down,behavior_and_answer_records,0.67,medium,2,3
+ablation_s01_no_answer,profile_bundle_s01,no_answer_records,No Answer Records,down,dialogue_and_behavior,0.7,medium,1,3
+ablation_s01_no_resource,profile_bundle_s01,no_resource_usage,No Resource Usage,slightly_down,dialogue_and_answer_records,0.7,medium,1,3
+ablation_s01_no_learning,profile_bundle_s01,no_learning_records,No Learning Records,down,dialogue_and_answer_records,0.7,medium,1,3
+ablation_s01_id_only,profile_bundle_s01,id_only,ID Only,sharp_down,personal_syllabus_only,0.25,high,5,0
+ablation_s02_full,profile_bundle_s02,full,Full Input,baseline,dialogue_and_risk_signals,0.84,high,0,4
+ablation_s02_no_dialogue,profile_bundle_s02,no_dialogue_text,No Dialogue Text,down,negative_answer_records,0.67,high,2,3
+ablation_s02_no_answer,profile_bundle_s02,no_answer_records,No Answer Records,down,low_activity_behavior,0.7,high,1,3
+ablation_s02_no_resource,profile_bundle_s02,no_resource_usage,No Resource Usage,slightly_down,dialogue_and_answer_records,0.7,high,1,3
+ablation_s02_no_learning,profile_bundle_s02,no_learning_records,No Learning Records,down,dialogue_and_answer_records,0.7,high,1,3
+ablation_s02_id_only,profile_bundle_s02,id_only,ID Only,sharp_down,personal_syllabus_only,0.25,high,5,0
+ablation_s03_full,profile_bundle_s03,full,Full Input,baseline,short_term_behavior_and_answer_records,0.84,high,0,4
+ablation_s03_no_dialogue,profile_bundle_s03,no_dialogue_text,No Dialogue Text,slightly_down,recent_behavior_burst,0.67,high,2,3
+ablation_s03_no_answer,profile_bundle_s03,no_answer_records,No Answer Records,down,deadline_behavior_only,0.7,high,1,3
+ablation_s03_no_resource,profile_bundle_s03,no_resource_usage,No Resource Usage,slightly_down,behavior_and_answer_records,0.7,high,1,3
+ablation_s03_no_learning,profile_bundle_s03,no_learning_records,No Learning Records,down,dialogue_and_answer_records,0.7,high,1,3
+ablation_s03_id_only,profile_bundle_s03,id_only,ID Only,sharp_down,personal_syllabus_only,0.25,high,5,0
+ablation_s04_full,profile_bundle_s04,full,Full Input,baseline,resource_preference_and_answer_records,0.84,medium,0,4
+ablation_s04_no_dialogue,profile_bundle_s04,no_dialogue_text,No Dialogue Text,slightly_down,resource_usage_and_answers,0.67,medium,2,3
+ablation_s04_no_answer,profile_bundle_s04,no_answer_records,No Answer Records,down,resource_preference_and_dialogue,0.7,medium,1,3
+ablation_s04_no_resource,profile_bundle_s04,no_resource_usage,No Resource Usage,down,dialogue_and_learning_records,0.7,medium,1,3
+ablation_s04_no_learning,profile_bundle_s04,no_learning_records,No Learning Records,slightly_down,dialogue_and_resource_usage,0.7,medium,1,3
+ablation_s04_id_only,profile_bundle_s04,id_only,ID Only,sharp_down,personal_syllabus_only,0.25,high,5,0

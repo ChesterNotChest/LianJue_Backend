@@ -1,0 +1,5 @@
+base_bundle_id,full_confidence,no_dialogue_text_confidence,no_answer_records_confidence,no_resource_usage_confidence,no_learning_records_confidence,id_only_confidence,full_warning_count,no_dialogue_text_warning_count,no_answer_records_warning_count,no_resource_usage_warning_count,no_learning_records_warning_count,id_only_warning_count
+profile_bundle_s01,0.84,0.67,0.7,0.7,0.7,0.25,0,2,1,1,1,5
+profile_bundle_s02,0.84,0.67,0.7,0.7,0.7,0.25,0,2,1,1,1,5
+profile_bundle_s03,0.84,0.67,0.7,0.7,0.7,0.25,0,2,1,1,1,5
+profile_bundle_s04,0.84,0.67,0.7,0.7,0.7,0.25,0,2,1,1,1,5

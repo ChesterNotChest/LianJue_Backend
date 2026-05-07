@@ -1,0 +1,215 @@
+{
+  "dataset_name": "ablation_bundles",
+  "version": "2026-05-05",
+  "base_bundle_file": "profile_input_bundles.json",
+  "required_variants": [
+    "full",
+    "no_dialogue_text",
+    "no_answer_records",
+    "no_resource_usage",
+    "no_learning_records",
+    "id_only"
+  ],
+  "variant_templates": [
+    {
+      "variant": "full",
+      "drop_fields": [],
+      "purpose": "全量输入作为基线"
+    },
+    {
+      "variant": "no_dialogue_text",
+      "drop_fields": ["dialogue_text", "learning_goal"],
+      "purpose": "验证缺少主观文本时，是否仍能依赖行为和答题信号"
+    },
+    {
+      "variant": "no_answer_records",
+      "drop_fields": ["answer_records"],
+      "purpose": "验证没有答题数据时，知识掌握度与风险判断如何退化"
+    },
+    {
+      "variant": "no_resource_usage",
+      "drop_fields": ["resource_usage"],
+      "purpose": "验证资源偏好和学习风格特征是否明显受损"
+    },
+    {
+      "variant": "no_learning_records",
+      "drop_fields": ["learning_records"],
+      "purpose": "验证活跃度、时长与注意力模式是否明显受损"
+    },
+    {
+      "variant": "id_only",
+      "drop_fields": ["dialogue_text", "learning_goal", "learning_records", "answer_records", "resource_usage"],
+      "purpose": "验证只保留 user_id + syllabus_id 时的最低可用输出"
+    }
+  ],
+  "case_matrix": [
+    {
+      "base_bundle_id": "profile_bundle_s01",
+      "persona_id": "steady_mastery_builder",
+      "variants": [
+        {
+          "case_id": "ablation_s01_full",
+          "variant": "full",
+          "expected_confidence_trend": "baseline",
+          "expected_primary_signal": "all_available"
+        },
+        {
+          "case_id": "ablation_s01_no_dialogue",
+          "variant": "no_dialogue_text",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "behavior_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s01_no_answer",
+          "variant": "no_answer_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "dialogue_and_behavior"
+        },
+        {
+          "case_id": "ablation_s01_no_resource",
+          "variant": "no_resource_usage",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "dialogue_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s01_no_learning",
+          "variant": "no_learning_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "dialogue_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s01_id_only",
+          "variant": "id_only",
+          "expected_confidence_trend": "sharp_down",
+          "expected_primary_signal": "personal_syllabus_only"
+        }
+      ]
+    },
+    {
+      "base_bundle_id": "profile_bundle_s02",
+      "persona_id": "low_activity_risk",
+      "variants": [
+        {
+          "case_id": "ablation_s02_full",
+          "variant": "full",
+          "expected_confidence_trend": "baseline",
+          "expected_primary_signal": "dialogue_and_risk_signals"
+        },
+        {
+          "case_id": "ablation_s02_no_dialogue",
+          "variant": "no_dialogue_text",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "negative_answer_records"
+        },
+        {
+          "case_id": "ablation_s02_no_answer",
+          "variant": "no_answer_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "low_activity_behavior"
+        },
+        {
+          "case_id": "ablation_s02_no_resource",
+          "variant": "no_resource_usage",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "dialogue_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s02_no_learning",
+          "variant": "no_learning_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "dialogue_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s02_id_only",
+          "variant": "id_only",
+          "expected_confidence_trend": "sharp_down",
+          "expected_primary_signal": "personal_syllabus_only"
+        }
+      ]
+    },
+    {
+      "base_bundle_id": "profile_bundle_s03",
+      "persona_id": "deadline_crammer",
+      "variants": [
+        {
+          "case_id": "ablation_s03_full",
+          "variant": "full",
+          "expected_confidence_trend": "baseline",
+          "expected_primary_signal": "short_term_behavior_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s03_no_dialogue",
+          "variant": "no_dialogue_text",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "recent_behavior_burst"
+        },
+        {
+          "case_id": "ablation_s03_no_answer",
+          "variant": "no_answer_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "deadline_behavior_only"
+        },
+        {
+          "case_id": "ablation_s03_no_resource",
+          "variant": "no_resource_usage",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "behavior_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s03_no_learning",
+          "variant": "no_learning_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "dialogue_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s03_id_only",
+          "variant": "id_only",
+          "expected_confidence_trend": "sharp_down",
+          "expected_primary_signal": "personal_syllabus_only"
+        }
+      ]
+    },
+    {
+      "base_bundle_id": "profile_bundle_s04",
+      "persona_id": "visual_practice_seeker",
+      "variants": [
+        {
+          "case_id": "ablation_s04_full",
+          "variant": "full",
+          "expected_confidence_trend": "baseline",
+          "expected_primary_signal": "resource_preference_and_answer_records"
+        },
+        {
+          "case_id": "ablation_s04_no_dialogue",
+          "variant": "no_dialogue_text",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "resource_usage_and_answers"
+        },
+        {
+          "case_id": "ablation_s04_no_answer",
+          "variant": "no_answer_records",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "resource_preference_and_dialogue"
+        },
+        {
+          "case_id": "ablation_s04_no_resource",
+          "variant": "no_resource_usage",
+          "expected_confidence_trend": "down",
+          "expected_primary_signal": "dialogue_and_learning_records"
+        },
+        {
+          "case_id": "ablation_s04_no_learning",
+          "variant": "no_learning_records",
+          "expected_confidence_trend": "slightly_down",
+          "expected_primary_signal": "dialogue_and_resource_usage"
+        },
+        {
+          "case_id": "ablation_s04_id_only",
+          "variant": "id_only",
+          "expected_confidence_trend": "sharp_down",
+          "expected_primary_signal": "personal_syllabus_only"
+        }
+      ]
+    }
+  ]
+}

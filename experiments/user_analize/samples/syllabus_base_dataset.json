@@ -1,0 +1,137 @@
+{
+  "dataset_name": "syllabus_base_dataset",
+  "syllabus_id": 8,
+  "title": "大数据概论",
+  "graph_name": "RAG",
+  "source_path": "experiments/user_analize/samples/source_refs/syllabus_大数据概论_20260322235507.json",
+  "weeks": [
+    {
+      "week_index": "1",
+      "content": "大数据课程导论与基本概念：介绍学科背景、课程目标、考核方式，以及核心概念框架",
+      "importance": "low",
+      "week_topic_summary": "课程导论、学习目标与大数据基础框架",
+      "week_keyword_candidates": ["课程目标", "核心概念", "学科背景"],
+      "week_difficulty_prior": 0.2
+    },
+    {
+      "week_index": "2",
+      "content": "大数据的定义、特点，以及大数据的具体应用；大数据的生命周期、技术图谱；大数据的应用场景、机遇与挑战等相关内容",
+      "importance": "medium",
+      "week_topic_summary": "大数据定义、4V 特征、生命周期与应用场景",
+      "week_keyword_candidates": ["4V", "生命周期", "应用场景"],
+      "week_difficulty_prior": 0.45
+    },
+    {
+      "week_index": "3",
+      "content": "大数据感知与获取：数据的来源与类型；数据源分布的多源、异构特性；数据源的一般分布",
+      "importance": "medium",
+      "week_topic_summary": "多源异构数据来源与数据感知基础",
+      "week_keyword_candidates": ["多源异构", "数据来源", "数据感知"],
+      "week_difficulty_prior": 0.48
+    },
+    {
+      "week_index": "4",
+      "content": "大数据感知与获取：不同数据源的获取方法和策略；数据抽取、转换、装载的过程；典型数据采集的开源工具和技术",
+      "importance": "medium",
+      "week_topic_summary": "数据采集策略、ETL 流程与开源工具",
+      "week_keyword_candidates": ["ETL", "Flume", "Nifi"],
+      "week_difficulty_prior": 0.52
+    },
+    {
+      "week_index": "5",
+      "content": "大数据存储与管理：分布式文件系统及主流技术HDFS",
+      "importance": "high",
+      "week_topic_summary": "HDFS 架构、角色分工与高容错机制",
+      "week_keyword_candidates": ["HDFS", "NameNode", "DataNode"],
+      "week_difficulty_prior": 0.75
+    },
+    {
+      "week_index": "6",
+      "content": "大数据存储与管理：分布式数据库中典型技术HBase",
+      "importance": "high",
+      "week_topic_summary": "HBase 数据模型、适用场景与 Hadoop 生态关系",
+      "week_keyword_candidates": ["HBase", "列式存储", "实时查询"],
+      "week_difficulty_prior": 0.78
+    },
+    {
+      "week_index": "7",
+      "content": "大数据存储与管理：非关系型数据库兴起的原因；与关系型数据库对比",
+      "importance": "medium",
+      "week_topic_summary": "NoSQL 兴起背景与关系型数据库对比",
+      "week_keyword_candidates": ["NoSQL", "扩展性", "关系型对比"],
+      "week_difficulty_prior": 0.5
+    },
+    {
+      "week_index": "8",
+      "content": "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法",
+      "importance": "high",
+      "week_topic_summary": "特征表示、特征选择与基础建模方法",
+      "week_keyword_candidates": ["特征提取", "特征选择", "建模"],
+      "week_difficulty_prior": 0.72
+    },
+    {
+      "week_index": "9",
+      "content": "大数据分析与挖掘：关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）",
+      "importance": "high",
+      "week_topic_summary": "关联规则挖掘与 Apriori 算法",
+      "week_keyword_candidates": ["关联规则", "Apriori", "频繁项集"],
+      "week_difficulty_prior": 0.8
+    },
+    {
+      "week_index": "10",
+      "content": "大数据分析与挖掘：常用的数据挖掘算法（2）；常用的数据挖掘算法（3）",
+      "importance": "high",
+      "week_topic_summary": "常见数据挖掘算法的继续展开",
+      "week_keyword_candidates": ["数据挖掘算法", "算法比较", "迭代学习"],
+      "week_difficulty_prior": 0.76
+    },
+    {
+      "week_index": "11",
+      "content": "大数据分析与挖掘：大数据可视化方法与技术；早期流行的集中式分布架构",
+      "importance": "medium",
+      "week_topic_summary": "可视化原则与早期集中式/分布式架构认知",
+      "week_keyword_candidates": ["可视化", "集中式架构", "交互展示"],
+      "week_difficulty_prior": 0.54
+    },
+    {
+      "week_index": "12",
+      "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+      "importance": "high",
+      "week_topic_summary": "MapReduce 与 Spark 的架构和效率对比",
+      "week_keyword_candidates": ["MapReduce", "Spark", "分布式计算"],
+      "week_difficulty_prior": 0.82
+    },
+    {
+      "week_index": "13",
+      "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+      "importance": "high",
+      "week_topic_summary": "硬件加速技术与大数据安全问题",
+      "week_keyword_candidates": ["GPU", "TPU", "大数据安全"],
+      "week_difficulty_prior": 0.84
+    },
+    {
+      "week_index": "14",
+      "content": "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用",
+      "importance": "medium",
+      "week_topic_summary": "隐私保护、差分隐私与网络安全应用",
+      "week_keyword_candidates": ["隐私保护", "差分隐私", "网络安全"],
+      "week_difficulty_prior": 0.58
+    },
+    {
+      "week_index": "15",
+      "content": "大数据行业应用：大数据在不同行业的应用与前沿",
+      "importance": "medium",
+      "week_topic_summary": "行业应用案例与前沿趋势",
+      "week_keyword_candidates": ["金融风控", "推荐系统", "行业前沿"],
+      "week_difficulty_prior": 0.46
+    },
+    {
+      "week_index": "16",
+      "content": "大数据行业应用：分析和研究不同行业中的复杂问题",
+      "importance": "medium",
+      "week_topic_summary": "跨行业复杂问题分析与案例研究",
+      "week_keyword_candidates": ["复杂问题", "行业案例", "分析框架"],
+      "week_difficulty_prior": 0.5
+    }
+  ]
+}

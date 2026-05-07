@@ -1,0 +1,372 @@
+[
+  {
+    "target_id": "stability_base_s01",
+    "stability_expectation": "mostly_stable",
+    "repeat_count": 5,
+    "field_values": {
+      "goal_clarity": {
+        "distinct_values": 1,
+        "values": [
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "term_familiarity": {
+        "distinct_values": 1,
+        "values": [
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.75
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.75
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.75
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.75
+          },
+          {
+            "level": "high",
+            "score": 1.0,
+            "confidence": 0.75
+          }
+        ]
+      },
+      "resource_preference": {
+        "distinct_values": 1,
+        "values": [
+          [
+            "practice",
+            "text_summary"
+          ],
+          [
+            "practice",
+            "text_summary"
+          ],
+          [
+            "practice",
+            "text_summary"
+          ],
+          [
+            "practice",
+            "text_summary"
+          ],
+          [
+            "practice",
+            "text_summary"
+          ]
+        ]
+      },
+      "dropout_risk": {
+        "distinct_values": 1,
+        "values": [
+          "medium",
+          "medium",
+          "medium",
+          "medium",
+          "medium"
+        ]
+      },
+      "confidence": {
+        "distinct_values": 1,
+        "values": [
+          0.84,
+          0.84,
+          0.84,
+          0.84,
+          0.84
+        ]
+      }
+    }
+  },
+  {
+    "target_id": "stability_base_s02",
+    "stability_expectation": "mostly_stable",
+    "repeat_count": 5,
+    "field_values": {
+      "emotion_state": {
+        "distinct_values": 1,
+        "values": [
+          {
+            "label": "frustrated",
+            "negative_hits": 4,
+            "positive_hits": 0
+          },
+          {
+            "label": "frustrated",
+            "negative_hits": 4,
+            "positive_hits": 0
+          },
+          {
+            "label": "frustrated",
+            "negative_hits": 4,
+            "positive_hits": 0
+          },
+          {
+            "label": "frustrated",
+            "negative_hits": 4,
+            "positive_hits": 0
+          },
+          {
+            "label": "frustrated",
+            "negative_hits": 4,
+            "positive_hits": 0
+          }
+        ]
+      },
+      "help_seeking_level": {
+        "distinct_values": 1,
+        "values": [
+          {
+            "level": "high",
+            "score": 1.0
+          },
+          {
+            "level": "high",
+            "score": 1.0
+          },
+          {
+            "level": "high",
+            "score": 1.0
+          },
+          {
+            "level": "high",
+            "score": 1.0
+          },
+          {
+            "level": "high",
+            "score": 1.0
+          }
+        ]
+      },
+      "dropout_risk": {
+        "distinct_values": 1,
+        "values": [
+          "high",
+          "high",
+          "high",
+          "high",
+          "high"
+        ]
+      },
+      "confidence": {
+        "distinct_values": 1,
+        "values": [
+          0.84,
+          0.84,
+          0.84,
+          0.84,
+          0.84
+        ]
+      }
+    }
+  },
+  {
+    "target_id": "stability_base_s03",
+    "stability_expectation": "minor_text_variation_allowed",
+    "repeat_count": 5,
+    "field_values": {
+      "goal_clarity": {
+        "distinct_values": 1,
+        "values": [
+          {
+            "level": "high",
+            "score": 0.8,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 0.8,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 0.8,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 0.8,
+            "confidence": 0.8
+          },
+          {
+            "level": "high",
+            "score": 0.8,
+            "confidence": 0.8
+          }
+        ]
+      },
+      "dropout_risk": {
+        "distinct_values": 1,
+        "values": [
+          "high",
+          "high",
+          "high",
+          "high",
+          "high"
+        ]
+      },
+      "recent_anomaly": {
+        "distinct_values": 1,
+        "values": [
+          [
+            "frustration_signal"
+          ],
+          [
+            "frustration_signal"
+          ],
+          [
+            "frustration_signal"
+          ],
+          [
+            "frustration_signal"
+          ],
+          [
+            "frustration_signal"
+          ]
+        ]
+      },
+      "confidence": {
+        "distinct_values": 1,
+        "values": [
+          0.84,
+          0.84,
+          0.84,
+          0.84,
+          0.84
+        ]
+      }
+    }
+  },
+  {
+    "target_id": "stability_base_s04",
+    "stability_expectation": "mostly_stable",
+    "repeat_count": 5,
+    "field_values": {
+      "resource_preference": {
+        "distinct_values": 1,
+        "values": [
+          [
+            "video",
+            "practice"
+          ],
+          [
+            "video",
+            "practice"
+          ],
+          [
+            "video",
+            "practice"
+          ],
+          [
+            "video",
+            "practice"
+          ],
+          [
+            "video",
+            "practice"
+          ]
+        ]
+      },
+      "learning_style": {
+        "distinct_values": 1,
+        "values": [
+          "visual-driven",
+          "visual-driven",
+          "visual-driven",
+          "visual-driven",
+          "visual-driven"
+        ]
+      },
+      "dropout_risk": {
+        "distinct_values": 1,
+        "values": [
+          "medium",
+          "medium",
+          "medium",
+          "medium",
+          "medium"
+        ]
+      },
+      "confidence": {
+        "distinct_values": 1,
+        "values": [
+          0.84,
+          0.84,
+          0.84,
+          0.84,
+          0.84
+        ]
+      }
+    }
+  },
+  {
+    "target_id": "stability_edge_s02_time_mix",
+    "stability_expectation": "fully_stable",
+    "repeat_count": 5,
+    "field_values": {
+      "warning_count": {
+        "distinct_values": 1,
+        "values": [
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      },
+      "missing_field_report": {
+        "distinct_values": 1,
+        "values": [
+          [],
+          [],
+          [],
+          [],
+          []
+        ]
+      },
+      "format_issue_report": {
+        "distinct_values": 1,
+        "values": [
+          [],
+          [],
+          [],
+          [],
+          []
+        ]
+      }
+    }
+  }
+]

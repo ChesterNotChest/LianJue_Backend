@@ -1,0 +1,225 @@
+{
+  "dataset_name": "learning_records_dataset",
+  "syllabus_id": 8,
+  "graph_name": "RAG",
+  "samples": [
+    {
+      "sample_id": "learning_s01",
+      "persona_id": "steady_mastery_builder",
+      "user_id": 2001,
+      "records": [
+        {
+          "event_type": "study_session",
+          "started_at": 1776502800,
+          "duration_minutes": 48,
+          "source": "web",
+          "meta": {
+            "topic": "HDFS 架构",
+            "week_index": "5"
+          }
+        },
+        {
+          "event_type": "video_watch",
+          "started_at": "2026-04-18T19:30:00+08:00",
+          "duration_minutes": 22,
+          "source": "tablet",
+          "meta": {
+            "topic": "HBase 数据模型",
+            "week_index": "6"
+          }
+        },
+        {
+          "event_type": "practice_set",
+          "started_at": 1776675600,
+          "duration_minutes": 35,
+          "source": "web",
+          "meta": {
+            "topic": "HBase 与关系型数据库对比",
+            "week_index": "6"
+          }
+        },
+        {
+          "event_type": "summary_review",
+          "started_at": "2026-04-21 20:10:00",
+          "duration_minutes": 28,
+          "source": "mobile",
+          "meta": {
+            "topic": "特征选择",
+            "week_index": "8"
+          }
+        },
+        {
+          "event_type": "study_session",
+          "started_at": "2026-04-24T21:00:00+08:00",
+          "duration_minutes": 46,
+          "source": "web",
+          "meta": {
+            "topic": "Apriori 与频繁项集",
+            "week_index": "9"
+          }
+        },
+        {
+          "event_type": "flashcard_review",
+          "started_at": 1777104300,
+          "duration_minutes": 15,
+          "source": "mobile",
+          "meta": {
+            "topic": "支持度与置信度",
+            "week_index": "9"
+          }
+        }
+      ]
+    },
+    {
+      "sample_id": "learning_s02",
+      "persona_id": "low_activity_risk",
+      "user_id": 2002,
+      "records": [
+        {
+          "event_type": "study_session",
+          "started_at": "2026-04-10T20:40:00+08:00",
+          "duration_minutes": 12,
+          "source": "web",
+          "meta": {
+            "topic": "HBase 入门",
+            "week_index": "6"
+          }
+        },
+        {
+          "event_type": "note_view",
+          "started_at": 1776253200,
+          "duration_minutes": 8,
+          "source": "mobile",
+          "meta": {
+            "topic": "NoSQL 对比",
+            "week_index": "7"
+          }
+        },
+        {
+          "event_type": "resource_scan",
+          "started_at": "2026/04/18 22:15",
+          "duration_minutes": 6,
+          "source": "mobile",
+          "meta": {
+            "topic": "第六周补课材料",
+            "week_index": "6"
+          }
+        }
+      ]
+    },
+    {
+      "sample_id": "learning_s03",
+      "persona_id": "deadline_crammer",
+      "user_id": 2003,
+      "records": [
+        {
+          "event_type": "mock_exam",
+          "started_at": 1777365000,
+          "duration_minutes": 95,
+          "source": "web",
+          "meta": {
+            "topic": "MapReduce 与 Spark 综合题",
+            "week_index": "12"
+          }
+        },
+        {
+          "event_type": "study_session",
+          "started_at": "2026-04-28T21:10:00+08:00",
+          "duration_minutes": 110,
+          "source": "web",
+          "meta": {
+            "topic": "MapReduce 和 Spark 对比",
+            "week_index": "12"
+          }
+        },
+        {
+          "event_type": "video_watch",
+          "started_at": 1777455000,
+          "duration_minutes": 38,
+          "source": "tablet",
+          "meta": {
+            "topic": "GPU/TPU/FPGA 加速",
+            "week_index": "13"
+          }
+        },
+        {
+          "event_type": "practice_set",
+          "started_at": "2026-04-29 23:05:00",
+          "duration_minutes": 80,
+          "source": "web",
+          "meta": {
+            "topic": "差分隐私与安全",
+            "week_index": "14"
+          }
+        },
+        {
+          "event_type": "summary_review",
+          "started_at": "2026-04-30T00:40:00+08:00",
+          "duration_minutes": 24,
+          "source": "mobile",
+          "meta": {
+            "topic": "硬件加速速记",
+            "week_index": "13"
+          }
+        }
+      ]
+    },
+    {
+      "sample_id": "learning_s04",
+      "persona_id": "visual_practice_seeker",
+      "user_id": 2004,
+      "records": [
+        {
+          "event_type": "video_watch",
+          "started_at": "2026-04-22T18:20:00+08:00",
+          "duration_minutes": 42,
+          "source": "tablet",
+          "meta": {
+            "topic": "可视化设计原则",
+            "week_index": "11"
+          }
+        },
+        {
+          "event_type": "diagram_review",
+          "started_at": 1776943800,
+          "duration_minutes": 18,
+          "source": "mobile",
+          "meta": {
+            "topic": "集中式与分布式架构图",
+            "week_index": "11"
+          }
+        },
+        {
+          "event_type": "study_session",
+          "started_at": "2026-04-23T20:00:00+08:00",
+          "duration_minutes": 36,
+          "source": "web",
+          "meta": {
+            "topic": "Spark 架构",
+            "week_index": "12"
+          }
+        },
+        {
+          "event_type": "quiz_review",
+          "started_at": 1777035600,
+          "duration_minutes": 20,
+          "source": "mobile",
+          "meta": {
+            "topic": "MapReduce 与 Spark 区别",
+            "week_index": "12"
+          }
+        },
+        {
+          "event_type": "case_reading",
+          "started_at": "2026-04-25T16:30:00+08:00",
+          "duration_minutes": 27,
+          "source": "web",
+          "meta": {
+            "topic": "大数据安全案例",
+            "week_index": "13"
+          }
+        }
+      ]
+    }
+  ]
+}

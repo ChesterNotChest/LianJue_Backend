@@ -1,0 +1,434 @@
+[
+  {
+    "review_id": "manual_base_s01",
+    "priority": "medium",
+    "reason": "基线稳定样本，验证画像是否能正确抓到稳定投入 + 局部薄弱点",
+    "focus_fields": [
+      "knowledge_mastery",
+      "concept_gaps",
+      "resource_preference",
+      "evidence"
+    ],
+    "expected": {
+      "goal_clarity": "high",
+      "risk_level": "low",
+      "emotion_state": "calm",
+      "resource_preference": [
+        "practice",
+        "text_summary"
+      ],
+      "behavior_pattern": "stable_high_engagement"
+    },
+    "profile_excerpt": {
+      "knowledge_mastery": {
+        "overall_level": "master",
+        "overall_score": 0.7928,
+        "syllabus_score": 0.665,
+        "answer_score": 0.775,
+        "engagement_score": 1.0,
+        "week_items": [
+          {
+            "week_index": 5,
+            "competance": "normal",
+            "competance_progress": 4,
+            "score": 0.746,
+            "content": "大数据存储与管理：分布式文件系统及主流技术HDFS"
+          },
+          {
+            "week_index": 6,
+            "competance": "normal",
+            "competance_progress": 4,
+            "score": 0.746,
+            "content": "大数据存储与管理：分布式数据库中典型技术HBase"
+          },
+          {
+            "week_index": 8,
+            "competance": "weak",
+            "competance_progress": 2,
+            "score": 0.398,
+            "content": "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法"
+          },
+          {
+            "week_index": 9,
+            "competance": "normal",
+            "competance_progress": 5,
+            "score": 0.77,
+            "content": "大数据分析与挖掘：关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）"
+          }
+        ],
+        "mastered_weeks": [],
+        "weak_weeks": [
+          8
+        ],
+        "by_knowledge_point": {
+          "Apriori": 0.8,
+          "DataNode": 1.0,
+          "HBase": 0.9,
+          "HDFS架构": 1.0,
+          "NameNode": 1.0,
+          "关联规则": 0.8,
+          "列式存储": 0.9,
+          "半结构化数据": 0.9,
+          "建模效果": 0.4,
+          "特征选择": 0.4,
+          "维度约简": 0.4,
+          "频繁项集": 0.8
+        },
+        "knowledge_point_details": {
+          "Apriori": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "DataNode": {
+            "score": 1.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "HBase": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "HDFS架构": {
+            "score": 1.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "NameNode": {
+            "score": 1.0,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "关联规则": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "列式存储": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "半结构化数据": {
+            "score": 0.9,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          },
+          "建模效果": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "特征选择": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "维度约简": {
+            "score": 0.4,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "频繁项集": {
+            "score": 0.8,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "high"
+          }
+        }
+      },
+      "concept_gaps": [
+        "建模效果",
+        "特征选择",
+        "维度约简",
+        "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法"
+      ],
+      "resource_preference": [
+        "practice",
+        "text_summary"
+      ],
+      "evidence": [
+        "近7天活跃 6 天",
+        "平均单次学习时长约 32.33 分钟",
+        "知识点“建模效果”当前掌握度偏低",
+        "个人教学大纲显示第 8 周掌握较弱",
+        "近期资源偏好偏向 practice"
+      ]
+    }
+  },
+  {
+    "review_id": "manual_base_s02",
+    "priority": "high",
+    "reason": "高风险样本，验证掉队风险是否过度或不足",
+    "focus_fields": [
+      "dropout_risk",
+      "dropout_risk_score",
+      "evidence",
+      "confidence"
+    ],
+    "expected": {
+      "goal_clarity": "medium",
+      "risk_level": "high",
+      "emotion_state": "anxious",
+      "resource_preference": [
+        "text_summary",
+        "remedial_notes"
+      ],
+      "behavior_pattern": "low_activity_with_forgetting"
+    },
+    "profile_excerpt": {
+      "dropout_risk": "high",
+      "dropout_risk_score": 0.95,
+      "evidence": [
+        "近7天活跃 2 天",
+        "平均单次学习时长约 8.67 分钟",
+        "知识点“DataNode”当前掌握度偏低",
+        "个人教学大纲显示第 6 周掌握较弱",
+        "近期资源偏好偏向 text_summary"
+      ],
+      "confidence": 0.84
+    }
+  },
+  {
+    "review_id": "manual_base_s03",
+    "priority": "high",
+    "reason": "突击型样本，验证短期高活跃是否被错误识别成长期稳健",
+    "focus_fields": [
+      "study_frequency",
+      "recent_anomaly",
+      "dropout_risk",
+      "knowledge_mastery"
+    ],
+    "expected": {
+      "goal_clarity": "high",
+      "risk_level": "medium",
+      "emotion_state": "tense",
+      "resource_preference": [
+        "practice",
+        "exam_summary"
+      ],
+      "behavior_pattern": "short_term_cramming"
+    },
+    "profile_excerpt": {
+      "study_frequency": "low",
+      "recent_anomaly": [
+        "frustration_signal"
+      ],
+      "dropout_risk": "high",
+      "knowledge_mastery": {
+        "overall_level": "normal",
+        "overall_score": 0.4871,
+        "syllabus_score": 0.3307,
+        "answer_score": 0.5,
+        "engagement_score": 0.6856,
+        "week_items": [
+          {
+            "week_index": 12,
+            "competance": "weak",
+            "competance_progress": 4,
+            "score": 0.446,
+            "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark"
+          },
+          {
+            "week_index": 13,
+            "competance": "weak",
+            "competance_progress": 3,
+            "score": 0.422,
+            "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题"
+          },
+          {
+            "week_index": 14,
+            "competance": "none",
+            "competance_progress": 1,
+            "score": 0.124,
+            "content": "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用"
+          }
+        ],
+        "mastered_weeks": [],
+        "weak_weeks": [
+          12,
+          13,
+          14
+        ],
+        "by_knowledge_point": {
+          "FPGA": 0.7,
+          "GPU": 0.7,
+          "MapReduce": 0.6,
+          "Spark": 0.6,
+          "TPU": 0.7,
+          "内存计算": 0.6,
+          "噪声机制": 0.2,
+          "差分隐私": 0.2,
+          "隐私保护": 0.2
+        },
+        "knowledge_point_details": {
+          "FPGA": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "GPU": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "MapReduce": {
+            "score": 0.6,
+            "confidence": 0.59,
+            "attempt_count": 2,
+            "level": "medium"
+          },
+          "Spark": {
+            "score": 0.6,
+            "confidence": 0.59,
+            "attempt_count": 2,
+            "level": "medium"
+          },
+          "TPU": {
+            "score": 0.7,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "medium"
+          },
+          "内存计算": {
+            "score": 0.6,
+            "confidence": 0.59,
+            "attempt_count": 2,
+            "level": "medium"
+          },
+          "噪声机制": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "差分隐私": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          },
+          "隐私保护": {
+            "score": 0.2,
+            "confidence": 0.47,
+            "attempt_count": 1,
+            "level": "low"
+          }
+        }
+      }
+    }
+  },
+  {
+    "review_id": "manual_base_s04",
+    "priority": "medium",
+    "reason": "偏好明显样本，验证资源偏好和学习风格是否一致",
+    "focus_fields": [
+      "resource_preference",
+      "learning_style",
+      "evidence"
+    ],
+    "expected": {
+      "goal_clarity": "high",
+      "risk_level": "low",
+      "emotion_state": "positive",
+      "resource_preference": [
+        "video",
+        "case_study"
+      ],
+      "behavior_pattern": "visual_case_driven"
+    },
+    "profile_excerpt": {
+      "resource_preference": [
+        "video",
+        "practice"
+      ],
+      "learning_style": "visual-driven",
+      "evidence": [
+        "近7天活跃 4 天",
+        "平均单次学习时长约 28.6 分钟",
+        "知识点“噪声机制”当前掌握度偏低",
+        "个人教学大纲显示第 13 周掌握较弱",
+        "近期资源偏好偏向 video"
+      ]
+    }
+  },
+  {
+    "review_id": "manual_edge_s02_time_mix",
+    "priority": "high",
+    "reason": "规范化边界样本，验证异常报告是否明确且不误伤其他字段",
+    "focus_fields": [
+      "missing_field_report",
+      "format_issue_report",
+      "confidence"
+    ],
+    "expected": {
+      "expected_outcome": "规范化模块应识别时间混乱并给出异常报告"
+    },
+    "profile_excerpt": {
+      "missing_field_report": [],
+      "format_issue_report": [],
+      "confidence": 0.84
+    }
+  },
+  {
+    "review_id": "manual_edge_s03_week_mismatch",
+    "priority": "high",
+    "reason": "语义冲突样本，验证 week_index 与知识点映射冲突是否被暴露",
+    "focus_fields": [
+      "concept_gaps",
+      "knowledge_mapping",
+      "evidence",
+      "confidence"
+    ],
+    "expected": {
+      "expected_outcome": "课程周次与知识点冲突应进入 evidence 或 warning"
+    },
+    "profile_excerpt": {
+      "concept_gaps": [
+        "噪声机制",
+        "差分隐私",
+        "隐私保护",
+        "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+        "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+        "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用"
+      ],
+      "knowledge_mapping": {
+        "mapped_nodes": [
+          "FPGA",
+          "GPU",
+          "MapReduce",
+          "Spark",
+          "TPU",
+          "内存计算",
+          "噪声机制",
+          "差分隐私",
+          "隐私保护"
+        ],
+        "mapped_node_count": 9,
+        "graph_binding": "knowledge_point_proxy_nodes"
+      },
+      "evidence": [
+        "近7天活跃 2 天",
+        "平均单次学习时长约 69.4 分钟",
+        "知识点“噪声机制”当前掌握度偏低",
+        "个人教学大纲显示第 12 周掌握较弱",
+        "近期资源偏好偏向 practice"
+      ],
+      "confidence": 0.84
+    }
+  }
+]

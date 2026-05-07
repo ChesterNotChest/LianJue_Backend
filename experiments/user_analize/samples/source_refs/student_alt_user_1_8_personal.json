@@ -1,0 +1,185 @@
+{
+  "syllabus_id": 8,
+  "user_id": 1,
+  "review_count": 3,
+  "reviewed_at": 1776333404,
+  "period": [
+    {
+      "week_index": "1",
+      "content": "大数据课程导论与基本概念：介绍学科背景、课程目标、考核方式，以及核心概念框架",
+      "enhanced_content": "大数据课程导论与基本概念将带领学生了解大数据的学科背景、课程目标及考核方式，并深入探讨其核心概念框架。课程内容涵盖数据与大数据概述、大数据感知与获取、存储与管理、智能分析、架构与处理技术等关键领域，旨在为学生提供全面的大数据知识体系。通过学习，学生将掌握大数据的特征及其在各行业的应用，理解大数据治理的重要性及其面临的挑战，包括数据优化、隐私保护和变现策略。此外，课程还将介绍大数据在社会安全中的作用以及相关技术的发展趋势。",
+      "importance": "low",
+      "competance": "weak",
+      "competance_progress": 4,
+      "suggested_competance_list": [],
+      "updated_at": 1775909089
+    },
+    {
+      "week_index": "2",
+      "content": "大数据的定义、特点，以及大数据的具体应用；大数据的生命周期、技术图谱；大数据的应用场景、机遇与挑战等相关内容",
+      "enhanced_content": "大数据是指数据规模巨大、类型多样、处理速度快的数据集合，其特征包括Volume（大量）、Velocity（高速）、Variety（多样）和Value（价值）。大数据技术的发展为广告优化、金融风控、智能推荐等应用场景提供了支持，同时也带来了新的安全风险。大数据的生命周期涵盖了从数据获取到分析应用的全过程，涉及的技术图谱包括数据存储、管理、分析及可视化工具。在社会各个领域如政府、商业、金融等，大数据已成为推动经济增长、提升国家综合能力和保障国家安全的重要力量，同时也面临着数据治理、隐私保护等方面的挑战。",
+      "importance": "medium",
+      "competance": "weak",
+      "competance_progress": 4,
+      "suggested_competance_list": [],
+      "updated_at": 1775909098
+    },
+    {
+      "week_index": "3",
+      "content": "大数据感知与获取：数据的来源与类型；数据源分布的多源、异构特性；数据源的一般分布",
+      "enhanced_content": "大数据感知与获取涉及数据的来源与类型，包括交易数据、交互数据、传感器数据、社交媒体数据和日志文件等。数据源具有多源、异构特性，分布在不同的行业和系统中，如自营系统、历史遗留数据、物联网数据、政府数据和互联网数据。数据感知是对数据的理解和解释，涉及数据清洗、预处理和特征提取。大数据需要特殊的技术和工具进行存储、处理和分析。",
+      "importance": "medium",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "4",
+      "content": "大数据感知与获取：不同数据源的获取方法和策略；数据抽取、转换、装载的过程；典型数据采集的开源工具和技术",
+      "enhanced_content": "大数据感知与获取涉及从多种数据源收集、处理和分析数据的过程。包括传感器数据、社交媒体数据、日志文件等，通过数据抽取、转换和装载（ETL）过程，将原始数据转化为结构化信息。典型的数据采集开源工具和技术如Apache Nifi、Flume等被广泛应用于这一过程。数据感知则强调对数据的理解和解释，涵盖数据清洗、预处理和特征提取，以确保数据的质量和可用性。这些技术和方法在各行业中广泛应用，如铁路交通、物流供应等领域，帮助企业实现数据驱动的决策和优化。",
+      "importance": "medium",
+      "competance": "weak",
+      "competance_progress": 4,
+      "suggested_competance_list": [
+        "normal",
+        "normal",
+        "normal"
+      ],
+      "updated_at": 1775909615
+    },
+    {
+      "week_index": "5",
+      "content": "大数据存储与管理：分布式文件系统及主流技术HDFS",
+      "enhanced_content": "大数据存储与管理是处理海量、高速、多样化数据的关键技术之一，其中分布式文件系统HDFS扮演着核心角色。HDFS专为存储和管理超大数据文件而设计，运行在通用硬件集群上，具有高容错性和高吞吐量的特点，支持多种文件格式和压缩编码。它采用主/从架构，由一个名字节点和多个数据节点组成，通过冗余机制防止单点故障，确保数据的可靠存储。Hadoop作为开源分布式计算框架，其核心组件包括HDFS和MapReduce，为实现大规模数据集的应用提供了强有力的技术支撑。",
+      "importance": "high",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "6",
+      "content": "大数据存储与管理：分布式数据库中典型技术HBase",
+      "enhanced_content": "HBase是一种高可靠、高性能、面向列、可伸缩的分布式数据库，主要用于存储非结构化和半结构化数据。它运行在Hadoop分布式文件系统（HDFS）之上，适合处理大规模数据集，并支持实时查询。HBase的设计目标是提供一个能够部署在廉价硬件上的高容错分布式系统，适用于需要快速访问和更新大量数据的应用场景。与Hive相比，HBase更适合作为大数据实时查询的解决方案。此外，HBase作为Hadoop生态系统的一部分，与其他组件如MapReduce等紧密集成，共同支撑大数据处理任务。",
+      "importance": "high",
+      "competance": "normal",
+      "competance_progress": 4,
+      "suggested_competance_list": [
+        "normal",
+        "normal"
+      ],
+      "updated_at": 1776333404
+    },
+    {
+      "week_index": "7",
+      "content": "大数据存储与管理：非关系型数据库兴起的原因；与关系型数据库对比",
+      "enhanced_content": "非关系型数据库的兴起主要源于大数据时代对高效存储和处理海量、高速、多样化数据的需求。与传统的关系型数据库相比，非关系型数据库具有灵活的数据模型、强大的横向扩展能力和高容错性，能够更好地应对超大规模数据存储和实时查询等挑战。关系型数据库则以固定的表结构、支持连接操作和严格遵守ACID约束为特点，在处理大数据时面临通用性、数据一致性及高性能等方面的局限。非关系型数据库如NoSQL数据库、图数据库和HBase等，通过提供不同的数据存储解决方案，满足了不同应用场景下的需求。",
+      "importance": "medium",
+      "competance": "normal",
+      "competance_progress": 0,
+      "suggested_competance_list": [
+        "normal",
+        "normal",
+        "normal"
+      ],
+      "updated_at": 1776333355
+    },
+    {
+      "week_index": "8",
+      "content": "大数据分析与挖掘：常用特征表示、特征提取和特征选择的方法；常用的数据建模方法",
+      "enhanced_content": "大数据分析与挖掘涵盖了从海量、高速和多样化的数据集中提取有价值信息的过程。特征表示、特征提取和选择是这一过程中的关键步骤，其中特征选择旨在从原始特征中挑选出最具代表性和贡献度的特征。常用的数据建模方法则侧重于通过统计或机器学习技术构建模型，以揭示隐藏在数据中的模式、趋势和关联。这些技术广泛应用于反欺诈、元数据管理以及社会安全等领域，为决策提供支持。",
+      "importance": "high",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "9",
+      "content": "大数据分析与挖掘：关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）",
+      "enhanced_content": "大数据分析与挖掘本周重点介绍关联规则挖掘的基本概念及其常用算法，特别是Apriori算法。关联规则挖掘是从大量数据中发现项集之间频繁出现的模式、关联和相关性的过程，广泛应用于市场篮子分析等领域。Apriori算法是一种基于频繁项集性质的先验知识进行挖掘的经典方法，通过逐层搜索迭代地识别出重要的关联规则。此外，还将探讨数据挖掘在不同领域的应用案例，如反欺诈系统中的关键作用，以及如何应对大数据分析带来的技术挑战等。",
+      "importance": "high",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [
+        "normal",
+        "normal"
+      ],
+      "updated_at": 1775911601
+    },
+    {
+      "week_index": "10",
+      "content": "大数据分析与挖掘：常用的数据挖掘算法（2）；常用的数据挖掘算法（3）",
+      "enhanced_content": "本周课程继续深入探讨常用的数据挖掘算法，包括Apriori算法及其在关联规则挖掘中的应用。Apriori算法是一种用于挖掘频繁项集和关联规则的经典方法，基于频繁项集性质的先验知识，采用由下至上逐层搜索的迭代方式。关联规则挖掘则致力于从大量数据中发现有趣的、频繁出现的模式和相关性，揭示数据背后的潜在联系。这些技术对于理解大数据中的复杂关系至关重要，为后续的数据分析与决策提供了有力支持。",
+      "importance": "high",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [
+        "normal",
+        "normal"
+      ],
+      "updated_at": 1775911601
+    },
+    {
+      "week_index": "11",
+      "content": "大数据分析与挖掘：大数据可视化方法与技术；早期流行的集中式分布架构",
+      "enhanced_content": "大数据分析与挖掘涵盖大数据可视化方法与技术，以及早期流行的集中式分布架构。大数据可视化通过交互式界面将复杂数据集以直观图形展示，帮助用户快速理解数据背后的信息。集中式分布架构如Hadoop和HDFS，为大数据提供了存储和处理的基础。Hadoop作为一个开源分布式计算框架，支持大规模数据集的并行处理；而HDFS作为其核心组件之一，专为存储和管理超大数据文件设计，具有高容错性和高吞吐量的特点。这些技术和架构共同推动了大数据技术的发展和应用。",
+      "importance": "medium",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "12",
+      "content": "大数据处理与架构：当前主流的分布式计算构架：MapReduce和Spark",
+      "enhanced_content": "大数据处理与架构中，MapReduce和Spark是当前主流的分布式计算框架。MapReduce是一种基于HDFS（Hadoop分布式文件系统）的批处理计算架构，通过将任务分解为映射（Map）和归约（Reduce）两个阶段来提高大规模数据集上的处理效率，特别适合高吞吐量的数据访问需求。而Spark则以其内存计算能力著称，能够更高效地支持迭代算法和交互式数据挖掘任务。两者都旨在应对海量、高速、多样化的数据挑战，提供强大的并行计算能力以满足现代大数据应用的需求。",
+      "importance": "high",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "13",
+      "content": "大数据处理与架构：大数据计算处理加速技术：GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+      "enhanced_content": "大数据处理与架构不仅涵盖了通过GPU、TPU和FPGA等硬件加速技术来提升数据计算速度，还包括了对大数据安全问题的关注。在大数据时代，数据规模巨大、类型多样且处理速度快，这给传统的数据处理方式带来了挑战。为了应对这些挑战，采用如Hadoop这样的分布式系统基础架构成为了一种解决方案。然而，随着大数据技术的发展，如何确保数据的安全性也变得尤为重要。大数据安全不仅涉及到数据本身的保护，还需要考虑到隐私保护等问题。此外，大数据治理也是保障大数据有效应用的关键，它包括了政策制定、优化以及隐私保护等多个方面。",
+      "importance": "high",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "14",
+      "content": "大数据安全与隐私保护：大数据隐私保护的意义；大数据在网络安全中的应用",
+      "enhanced_content": "大数据安全与隐私保护在当今社会具有重要意义，它不仅涉及到个人和组织的隐私信息保护，还关系到数据在整个生命周期中的安全性。大数据因其规模巨大、类型多样、处理速度快的特点，在网络安全中发挥着重要作用，如通过分析海量数据来识别潜在的安全威胁。同时，随着大数据技术的发展，也带来了新的安全挑战，需要采用先进的技术手段如差分隐私保护、同态加密等来确保数据的安全性和隐私性。此外，国家层面也在不断推出相关政策法规以构建更加完善的大数据治理体系。",
+      "importance": "medium",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "15",
+      "content": "大数据行业应用：大数据在不同行业的应用与前沿",
+      "enhanced_content": "大数据在不同行业的应用广泛且前沿，包括金融、交通旅游和互联网等行业。在金融领域，大数据用于高频交易、社交情绪分析及信贷风险评估；交通旅游行业则利用大数据优化服务与管理；互联网行业中，大数据技术被应用于商品推荐和广告投放。这些应用不仅提升了各行业的效率和服务质量，还推动了经济转型和社会发展。大数据的特征包括海量性、多样性、高速性和价值性，其处理需要借助先进的计算体系结构和技术手段。",
+      "importance": "medium",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    },
+    {
+      "week_index": "16",
+      "content": "大数据行业应用：分析和研究不同行业中的复杂问题",
+      "enhanced_content": "大数据行业应用涉及多个领域，如金融、交通旅游和互联网等。在金融行业中，大数据技术被广泛应用于高频交易、社交情绪分析及信贷风险评估，有效提升了金融服务的安全性和效率。交通旅游方面，通过大数据优化路线规划和服务质量，改善了用户体验。而在互联网行业，大数据支持个性化商品推荐和精准广告投放，增强了营销效果。这些应用不仅促进了各行业的数字化转型，还为解决复杂问题提供了新思路和技术手段。",
+      "importance": "medium",
+      "competance": "none",
+      "competance_progress": 0,
+      "suggested_competance_list": [],
+      "updated_at": 0
+    }
+  ]
+}
