@@ -828,9 +828,9 @@ class Markdown2Triples:
 # 使用示例
 if __name__ == "__main__":
     # 初始化模型
-    from config import MODEL_CONFIGS
+    from config import LITELLM_MODEL_CONFIGS
 
-    model_instance = LitellmMultiModel(MODEL_CONFIGS)
+    model_instance = LitellmMultiModel(LITELLM_MODEL_CONFIGS)
 
     # 读取Markdown内容
     # md_file_path = "/root/knowlion/markdowns/基于RAG的维修手册智能问答系统研究与应用_郭超.md"

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from config import MODEL_CONFIGS
+from config import LITELLM_MODEL_CONFIGS
 from knowlion.abution_knowlion_driver import KnowLion
 
 
@@ -55,7 +55,7 @@ def test_search_call_uses_real_llm_when_enabled(monkeypatch):
         },
     )
 
-    knowlion = KnowLion(MODEL_CONFIGS or {}, "graph_demo")
+    knowlion = KnowLion(LITELLM_MODEL_CONFIGS or {}, "graph_demo")
     result = knowlion.search_call(
         "Explain supervised learning briefly.",
         top_k=3,

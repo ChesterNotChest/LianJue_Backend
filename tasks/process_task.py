@@ -9,7 +9,7 @@ from repositories.graph_repo import get_graph_by_id
 from repositories.filegraph_repo import list_graphs_by_file
 from repositories.file_repo import get_file_by_id
 from repositories.jobs_repo import create_job, get_job_by_id, update_job_stage, update_markdown_path, update_job_status
-from config import MODEL_CONFIGS, PROCESSING_CONFIG, get_config
+from config import PROCESSING_CONFIG, get_config
 
 
 # model_path can be configured via config.json PROCESSING_CONFIG.MODEL_PATH

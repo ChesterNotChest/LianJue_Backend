@@ -1,4 +1,4 @@
-from config import MODEL_CONFIGS
+from config import LITELLM_MODEL_CONFIGS
 from knowlion.abution_knowlion_driver import KnowLion
 from repositories.graph_repo import (
     create_graph as create_graph_repo,
@@ -24,7 +24,7 @@ def create_graph(graphId: str):
     if graph:
         return graph
 
-    knowlion = KnowLion(MODEL_CONFIGS, graph_name=graph_name)
+    knowlion = KnowLion(LITELLM_MODEL_CONFIGS, graph_name=graph_name)
     knowlion.init_graph()
 
     return create_graph_repo(graph_name)

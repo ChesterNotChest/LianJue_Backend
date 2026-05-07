@@ -47,24 +47,45 @@ def _normalize_litellm_model_name(model_name, api_base):
     return normalized_name
 
 
-def _build_litellm_model_configs(model_configs):
+def _normalize_openai_compatible_model_name(model_name, api_base):
+    if not isinstance(model_name, str):
+        return model_name
+
+    normalized_name = model_name.strip()
+    normalized_base = str(api_base or "")
+
+    if "dashscope.aliyuncs.com" in normalized_base and normalized_name.startswith("openai/"):
+        return normalized_name.removeprefix("openai/")
+
+    return normalized_name
+
+
+def _build_model_configs(model_configs, normalize_model_name):
     if not isinstance(model_configs, dict):
         return {}
 
-    litellm_configs = {}
+    normalized_configs = {}
     for key, value in model_configs.items():
         if not isinstance(value, dict):
-            litellm_configs[key] = value
+            normalized_configs[key] = value
             continue
 
         normalized_value = dict(value)
-        normalized_value["model_name"] = _normalize_litellm_model_name(
+        normalized_value["model_name"] = normalize_model_name(
             normalized_value.get("model_name"),
             normalized_value.get("api_base") or normalized_value.get("base_url"),
         )
-        litellm_configs[key] = normalized_value
+        normalized_configs[key] = normalized_value
 
-    return litellm_configs
+    return normalized_configs
+
+
+def _build_litellm_model_configs(model_configs):
+    return _build_model_configs(model_configs, _normalize_litellm_model_name)
+
+
+def _build_openai_compatible_model_configs(model_configs):
+    return _build_model_configs(model_configs, _normalize_openai_compatible_model_name)
 
 
 # Load full config dict
@@ -73,6 +94,7 @@ _CONFIG = _load_config_file()
 # Expose MODEL_CONFIGS and ABUTION_CONFIG with sensible defaults
 MODEL_CONFIGS = _CONFIG.get("MODEL_CONFIGS", {})
 LITELLM_MODEL_CONFIGS = _build_litellm_model_configs(MODEL_CONFIGS)
+OPENAI_COMPAT_MODEL_CONFIGS = _build_openai_compatible_model_configs(MODEL_CONFIGS)
 ABUTION_CONFIG = _CONFIG.get("ABUTION_CONFIG", {})
 # Expose processing config (save flags, device mode, batching)
 PROCESSING_CONFIG = _CONFIG.get("PROCESSING_CONFIG", {})

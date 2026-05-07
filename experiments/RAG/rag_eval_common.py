@@ -65,10 +65,10 @@ def filter_cases(
 
 
 def build_knowlion(graph_name: str):
-    from config import MODEL_CONFIGS
+    from config import LITELLM_MODEL_CONFIGS
     from knowlion.abution_knowlion_driver import KnowLion
 
-    return KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name)
+    return KnowLion(model_configs=LITELLM_MODEL_CONFIGS or {}, graph_name=graph_name)
 
 
 def get_output_dir(output_dir: str | Path) -> Path:

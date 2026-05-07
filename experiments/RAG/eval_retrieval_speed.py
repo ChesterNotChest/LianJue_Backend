@@ -207,13 +207,13 @@ def _summarize_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main() -> None:
     args = parse_args()
-    from config import MODEL_CONFIGS
+    from config import LITELLM_MODEL_CONFIGS
     from knowlion.abution_knowlion_driver import KnowLion
 
     cases = load_test_cases(args.cases_path)
     output_dir = get_output_dir(args.output_dir)
 
-    knowlion = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=args.graph_name)
+    knowlion = KnowLion(model_configs=LITELLM_MODEL_CONFIGS or {}, graph_name=args.graph_name)
     retriever = knowlion._get_advanced_retriever()
     if retriever is None:
         raise RuntimeError(f"Failed to initialize retriever for graph: {args.graph_name}")

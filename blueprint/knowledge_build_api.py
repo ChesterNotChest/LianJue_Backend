@@ -21,34 +21,6 @@ def _safe_remove_path(path_value):
         pass
 
 
-def _path_exists(path_value):
-    if not path_value:
-        return False
-
-    path = Path(path_value)
-    if path.is_absolute():
-        return path.exists()
-
-    base_dir = Path(__file__).resolve().parents[1]
-    return (base_dir / path).exists()
-
-
-def _job_needs_cleanup(job_detail):
-    if not job_detail:
-        return False
-
-    status = job_detail.get('status')
-    if status == 'failed':
-        return True
-
-    if status == 'completed':
-        markdown_path = job_detail.get('markdown_path')
-        knowledge_path = job_detail.get('knowledge_path')
-        return not _path_exists(markdown_path) or not _path_exists(knowledge_path)
-
-    return False
-
-
 def _purge_job_record(job_id):
     job = get_job_by_id(job_id)
     if not job:
@@ -400,11 +372,7 @@ def list_jobs_api():
         out = []
         for r in rows:
             try:
-                detail = jobs_task.get_job_detail_info(r.job_id)
-                if _job_needs_cleanup(detail):
-                    _purge_job_record(r.job_id)
-                    continue
-                out.append(detail)
+                out.append(jobs_task.get_job_detail_info(r.job_id))
             except Exception:
                 out.append({'job_id': getattr(r, 'job_id', None)})
 

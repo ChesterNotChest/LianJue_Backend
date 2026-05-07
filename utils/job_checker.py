@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import json
 import re
-from config import PROCESSING_CONFIG, MODEL_CONFIGS
+from config import PROCESSING_CONFIG, LITELLM_MODEL_CONFIGS
 from knowlion.abution_knowlion_driver import KnowLion
 from tasks.process_task import file_to_md
 from tasks.post_process_task import md_to_triples, triples_to_knowledge, knowledge_to_save
@@ -110,7 +110,7 @@ class JobChecker:
             logger.info("No local graph records found; skipping remote graph reconciliation")
             return
 
-        inspector = KnowLion(MODEL_CONFIGS, graph_name=self.default_graph_name)
+        inspector = KnowLion(LITELLM_MODEL_CONFIGS, graph_name=self.default_graph_name)
         remote_graph_names = self._fetch_remote_graph_names(inspector)
         if remote_graph_names is None:
             logger.warning(
@@ -134,7 +134,7 @@ class JobChecker:
                 continue
 
             logger.warning("Remote graph missing for '%s'; calling init_graph()", graph_name)
-            KnowLion(MODEL_CONFIGS, graph_name=graph_name).init_graph()
+            KnowLion(LITELLM_MODEL_CONFIGS, graph_name=graph_name).init_graph()
 
     def _fetch_remote_graph_names(self, knowlion: KnowLion):
         try:
@@ -404,7 +404,7 @@ class JobChecker:
                 except Exception as e:
                     logger.error(f"Cannot resolve graph for job {job_id}: {e}")
                     raise
-                knowlion = KnowLion(MODEL_CONFIGS, graph_name=graph_name)
+                knowlion = KnowLion(LITELLM_MODEL_CONFIGS, graph_name=graph_name)
                 _file_path, _md_content, _partial_files, total_batches = file_to_md(knowlion, job_id, process_index=cur_progress)
                 job = get_job_by_id(job_id)
                 if not job:
@@ -458,7 +458,7 @@ class JobChecker:
             except Exception as e:
                 logger.error(f"Cannot resolve graph for job {job_id}: {e}")
                 raise
-            knowlion = KnowLion(MODEL_CONFIGS, graph_name=graph_name)
+            knowlion = KnowLion(LITELLM_MODEL_CONFIGS, graph_name=graph_name)
 
             if not getattr(job, 'triples_path', None):
                 update_job_stage(job_id, 'md_to_triples')

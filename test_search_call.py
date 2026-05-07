@@ -11,7 +11,7 @@ import argparse
 import json
 
 from knowlion.abution_knowlion_driver import KnowLion
-from config import MODEL_CONFIGS
+from config import LITELLM_MODEL_CONFIGS
 import sys
 
 
@@ -23,7 +23,7 @@ def main():
     args = p.parse_args()
 
     def run_query_loop(graph_name):
-        kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name)
+        kl = KnowLion(model_configs=LITELLM_MODEL_CONFIGS or {}, graph_name=graph_name)
         while True:
             try:
                 q = input('Query (type "/exit" to change graph, "/quit" to exit): ').strip()
@@ -63,7 +63,7 @@ def main():
     # If a single text was provided on the command line, run it once (graph from --graph or default)
     if args.text:
         graph_name = args.graph or 'RAG'
-        kl = KnowLion(model_configs=MODEL_CONFIGS or {}, graph_name=graph_name)
+        kl = KnowLion(model_configs=LITELLM_MODEL_CONFIGS or {}, graph_name=graph_name)
         print('--- SEARCH RESULT ---')
         try:
             search_result = kl.search(args.text, top_k=args.top_k)
