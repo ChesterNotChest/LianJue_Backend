@@ -29,7 +29,7 @@
 - 不直接生成题目、文档、思维导图
 - 不替代路径规划 Agent
 - 不替代答疑 Agent
-- 不直接写回数据库中的画像快照
+- 不在普通读取画像时主动重评估；画像缺失或调用方显式刷新时才运行评估流程
 
 ## 2. 工作流
 
@@ -46,6 +46,7 @@
 - `learning_records`
 - `answer_records`
 - `resource_usage`
+- `refresh_profile`
 
 ### 步骤 2：读取上下文
 
@@ -96,9 +97,13 @@ Agent 会把多个来源的结果融合成最终画像，主要包括：
 - 风险判断
 - 证据链和置信度
 
-### 步骤 6：返回结果
+### 步骤 6：持久化与返回结果
 
-接口返回 JSON，核心字段是 `profile`。
+指定 `syllabus_id` 时，画像会保存到 `profiles/{syllabus_id}-{user_id}.json`，并把绝对路径写入 `user_syllabus.personal_profile_path`。
+
+普通读取画像时，接口会优先返回已持久化的画像；只有画像缺失、文件不可读，或请求显式传入 `refresh_profile: true` 时，才会重新运行画像 Agent。
+
+接口返回 JSON，核心字段是 `profile`，并额外返回 `profile_path`、`profile_saved`、`profile_refreshed`。
 
 ## 3. 如何调用
 
@@ -116,7 +121,8 @@ Agent 会把多个来源的结果融合成最终画像，主要包括：
   "learning_goal": "掌握 Python 基础语法",
   "learning_records": [],
   "answer_records": [],
-  "resource_usage": []
+  "resource_usage": [],
+  "refresh_profile": false
 }
 ```
 
@@ -129,6 +135,7 @@ Agent 会把多个来源的结果融合成最终画像，主要包括：
 - `learning_records`：可选，学习行为记录
 - `answer_records`：可选，答题数据
 - `resource_usage`：可选，资源使用记录
+- `refresh_profile`：可选，默认 `false`。为 `false` 时优先读取持久化画像；为 `true` 时强制重新评估并写回画像。
 
 ### 返回示例
 

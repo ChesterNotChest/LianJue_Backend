@@ -143,6 +143,56 @@ def test_learning_profile_fallback_prefers_existing_profile_then_save():
     assert lpt._fallback_next_learning_profile_tool(save_state)["tool_name"] == "save_or_update_profile"
 
 
+def test_get_or_build_learning_profile_returns_persisted_profile_without_refresh(monkeypatch):
+    persisted = {
+        "user_id": 3,
+        "syllabus_scope": [{"syllabus_id": 11}],
+        "confidence": 0.8,
+        "profile_path": "profiles/11-3.json",
+        "saved_at": 1760000000,
+    }
+    build_calls = []
+    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
+    monkeypatch.setattr(lpt, "build_learning_profile", lambda *args, **kwargs: build_calls.append((args, kwargs)) or {"user_id": 3})
+
+    profile = lpt.get_or_build_learning_profile(3, 11)
+
+    assert profile["confidence"] == 0.8
+    assert profile["profile_saved"] is True
+    assert profile["profile_refreshed"] is False
+    assert build_calls == []
+
+
+def test_get_or_build_learning_profile_builds_when_missing_or_refreshing(monkeypatch):
+    build_calls = []
+
+    def fake_build(*args, **kwargs):
+        build_calls.append((args, kwargs))
+        return {"user_id": args[0], "confidence": 0.6}
+
+    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (None, None))
+    monkeypatch.setattr(lpt, "build_learning_profile", fake_build)
+
+    missing_profile = lpt.get_or_build_learning_profile(4, 12)
+
+    assert missing_profile["profile_refreshed"] is True
+    assert len(build_calls) == 1
+
+    persisted = {
+        "user_id": 4,
+        "syllabus_scope": [{"syllabus_id": 12}],
+        "confidence": 0.9,
+        "profile_path": "profiles/12-4.json",
+        "saved_at": 1760000000,
+    }
+    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
+
+    refreshed_profile = lpt.get_or_build_learning_profile(4, 12, refresh_profile=True)
+
+    assert refreshed_profile["profile_refreshed"] is True
+    assert len(build_calls) == 2
+
+
 def test_learning_profile_result_schema_accepts_profile():
     result = lpt.LearningProfileResult(
         success=True,

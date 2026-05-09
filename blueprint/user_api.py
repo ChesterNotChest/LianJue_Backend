@@ -9,11 +9,23 @@ from tasks.user_task import (
     get_user_detail_info,
     list_all_user_brief_info,
 )
-from tasks.learning_profile_task import build_learning_profile
+from tasks.learning_profile_task import get_or_build_learning_profile
 
 
 
 bp = Blueprint('user_api', __name__, url_prefix='/api')
+
+
+def _parse_bool(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+    return default
 
 
 @bp.route('/user_register', methods=['POST'])
@@ -326,7 +338,8 @@ def user_learning_profile_api():
         "learning_goal": string (optional),
         "learning_records": any (optional),
         "answer_records": any (optional),
-        "resource_usage": any (optional)
+        "resource_usage": any (optional),
+        "refresh_profile": boolean (optional, default false)
     }
     输出：
     {
@@ -347,9 +360,12 @@ def user_learning_profile_api():
             'error_code': 'missing_fields'
         }), 400
 
-    profile = build_learning_profile(
+    refresh_profile = _parse_bool(data.get('refresh_profile'), default=False)
+
+    profile = get_or_build_learning_profile(
         int(user_id),
         int(syllabus_id) if syllabus_id is not None and str(syllabus_id).strip() != '' else None,
+        refresh_profile=refresh_profile,
         dialogue_text=data.get('dialogue_text'),
         learning_goal=data.get('learning_goal'),
         learning_records=data.get('learning_records'),
@@ -369,6 +385,7 @@ def user_learning_profile_api():
         'profile': profile,
         'profile_path': profile.get('profile_path') if isinstance(profile, dict) else None,
         'profile_saved': bool(profile.get('profile_saved')) if isinstance(profile, dict) else False,
+        'profile_refreshed': bool(profile.get('profile_refreshed')) if isinstance(profile, dict) else False,
         'error_message': '',
         'error_code': ''
     })

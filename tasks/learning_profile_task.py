@@ -136,6 +136,42 @@ def _save_personal_profile(user_id: int, syllabus_id: int, profile: dict) -> Opt
 		return None
 
 
+def _profile_has_required_identity(profile: dict, user_id: int, syllabus_id: int) -> bool:
+	if not isinstance(profile, dict):
+		return False
+	try:
+		if int(profile.get('user_id')) != int(user_id):
+			return False
+	except Exception:
+		return False
+
+	scope = profile.get('syllabus_scope')
+	if isinstance(scope, list):
+		for item in scope:
+			if not isinstance(item, dict):
+				continue
+			try:
+				if int(item.get('syllabus_id')) == int(syllabus_id):
+					return True
+			except Exception:
+				continue
+	return bool(profile.get('profile_path') or profile.get('saved_at'))
+
+
+def get_persisted_learning_profile(user_id: int, syllabus_id: int) -> Optional[dict]:
+	profile, profile_path = _load_existing_profile(user_id, syllabus_id)
+	if not isinstance(profile, dict):
+		return None
+	if not _profile_has_required_identity(profile, user_id, syllabus_id):
+		return None
+	result = dict(profile)
+	if profile_path:
+		result['profile_path'] = profile_path
+	result['profile_saved'] = True
+	result['profile_refreshed'] = False
+	return result
+
+
 def _safe_text(value: Any) -> str:
 	if value is None:
 		return ''
@@ -1527,3 +1563,32 @@ def build_learning_profile(
 			return state['profile']
 		return result.profile
 	return None
+
+
+def get_or_build_learning_profile(
+	user_id: int,
+	syllabus_id: Optional[int] = None,
+	refresh_profile: bool = False,
+	dialogue_text: Any = None,
+	learning_goal: Optional[str] = None,
+	learning_records: Any = None,
+	answer_records: Any = None,
+	resource_usage: Any = None,
+) -> Optional[dict]:
+	if syllabus_id is not None and not refresh_profile:
+		profile = get_persisted_learning_profile(user_id, int(syllabus_id))
+		if profile is not None:
+			return profile
+
+	profile = build_learning_profile(
+		user_id,
+		syllabus_id,
+		dialogue_text=dialogue_text,
+		learning_goal=learning_goal,
+		learning_records=learning_records,
+		answer_records=answer_records,
+		resource_usage=resource_usage,
+	)
+	if isinstance(profile, dict):
+		profile['profile_refreshed'] = True
+	return profile
