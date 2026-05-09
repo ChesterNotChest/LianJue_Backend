@@ -367,6 +367,8 @@ def user_learning_profile_api():
     return jsonify({
         'success': True,
         'profile': profile,
+        'profile_path': profile.get('profile_path') if isinstance(profile, dict) else None,
+        'profile_saved': bool(profile.get('profile_saved')) if isinstance(profile, dict) else False,
         'error_message': '',
         'error_code': ''
     })

@@ -23,7 +23,13 @@ def list_user_syllabuses_by_syllabus(syllabus_id: int, syllabus_permission: str 
     return q.all()
 
 
-def create_user_syllabus(user_id: int, syllabus_id: int, syllabus_permission: str = 'user', personal_syllabus_path: str = None):
+def create_user_syllabus(
+    user_id: int,
+    syllabus_id: int,
+    syllabus_permission: str = 'user',
+    personal_syllabus_path: str = None,
+    personal_profile_path: str = None,
+):
     """Create a UserSyllabus entry and return it. If it already exists, return the existing row."""
     existing = get_user_syllabus(user_id, syllabus_id)
     if existing:
@@ -35,6 +41,9 @@ def create_user_syllabus(user_id: int, syllabus_id: int, syllabus_permission: st
         if personal_syllabus_path and getattr(existing, 'personal_syllabus_path', None) != personal_syllabus_path:
             existing.personal_syllabus_path = personal_syllabus_path
             updated = True
+        if personal_profile_path and getattr(existing, 'personal_profile_path', None) != personal_profile_path:
+            existing.personal_profile_path = personal_profile_path
+            updated = True
         if updated:
             db.session.commit()
         return existing
@@ -44,6 +53,7 @@ def create_user_syllabus(user_id: int, syllabus_id: int, syllabus_permission: st
         syllabus_id=syllabus_id,
         syllabus_permission=syllabus_permission,
         personal_syllabus_path=personal_syllabus_path,
+        personal_profile_path=personal_profile_path,
     )
     db.session.add(us)
     db.session.commit()
@@ -61,6 +71,27 @@ def set_personal_syllabus_path(user_id: int, syllabus_id: int, path: str):
             ps = create_user_syllabus(user_id, syllabus_id, personal_syllabus_path=path)
         else:
             ps.personal_syllabus_path = path
+            db.session.commit()
+        return ps
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+
+def set_personal_profile_path(user_id: int, syllabus_id: int, path: str):
+    """Create or update the personal_profile_path for the user+syllabus.
+
+    Returns the UserSyllabus instance on success, or None on failure.
+    """
+    try:
+        ps = get_user_syllabus(user_id, syllabus_id)
+        if not ps:
+            ps = create_user_syllabus(user_id, syllabus_id, personal_profile_path=path)
+        else:
+            ps.personal_profile_path = path
             db.session.commit()
         return ps
     except Exception:

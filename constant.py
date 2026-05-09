@@ -25,6 +25,7 @@ class BasePath(Enum):
         SYLLABUS_DRAFT_ROOT = "/schedule/syllabus_draft"
         SYLLABUS_ROOT = "/schedule/syllabus"
         PERSONAL_SYLLABUS_ROOT = "/schedule/student_alt" # /user_{user_id}
+        PERSONAL_PROFILE_ROOT = "/profiles"
 
         MATERIAL_DRAFT_ROOT = "/material/draft_material_json" 
         MATERIAL_JSON_ROOT = "/material/material_json"

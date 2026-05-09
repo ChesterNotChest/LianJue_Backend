@@ -1,33 +1,6 @@
 # USER_PROFILE_SAVE_PLAN
 
-## 1. 改前现状（改后删除）
-
-当前画像入口是 `POST /api/user_learning_profile`，API 位于 `blueprint/user_api.py`，业务收口在 `tasks/learning_profile_task.py::build_learning_profile(...)`。
-
-现有流程大体是：
-
-1. API 接收 `user_id`、可选 `syllabus_id`、`dialogue_text`、`learning_goal`、`learning_records`、`answer_records`、`resource_usage`。
-2. `build_learning_profile(...)` 读取用户、用户课程关系、课程标题，并构建本次运行的 `state`。
-3. `run_learning_profile_agent(state)` 启动 `learning_profile_agent`。
-4. Agent 通过工具顺序完成：
-   - `load_history_context`
-   - `load_personal_syllabus_context`
-   - `normalize_events`
-   - `compute_features`
-   - `assemble_profile`
-5. 最终画像被放在 `state["profile"]`，然后由 `build_learning_profile(...)` 直接返回给 API。
-
-也就是说，当前画像是“即时计算结果”：
-
-- 会读取 `history/{syllabus_id}_{user_id}.json` 作为历史问答上下文。
-- 会读取 `user_syllabus.personal_syllabus_path` 指向的个人大纲 JSON。
-- 会结合本次请求传入的学习记录、答题记录、资源使用记录。
-- 但不会读取“上一次画像结果”。
-- 也不会把本次画像写回数据库或本地 JSON。
-
-因此你的判断基本成立：画像每次调用都会重新评估；现有实现没有本地持久化画像，也没有基于已有画像做增量更新的工具链。要做“实时更新画像”，合理落点是给 `user_syllabus` 增加 `personal_profile_path`，将画像落盘到类似 `profiles/{syllabus_id}-{user_id}.json` 的文件，再让画像 Agent 在后续运行中先读已有画像，并在最后通过 update/save tool 写回。
-
-## 2. 阶段一：路径常量与数据库字段
+## 1. 阶段一：路径常量与数据库字段
 
 ### 0. 新增的常量定义
 
@@ -135,7 +108,7 @@ def create_user_syllabus(..., personal_profile_path: str = None)
 - 本地空库建表后确认 `user_syllabus.personal_profile_path` 存在。
 - 老数据迁移后该字段允许为空，不阻塞现有个人大纲流程。
 
-## 3. 阶段二：画像文件路径与读写工具函数
+## 2. 阶段二：画像文件路径与读写工具函数
 
 ### 0. 新增的常量定义
 
@@ -264,7 +237,7 @@ def _save_personal_profile(user_id: int, syllabus_id: int, profile: dict) -> Opt
 
 - `tests/conftest.py` 需要把 `profiles/` 加入测试 JSON 清理目录，避免测试污染本地持久化文件。
 
-## 4. 阶段三：Agent 工具链接入已有画像与保存画像
+## 3. 阶段三：Agent 工具链接入已有画像与保存画像
 
 ### 0. 新增的常量定义
 
@@ -459,7 +432,7 @@ Agent 选择测试：
   - save/update
 - 断言 API 返回仍包含 `profile`，且 profile 内新增 `profile_path` 不破坏原字段。
 
-## 5. 阶段四：API 返回与下游消费约定
+## 4. 阶段四：API 返回与下游消费约定
 
 ### 0. 新增的常量定义
 
@@ -557,7 +530,7 @@ API 测试：
   - `profile_saved=False`
   - 不影响即时画像结果
 
-## 6. 阶段五：文档、兼容性与清理
+## 5. 阶段五：文档、兼容性与清理
 
 ### 0. 新增的常量定义
 
@@ -607,4 +580,165 @@ API 测试：
   - `user_syllabus.personal_profile_path` 存的是绝对路径。
   - 重复调用同一个用户课程时，旧文件被更新而不是创建多份。
 
-实现完成后，删除本计划第一节“改前现状（改后删除）”，并把剩余内容收束为最终实现说明或迁移记录。
+## 6. 阶段六：画像触发策略收口
+
+### 0. 新增的常量定义
+
+本阶段暂不新增常量。
+
+如果后续需要把触发策略配置化，可再考虑新增：
+
+```python
+PROFILE_REFRESH_ON_READ = False
+```
+
+但第一版建议不要加配置项，直接把语义收口到函数参数和调用方约定里。
+
+### 1. 影响的文件范围
+
+- `blueprint/user_api.py`
+- `tasks/learning_profile_task.py`
+- 总 Agent 调用画像的编排逻辑所在文件
+- `docs/learning_profile_agent_workflow.md`
+- `USER_PROFILE_SAVE_PLAN.md`
+- 对应测试文件：
+  - `tests/test_learning_profile.py`
+  - `tests/test_learning_profile_toolchain.py`
+  - 如新增 API 行为测试，则补充对应 blueprint 测试
+
+### 2. 函数级收口的完整数据流
+
+持久化完成后，画像触发策略应从“读取即重评估”调整为：
+
+1. 调用方需要画像时，先按 `user_id + syllabus_id` 读取 `user_syllabus.personal_profile_path`。
+2. 如果路径存在且 JSON 可读，默认直接返回持久化画像，不主动触发评估 Agent。
+3. 如果路径缺失、文件不存在、JSON 损坏或关键字段不完整，则触发一次画像 Agent 初始化画像，并写回 `profiles/{syllabus_id}-{user_id}.json`。
+4. 如果总 Agent 判断当前学习事件足以改变画像，显式调用刷新入口，触发评估 Agent。
+5. 刷新完成后仍写回同一个画像文件，并更新 `profile_revision/saved_at/profile_path/profile_saved`。
+
+最终语义：
+
+- “取画像”默认是 read-through cache：有缓存读缓存，缺缓存才 build。
+- “刷新画像”是显式行为：由总 Agent 或明确的 `refresh_profile=true` 请求触发。
+- 画像 Agent 不再作为普通查询链路里的主动自动评估器。
+
+### 3. 精确到输入输出的函数级收口，以及重要函数内部逻辑
+
+建议新增读取函数：
+
+```python
+def get_persisted_learning_profile(user_id: int, syllabus_id: int) -> Optional[dict]
+```
+
+输入：
+
+- `user_id`
+- `syllabus_id`
+
+输出：
+
+- 成功：画像 dict
+- 失败或不存在：`None`
+
+内部逻辑：
+
+1. 调用 `_load_existing_profile(user_id, syllabus_id)`。
+2. 校验返回值是 dict。
+3. 补齐 `profile_path`、`profile_saved=True` 等读取态字段。
+4. 返回画像；不调用 Agent，不重算特征。
+
+建议新增 read-through 收口：
+
+```python
+def get_or_build_learning_profile(
+    user_id: int,
+    syllabus_id: int,
+    refresh_profile: bool = False,
+    **profile_inputs,
+) -> Optional[dict]
+```
+
+输入：
+
+- `user_id`
+- `syllabus_id`
+- `refresh_profile`：是否强制刷新
+- `profile_inputs`：`dialogue_text/learning_goal/learning_records/answer_records/resource_usage`
+
+输出：
+
+- 画像 dict 或 `None`
+
+内部逻辑：
+
+1. 如果 `refresh_profile=False`：
+   - 先调用 `get_persisted_learning_profile(...)`。
+   - 如果拿到画像，直接返回。
+2. 如果画像缺失，或 `refresh_profile=True`：
+   - 调用现有 `build_learning_profile(...)`。
+   - 由 `build_learning_profile(...)` 完成评估、合并和保存。
+3. `build_learning_profile(...)` 继续保留为“强制评估/刷新”的底层函数。
+
+API 建议调整：
+
+```python
+POST /api/user_learning_profile
+{
+  "user_id": 1,
+  "syllabus_id": 8,
+  "refresh_profile": false
+}
+```
+
+输出：
+
+```json
+{
+  "success": true,
+  "profile": {},
+  "profile_path": "...",
+  "profile_saved": true,
+  "profile_refreshed": false,
+  "error_message": "",
+  "error_code": ""
+}
+```
+
+内部逻辑：
+
+1. 默认 `refresh_profile=False`。
+2. 若持久化画像存在，返回旧画像，并设置 `profile_refreshed=False`。
+3. 若持久化画像缺失，调用构建逻辑，并设置 `profile_refreshed=True`。
+4. 若请求显式 `refresh_profile=True`，无论是否有旧画像都刷新。
+
+总 Agent 调用约定：
+
+- 需要普通上下文时，调用读取型接口，不触发刷新。
+- 只有在以下场景显式刷新：
+  - 新学习事件累计到足够影响画像。
+  - 个人大纲 `competance/competance_progress` 有明显变化。
+  - 答题记录、资源使用或对话中出现强信号。
+  - 用户/教师主动要求重新评估。
+  - 持久化画像缺失或不可读。
+
+### 4. 测试用例的构建描述
+
+新增或调整测试：
+
+- 已有 `personal_profile_path` 且文件可读时：
+  - 调用 `get_or_build_learning_profile(refresh_profile=False)`。
+  - 断言不调用 `run_learning_profile_agent(...)`。
+  - 断言直接返回持久化画像。
+- 画像文件缺失时：
+  - 调用 `get_or_build_learning_profile(refresh_profile=False)`。
+  - 断言会调用 `build_learning_profile(...)`。
+  - 断言生成并保存新画像。
+- 显式刷新时：
+  - 即使旧画像存在，`refresh_profile=True` 也调用 `build_learning_profile(...)`。
+  - 断言 `profile_revision` 递增。
+- API 测试：
+  - 默认请求不刷新已有画像，返回 `profile_refreshed=False`。
+  - `refresh_profile=true` 请求刷新画像，返回 `profile_refreshed=True`。
+- 总 Agent 侧测试：
+  - 普通上下文读取不触发评估 Agent。
+  - 需要更新画像时才显式调用刷新入口。

@@ -63,12 +63,17 @@ def test_learning_profile_toolchain_builds_profile_without_llm():
         ],
         "now_ts": 1760000000,
         "history_entries": [],
+        "existing_profile": None,
+        "existing_profile_path": None,
+        "existing_profile_loaded": False,
         "loaded_personal_syllabuses": [],
         "history_loaded": False,
         "personal_syllabus_loaded": False,
         "normalized_events": {},
         "feature_bundle": {},
         "profile": None,
+        "profile_path": None,
+        "profile_saved": False,
         "tool_trace": [],
     }
 
@@ -87,6 +92,55 @@ def test_learning_profile_toolchain_builds_profile_without_llm():
     assert "函数参数" in profile["concept_gaps"]
     assert profile["knowledge_mastery"]["knowledge_point_details"]["函数参数"]["attempt_count"] == 1
     assert profile["source_events"] == ["answer_records", "learning_records", "resource_usage"]
+
+
+def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
+    state = {
+        "user_id": 2,
+        "syllabus_id": 9,
+        "profile": {"user_id": 2, "confidence": 0.7, "updated_at": 1760000000},
+        "existing_profile": {"profile_revision": 3, "updated_at": 1750000000, "confidence": 0.4},
+        "profile_path": None,
+        "profile_saved": False,
+    }
+    updated_paths = []
+    monkeypatch.setattr(
+        lpt,
+        "set_personal_profile_path",
+        lambda user_id, syllabus_id, path: updated_paths.append((user_id, syllabus_id, path)) or True,
+    )
+
+    result = lpt._tool_save_or_update_profile(state)
+
+    assert result["saved"] is True
+    assert result["profile_revision"] == 4
+    assert state["profile_saved"] is True
+    assert state["profile"]["profile_saved"] is True
+    assert state["profile"]["previous_confidence"] == 0.4
+    assert updated_paths == [(2, 9, state["profile_path"])]
+    assert state["profile_path"].endswith("profiles\\9-2.json") or state["profile_path"].endswith("profiles/9-2.json")
+
+
+def test_learning_profile_fallback_prefers_existing_profile_then_save():
+    load_state = {
+        "user_id": 2,
+        "syllabus_id": 9,
+        "existing_profile_loaded": False,
+    }
+    assert lpt._fallback_next_learning_profile_tool(load_state)["tool_name"] == "load_existing_profile_context"
+
+    save_state = {
+        "user_id": 2,
+        "syllabus_id": 9,
+        "existing_profile_loaded": True,
+        "history_loaded": True,
+        "personal_syllabus_loaded": True,
+        "normalized_events": {"all_events": []},
+        "feature_bundle": {"profile": {}},
+        "profile": {"user_id": 2},
+        "profile_saved": False,
+    }
+    assert lpt._fallback_next_learning_profile_tool(save_state)["tool_name"] == "save_or_update_profile"
 
 
 def test_learning_profile_result_schema_accepts_profile():

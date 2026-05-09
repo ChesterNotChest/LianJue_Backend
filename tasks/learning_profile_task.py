@@ -14,9 +14,10 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
+from constant import BasePath
 from repositories.syllabus_repo import get_syllabus_by_id
 from repositories.user_repo import get_user_by_id
-from repositories.user_syllabus_repo import list_user_syllabuses
+from repositories.user_syllabus_repo import get_user_syllabus, list_user_syllabuses, set_personal_profile_path
 from utils.llm_utils import get_model_instance
 
 
@@ -59,6 +60,78 @@ def _load_json_file(path: str) -> Any:
 	try:
 		with open(path, 'r', encoding='utf-8') as f:
 			return json.load(f)
+	except Exception:
+		return None
+
+
+def _profile_root_dir() -> str:
+	root_name = str(BasePath.PERSONAL_PROFILE_ROOT.value).strip().strip('/\\')
+	return os.path.abspath(os.path.join(os.getcwd(), root_name))
+
+
+def _build_personal_profile_path(user_id: int, syllabus_id: int) -> str:
+	root = _profile_root_dir()
+	os.makedirs(root, exist_ok=True)
+	return os.path.abspath(os.path.join(root, f'{syllabus_id}-{user_id}.json'))
+
+
+def _load_existing_profile(user_id: int, syllabus_id: Optional[int]) -> Tuple[Optional[dict], Optional[str]]:
+	if syllabus_id is None:
+		return None, None
+
+	candidate_path = _build_personal_profile_path(user_id, syllabus_id)
+	try:
+		relation = get_user_syllabus(user_id, syllabus_id)
+	except Exception:
+		relation = None
+
+	db_path = getattr(relation, 'personal_profile_path', None) if relation else None
+	for path in (db_path, candidate_path):
+		if not path:
+			continue
+		profile = _load_json_file(path)
+		if isinstance(profile, dict):
+			return profile, os.path.abspath(path)
+	return None, candidate_path
+
+
+def _merge_profile_update(existing_profile: Optional[dict], new_profile: dict) -> dict:
+	if not isinstance(new_profile, dict):
+		return {}
+
+	merged = dict(new_profile)
+	if isinstance(existing_profile, dict) and existing_profile:
+		previous_revision = existing_profile.get('profile_revision') or 0
+		try:
+			previous_revision = int(previous_revision)
+		except Exception:
+			previous_revision = 0
+		merged['previous_profile_updated_at'] = existing_profile.get('updated_at') or existing_profile.get('saved_at')
+		merged['previous_confidence'] = existing_profile.get('confidence')
+		merged['profile_revision'] = previous_revision + 1
+	else:
+		merged['profile_revision'] = int(merged.get('profile_revision') or 1)
+	return merged
+
+
+def _save_personal_profile(user_id: int, syllabus_id: int, profile: dict) -> Optional[str]:
+	if not isinstance(profile, dict):
+		return None
+
+	try:
+		profile_path = _build_personal_profile_path(user_id, syllabus_id)
+		payload = dict(profile)
+		payload['profile_schema_version'] = int(payload.get('profile_schema_version') or 1)
+		payload['profile_path'] = profile_path
+		payload['profile_saved'] = True
+		payload['saved_at'] = int(time())
+		with open(profile_path, 'w', encoding='utf-8') as f:
+			json.dump(payload, f, ensure_ascii=False, indent=2)
+		if not set_personal_profile_path(user_id, syllabus_id, profile_path):
+			return None
+		profile.clear()
+		profile.update(payload)
+		return profile_path
 	except Exception:
 		return None
 
@@ -900,6 +973,10 @@ def get_learning_profile_agent() -> Agent:
 	)
 
 	@agent.tool(sequential=True)
+	def load_existing_profile_context(ctx: RunContext[LearningProfileDeps]) -> dict:
+		return _tool_load_existing_profile_context(ctx.deps.state)
+
+	@agent.tool(sequential=True)
 	def load_history_context(ctx: RunContext[LearningProfileDeps]) -> dict:
 		return _tool_load_history_context(ctx.deps.state)
 
@@ -919,6 +996,10 @@ def get_learning_profile_agent() -> Agent:
 	def assemble_profile(ctx: RunContext[LearningProfileDeps]) -> dict:
 		return _tool_assemble_profile(ctx.deps.state)
 
+	@agent.tool(sequential=True)
+	def save_or_update_profile(ctx: RunContext[LearningProfileDeps]) -> dict:
+		return _tool_save_or_update_profile(ctx.deps.state)
+
 	return agent
 
 
@@ -933,6 +1014,7 @@ def _build_learning_profile_user_prompt(state: Dict[str, Any]) -> str:
 		'answer_record_count': len(state.get('answer_records') or []) if isinstance(state.get('answer_records'), (list, tuple)) else 0,
 		'resource_usage_count': len(state.get('resource_usage') or []) if isinstance(state.get('resource_usage'), (list, tuple)) else 0,
 		'available_context': {
+			'existing_profile': state.get('syllabus_id') is not None,
 			'history_entries': state.get('syllabus_id') is not None,
 			'personal_syllabus': bool(state.get('profile_scope')),
 		},
@@ -964,6 +1046,8 @@ def _summarize_learning_profile_state(state: Dict[str, Any]) -> Dict[str, Any]:
 			'resource_usage_count': len(state.get('resource_usage') or []) if isinstance(state.get('resource_usage'), (list, tuple)) else 0,
 		},
 		'loaded_context': {
+			'existing_profile_loaded': bool(state.get('existing_profile_loaded')),
+			'existing_profile_found': bool(state.get('existing_profile')),
 			'history_loaded': bool(state.get('history_loaded')),
 			'personal_syllabus_loaded': bool(state.get('personal_syllabus_loaded')),
 			'history_count': len(state.get('history_entries') or []),
@@ -979,6 +1063,8 @@ def _summarize_learning_profile_state(state: Dict[str, Any]) -> Dict[str, Any]:
 		},
 		'features_ready': bool(feature_bundle),
 		'profile_ready': bool(state.get('profile')),
+		'profile_saved': bool(state.get('profile_saved')),
+		'profile_path': state.get('profile_path') or state.get('existing_profile_path'),
 		'feature_summary': {
 			'confidence': feature_bundle.get('global_confidence'),
 			'overall_score': feature_bundle.get('overall_score'),
@@ -1017,12 +1103,14 @@ def _extract_tool_instruction(text: Any) -> Optional[Dict[str, Any]]:
 		return {'action': 'finalize', 'tool_name': None, 'reason': reason}
 	if action in {'tool', 'call', 'use', 'next'} and tool_name:
 		return {'action': 'tool', 'tool_name': tool_name, 'reason': reason}
-	if tool_name in {'load_history_context', 'load_personal_syllabus_context', 'normalize_events', 'compute_features', 'assemble_profile'}:
+	if tool_name in {'load_existing_profile_context', 'load_history_context', 'load_personal_syllabus_context', 'normalize_events', 'compute_features', 'assemble_profile', 'save_or_update_profile'}:
 		return {'action': 'tool', 'tool_name': tool_name, 'reason': reason}
 	return None
 
 
 def _fallback_next_learning_profile_tool(state: Dict[str, Any]) -> Dict[str, Any]:
+	if state.get('syllabus_id') is not None and not state.get('existing_profile_loaded'):
+		return {'action': 'tool', 'tool_name': 'load_existing_profile_context', 'reason': 'fallback load existing profile'}
 	if not state.get('history_loaded') and state.get('syllabus_id') is not None:
 		return {'action': 'tool', 'tool_name': 'load_history_context', 'reason': 'fallback load history'}
 	if not state.get('personal_syllabus_loaded') and state.get('profile_scope'):
@@ -1033,6 +1121,8 @@ def _fallback_next_learning_profile_tool(state: Dict[str, Any]) -> Dict[str, Any
 		return {'action': 'tool', 'tool_name': 'compute_features', 'reason': 'fallback compute features'}
 	if not state.get('profile'):
 		return {'action': 'tool', 'tool_name': 'assemble_profile', 'reason': 'fallback assemble profile'}
+	if state.get('syllabus_id') is not None and not state.get('profile_saved'):
+		return {'action': 'tool', 'tool_name': 'save_or_update_profile', 'reason': 'fallback save profile'}
 	return {'action': 'finalize', 'tool_name': None, 'reason': 'fallback finalize'}
 
 
@@ -1056,6 +1146,19 @@ def _tool_load_history_context(state: Dict[str, Any]) -> Dict[str, Any]:
 		'tool': 'load_history_context',
 		'history_count': len(history_entries),
 		'has_history': bool(history_entries),
+	}
+
+
+def _tool_load_existing_profile_context(state: Dict[str, Any]) -> Dict[str, Any]:
+	existing_profile, profile_path = _load_existing_profile(int(state['user_id']), state.get('syllabus_id'))
+	state['existing_profile'] = existing_profile
+	state['existing_profile_path'] = profile_path
+	state['existing_profile_loaded'] = True
+	return {
+		'tool': 'load_existing_profile_context',
+		'has_existing_profile': bool(existing_profile),
+		'profile_path': profile_path,
+		'existing_updated_at': existing_profile.get('updated_at') if isinstance(existing_profile, dict) else None,
 	}
 
 
@@ -1325,6 +1428,37 @@ def _tool_assemble_profile(state: Dict[str, Any]) -> Dict[str, Any]:
 	}
 
 
+def _tool_save_or_update_profile(state: Dict[str, Any]) -> Dict[str, Any]:
+	syllabus_id = state.get('syllabus_id')
+	if syllabus_id is None:
+		state['profile_saved'] = False
+		return {
+			'tool': 'save_or_update_profile',
+			'saved': False,
+			'profile_path': None,
+			'profile_revision': None,
+		}
+	if not state.get('profile'):
+		_tool_assemble_profile(state)
+
+	merged_profile = _merge_profile_update(state.get('existing_profile'), state.get('profile') or {})
+	profile_path = _save_personal_profile(int(state['user_id']), int(syllabus_id), merged_profile)
+	if profile_path:
+		state['profile'] = merged_profile
+		state['profile_path'] = profile_path
+		state['profile_saved'] = True
+	else:
+		if isinstance(state.get('profile'), dict):
+			state['profile']['profile_saved'] = False
+		state['profile_saved'] = False
+	return {
+		'tool': 'save_or_update_profile',
+		'saved': bool(profile_path),
+		'profile_path': profile_path,
+		'profile_revision': merged_profile.get('profile_revision'),
+	}
+
+
 def build_learning_profile(
 	user_id: int,
 	syllabus_id: Optional[int] = None,
@@ -1349,6 +1483,7 @@ def build_learning_profile(
 			'syllabus_id': getattr(row, 'syllabus_id', None),
 			'title': _safe_text(getattr(syllabus, 'title', None)) if syllabus else '',
 			'personal_syllabus_path': getattr(row, 'personal_syllabus_path', None),
+			'personal_profile_path': getattr(row, 'personal_profile_path', None),
 		})
 
 	state = {
@@ -1364,17 +1499,31 @@ def build_learning_profile(
 		'resource_usage': resource_usage,
 		'now_ts': int(time()),
 		'history_entries': [],
+		'existing_profile': None,
+		'existing_profile_path': None,
+		'existing_profile_loaded': False,
 		'loaded_personal_syllabuses': [],
 		'history_loaded': False,
 		'personal_syllabus_loaded': False,
 		'normalized_events': {},
 		'feature_bundle': {},
 		'profile': None,
+		'profile_path': None,
+		'profile_saved': False,
 		'tool_trace': [],
 	}
+	if syllabus_id is not None:
+		_tool_load_existing_profile_context(state)
 	result = run_learning_profile_agent(state)
 	if state.get('profile'):
+		if syllabus_id is not None and not state.get('profile_saved'):
+			_tool_save_or_update_profile(state)
 		return state['profile']
 	if isinstance(result, LearningProfileResult):
+		if isinstance(result.profile, dict):
+			state['profile'] = result.profile
+			if syllabus_id is not None and not state.get('profile_saved'):
+				_tool_save_or_update_profile(state)
+			return state['profile']
 		return result.profile
 	return None

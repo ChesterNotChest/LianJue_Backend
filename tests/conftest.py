@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JSON_ARTIFACT_DIRS = (
     ROOT / "schedule" / "syllabus_draft",
     ROOT / "schedule" / "syllabus",
+    ROOT / "profiles",
 )
 
 if str(ROOT) not in sys.path:
