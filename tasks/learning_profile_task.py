@@ -155,6 +155,7 @@ def _profile_has_required_identity(profile: dict, user_id: int, syllabus_id: int
 					return True
 			except Exception:
 				continue
+		return False
 	return bool(profile.get('profile_path') or profile.get('saved_at'))
 
 

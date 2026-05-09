@@ -1,5 +1,8 @@
 from types import SimpleNamespace
 
+from flask import Flask
+
+from blueprint import user_api
 from tasks import learning_profile_task as lpt
 
 
@@ -191,6 +194,66 @@ def test_get_or_build_learning_profile_builds_when_missing_or_refreshing(monkeyp
 
     assert refreshed_profile["profile_refreshed"] is True
     assert len(build_calls) == 2
+
+
+def test_get_persisted_learning_profile_rejects_identity_mismatch(monkeypatch):
+    wrong_user = {
+        "user_id": 99,
+        "syllabus_scope": [{"syllabus_id": 12}],
+        "profile_path": "profiles/12-99.json",
+        "saved_at": 1760000000,
+    }
+    wrong_syllabus = {
+        "user_id": 4,
+        "syllabus_scope": [{"syllabus_id": 99}],
+        "profile_path": "profiles/99-4.json",
+        "saved_at": 1760000000,
+    }
+
+    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (wrong_user, wrong_user["profile_path"]))
+    assert lpt.get_persisted_learning_profile(4, 12) is None
+
+    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (wrong_syllabus, wrong_syllabus["profile_path"]))
+    assert lpt.get_persisted_learning_profile(4, 12) is None
+
+
+def test_user_learning_profile_api_defaults_to_cached_read_and_parses_refresh(monkeypatch):
+    app = Flask(__name__)
+    calls = []
+
+    def fake_get_or_build(user_id, syllabus_id=None, **kwargs):
+        calls.append(kwargs)
+        return {
+            "user_id": user_id,
+            "syllabus_scope": [{"syllabus_id": syllabus_id}],
+            "profile_path": "profiles/21-5.json",
+            "profile_saved": True,
+            "profile_refreshed": kwargs["refresh_profile"],
+        }
+
+    monkeypatch.setattr(user_api, "get_or_build_learning_profile", fake_get_or_build)
+
+    with app.test_request_context(
+        "/api/user_learning_profile",
+        method="POST",
+        json={"user_id": 5, "syllabus_id": 21, "refresh_profile": "false"},
+    ):
+        response = user_api.user_learning_profile_api()
+
+    assert response.status_code == 200
+    assert calls[-1]["refresh_profile"] is False
+    assert response.get_json()["profile_refreshed"] is False
+
+    with app.test_request_context(
+        "/api/user_learning_profile",
+        method="POST",
+        json={"user_id": 5, "syllabus_id": 21, "refresh_profile": "true"},
+    ):
+        response = user_api.user_learning_profile_api()
+
+    assert response.status_code == 200
+    assert calls[-1]["refresh_profile"] is True
+    assert response.get_json()["profile_refreshed"] is True
 
 
 def test_learning_profile_result_schema_accepts_profile():
