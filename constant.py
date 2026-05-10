@@ -41,3 +41,14 @@ class PersonalSyllabus(Enum):
         PROGRESS_MAX = 5
         PROGRESS_MIN = -5 
         LLM_REVIEW_THREDHOLD = 5 # 被LLM评估了5次后，则可以更新对应的学习状态
+
+class ProfilePersonalSyllabusSuggestionSource(Enum):
+        PROFILE_AGENT = "profile_agent"
+        TOTAL_AGENT = "total_agent"
+        LEGACY_LEARNING_QA = "legacy_learning_qa"
+        MANUAL = "manual"
+
+class ProfilePersonalSyllabusSuggestionThreshold(Enum):
+        CONFIDENCE_MIN = 0.65
+        WEEK_REVIEW_THRESHOLD = 5
+        SUGGESTION_HISTORY_MAX = 50
