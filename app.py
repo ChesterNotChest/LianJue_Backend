@@ -3,11 +3,30 @@ import importlib
 import logging
 import os
 
+from sqlalchemy import inspect, text
+
 from config import get_config, MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE
 from extensions import db
 from utils.mysql import get_mysql_url, ensure_database_exists
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_user_syllabus_profile_column():
+    """Add personal_profile_path for existing databases created before this field."""
+    try:
+        inspector = inspect(db.engine)
+        columns = {column["name"] for column in inspector.get_columns("user_syllabus")}
+        index_name = "uq_user_syllabus_personal_profile_path"
+        indexes = {index["name"] for index in inspector.get_indexes("user_syllabus")}
+        unique_constraints = {constraint["name"] for constraint in inspector.get_unique_constraints("user_syllabus")}
+        with db.engine.begin() as conn:
+            if "personal_profile_path" not in columns:
+                conn.execute(text("ALTER TABLE user_syllabus ADD COLUMN personal_profile_path VARCHAR(255) NULL"))
+            if index_name not in indexes and index_name not in unique_constraints:
+                conn.execute(text("CREATE UNIQUE INDEX uq_user_syllabus_personal_profile_path ON user_syllabus (personal_profile_path)"))
+    except Exception as e:
+        logger.warning(f"ensure user_syllabus.personal_profile_path failed: {e}")
 
 
 def create_app():
@@ -61,6 +80,7 @@ def create_app():
             pass
         try:
             db.create_all()
+            _ensure_user_syllabus_profile_column()
         except Exception as e:
             logger.warning(f"db.create_all() failed: {e}")
 

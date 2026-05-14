@@ -38,6 +38,11 @@ def _trace_agent_tools(monkeypatch):
 
     monkeypatch.setattr(
         lpt,
+        "_tool_load_existing_profile_context",
+        wrap("load_existing_profile_context", lpt._tool_load_existing_profile_context),
+    )
+    monkeypatch.setattr(
+        lpt,
         "_tool_load_history_context",
         wrap("load_history_context", lpt._tool_load_history_context),
     )
@@ -60,6 +65,11 @@ def _trace_agent_tools(monkeypatch):
         lpt,
         "_tool_assemble_profile",
         wrap("assemble_profile", lpt._tool_assemble_profile),
+    )
+    monkeypatch.setattr(
+        lpt,
+        "_tool_save_or_update_profile",
+        wrap("save_or_update_profile", lpt._tool_save_or_update_profile),
     )
     lpt.get_learning_profile_agent.cache_clear()
     return trace

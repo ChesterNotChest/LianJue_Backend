@@ -10,6 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 JSON_ARTIFACT_DIRS = (
     ROOT / "schedule" / "syllabus_draft",
     ROOT / "schedule" / "syllabus",
+    ROOT / "schedule" / "student_alt",
+    ROOT / "profiles",
 )
 
 if str(ROOT) not in sys.path:
@@ -20,7 +22,7 @@ def _snapshot_json_files():
     files = set()
     for directory in JSON_ARTIFACT_DIRS:
         if directory.exists():
-            files.update(path.resolve() for path in directory.glob("*.json"))
+            files.update(path.resolve() for path in directory.rglob("*.json"))
     return files
 
 
