@@ -17,11 +17,14 @@ def _ensure_user_syllabus_profile_column():
     try:
         inspector = inspect(db.engine)
         columns = {column["name"] for column in inspector.get_columns("user_syllabus")}
-        if "personal_profile_path" in columns:
-            return
+        index_name = "uq_user_syllabus_personal_profile_path"
+        indexes = {index["name"] for index in inspector.get_indexes("user_syllabus")}
+        unique_constraints = {constraint["name"] for constraint in inspector.get_unique_constraints("user_syllabus")}
         with db.engine.begin() as conn:
-            conn.execute(text("ALTER TABLE user_syllabus ADD COLUMN personal_profile_path VARCHAR(255) NULL"))
-            conn.execute(text("CREATE UNIQUE INDEX uq_user_syllabus_personal_profile_path ON user_syllabus (personal_profile_path)"))
+            if "personal_profile_path" not in columns:
+                conn.execute(text("ALTER TABLE user_syllabus ADD COLUMN personal_profile_path VARCHAR(255) NULL"))
+            if index_name not in indexes and index_name not in unique_constraints:
+                conn.execute(text("CREATE UNIQUE INDEX uq_user_syllabus_personal_profile_path ON user_syllabus (personal_profile_path)"))
     except Exception as e:
         logger.warning(f"ensure user_syllabus.personal_profile_path failed: {e}")
 

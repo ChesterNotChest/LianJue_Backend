@@ -95,7 +95,6 @@ def _build_profile_personal_syllabus_path(user_id: int, syllabus_id: int) -> str
 
 def _build_personal_profile_path(user_id: int, syllabus_id: int) -> str:
 	root = _profile_root_dir()
-	os.makedirs(root, exist_ok=True)
 	return os.path.abspath(os.path.join(root, f'{syllabus_id}-{user_id}.json'))
 
 
@@ -138,25 +137,35 @@ def _merge_profile_update(existing_profile: Optional[dict], new_profile: dict) -
 	return merged
 
 
-def _save_personal_profile(user_id: int, syllabus_id: int, profile: dict) -> Optional[str]:
+def _save_personal_profile(user_id: int, syllabus_id: int, profile: dict) -> Optional[dict]:
 	if not isinstance(profile, dict):
 		return None
 
 	try:
 		profile_path = _build_personal_profile_path(user_id, syllabus_id)
+		profile_dir = os.path.dirname(profile_path)
+		os.makedirs(profile_dir, exist_ok=True)
 		payload = dict(profile)
 		payload['profile_schema_version'] = int(payload.get('profile_schema_version') or 1)
 		payload['profile_path'] = profile_path
 		payload['profile_saved'] = True
 		payload['saved_at'] = int(time())
-		with open(profile_path, 'w', encoding='utf-8') as f:
+		temp_path = f"{profile_path}.tmp"
+		with open(temp_path, 'w', encoding='utf-8') as f:
 			json.dump(payload, f, ensure_ascii=False, indent=2)
 		if not set_personal_profile_path(user_id, syllabus_id, profile_path):
+			try:
+				os.remove(temp_path)
+			except OSError:
+				pass
 			return None
-		profile.clear()
-		profile.update(payload)
-		return profile_path
+		os.replace(temp_path, profile_path)
+		return payload
 	except Exception:
+		try:
+			os.remove(f"{_build_personal_profile_path(user_id, syllabus_id)}.tmp")
+		except Exception:
+			pass
 		return None
 
 
@@ -180,6 +189,11 @@ def _profile_has_required_identity(profile: dict, user_id: int, syllabus_id: int
 			except Exception:
 				continue
 		return False
+	try:
+		if int(profile.get('syllabus_id')) == int(syllabus_id):
+			return True
+	except Exception:
+		pass
 	return bool(profile.get('profile_path') or profile.get('saved_at'))
 
 
@@ -1348,11 +1362,13 @@ def get_learning_profile_agent() -> Agent:
 			'你是学习画像编排器。你必须通过工具逐步完成上下文读取、事件归一化、特征计算和画像汇总。'
 			'一次只调用一个工具，拿到结果后再决定下一步。'
 			'工具顺序通常是：load_history_context、load_personal_syllabus_context、normalize_events、compute_features、assemble_profile。'
-			'最终必须返回 LearningProfileResult。'
+			'如果 state 中有 syllabus_id 且画像尚未保存，assemble_profile 后必须调用 save_or_update_profile。'
+			'最终只能返回符合 LearningProfileResult 结构的 JSON 对象，不要返回解释、Markdown 或自然语言总结。'
+			'成功时 JSON 必须包含 {"success": true, "profile": <state.profile>, "error_message": "", "error_code": ""}。'
 		),
 		name='learning_profile_agent',
 		description='Learning profile tool-calling agent',
-		retries=1,
+		retries=2,
 		defer_model_check=True,
 	)
 
@@ -1931,9 +1947,10 @@ def _tool_save_or_update_profile(state: Dict[str, Any]) -> Dict[str, Any]:
 		_tool_assemble_profile(state)
 
 	merged_profile = _merge_profile_update(state.get('existing_profile'), state.get('profile') or {})
-	profile_path = _save_personal_profile(int(state['user_id']), int(syllabus_id), merged_profile)
-	if profile_path:
-		state['profile'] = merged_profile
+	saved_profile = _save_personal_profile(int(state['user_id']), int(syllabus_id), merged_profile)
+	profile_path = saved_profile.get('profile_path') if isinstance(saved_profile, dict) else None
+	if saved_profile:
+		state['profile'] = saved_profile
 		state['profile_path'] = profile_path
 		state['profile_saved'] = True
 	else:

@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 from flask import Flask
 
@@ -121,7 +122,43 @@ def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
     assert state["profile"]["profile_saved"] is True
     assert state["profile"]["previous_confidence"] == 0.4
     assert updated_paths == [(2, 9, state["profile_path"])]
-    assert state["profile_path"].endswith("profiles\\9-2.json") or state["profile_path"].endswith("profiles/9-2.json")
+    assert Path(state["profile_path"]).parts[-2:] == ("profiles", "9-2.json")
+
+
+def test_build_personal_profile_path_has_no_read_side_effect(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    profile_path = lpt._build_personal_profile_path(2, 9)
+
+    assert Path(profile_path).parts[-2:] == ("profiles", "9-2.json")
+    assert not (tmp_path / "profiles").exists()
+
+
+def test_save_personal_profile_removes_temp_file_when_db_update_fails(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: None)
+    profile = {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
+
+    saved = lpt._save_personal_profile(2, 9, profile)
+    profile_path = Path(lpt._build_personal_profile_path(2, 9))
+
+    assert saved is None
+    assert not profile_path.exists()
+    assert not Path(f"{profile_path}.tmp").exists()
+    assert profile == {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
+
+
+def test_save_personal_profile_returns_payload_without_mutating_input(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: SimpleNamespace())
+    profile = {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
+
+    saved = lpt._save_personal_profile(2, 9, profile)
+
+    assert saved["profile_saved"] is True
+    assert saved["profile_path"].endswith(str(Path("profiles") / "9-2.json"))
+    assert profile == {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
+    assert Path(saved["profile_path"]).exists()
 
 
 def test_learning_profile_fallback_prefers_existing_profile_then_save():
@@ -215,6 +252,21 @@ def test_get_persisted_learning_profile_rejects_identity_mismatch(monkeypatch):
 
     monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (wrong_syllabus, wrong_syllabus["profile_path"]))
     assert lpt.get_persisted_learning_profile(4, 12) is None
+
+
+def test_get_persisted_learning_profile_accepts_root_syllabus_id(monkeypatch):
+    persisted = {
+        "user_id": 4,
+        "syllabus_id": 12,
+        "confidence": 0.8,
+    }
+
+    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (persisted, "profiles/12-4.json"))
+
+    profile = lpt.get_persisted_learning_profile(4, 12)
+
+    assert profile["profile_saved"] is True
+    assert profile["profile_path"].endswith("profiles/12-4.json")
 
 
 def test_user_learning_profile_api_defaults_to_cached_read_and_parses_refresh(monkeypatch):
