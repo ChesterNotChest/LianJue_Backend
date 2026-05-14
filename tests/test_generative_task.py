@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -471,3 +472,204 @@ def test_load_manifest_backfills_version_and_resource_count(monkeypatch, tmp_pat
     assert manifest["version"] == gt.GENERATIVE_MANIFEST_VERSION
     assert manifest["resource_count"] == 2
     assert isinstance(manifest["updated_at"], int)
+
+
+def test_generate_resource_full_user_chain_persists_all_resource_types(monkeypatch, tmp_path):
+    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+
+    user_id = 21
+    syllabus_id = 31
+    resources = [
+        gt.generate_resource(
+            {
+                "user_id": user_id,
+                "syllabus_id": syllabus_id,
+                "resource_type": "documents",
+                "topic": "HBase RowKey",
+            },
+            FakeDocumentAgent(),
+        ),
+        gt.generate_resource(
+            {
+                "user_id": user_id,
+                "syllabus_id": syllabus_id,
+                "resource_type": "mindmap",
+                "topic": "HBase RowKey",
+                "knowledge_items": ["hotspot", "pre-split"],
+            },
+            FakeMindmapAgent(),
+        ),
+        gt.generate_resource(
+            {
+                "user_id": user_id,
+                "syllabus_id": syllabus_id,
+                "resource_type": "quiz",
+                "topic": "HBase RowKey",
+            },
+            FakeQuizAgent(),
+        ),
+    ]
+
+    manifest = gt.load_manifest(user_id)
+
+    assert [item["resource_type"] for item in resources] == ["documents", "mindmap", "quiz"]
+    assert all(item["success"] is True for item in resources)
+    assert all(item["status"] == "ready" for item in resources)
+    assert manifest["resource_count"] == 3
+    assert [entry["resource_type"] for entry in manifest["resources"]] == ["documents", "mindmap", "quiz"]
+    assert [entry["syllabus_id"] for entry in manifest["resources"]] == [syllabus_id, syllabus_id, syllabus_id]
+    assert len({entry["resource_id"] for entry in manifest["resources"]}) == 3
+
+    for entry in manifest["resources"]:
+        assert (tmp_path / entry["resource_dir"]).exists()
+        assert entry["validation"]["valid"] is True
+        for path_value in entry["main_files"].values():
+            assert (tmp_path / path_value).exists()
+
+
+def _extract_json_object(raw_text):
+    text = str(raw_text or "").strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(text[start : end + 1])
+        raise
+
+
+class RealLLMGenerativeAgent:
+    def __init__(self, model):
+        self.model = model
+
+    def _call_json(self, task_name, payload, required_keys):
+        system_prompt = (
+            "You are a course resource generation adapter. "
+            "Return only one valid JSON object. Do not use markdown fences."
+        )
+        user_prompt = json.dumps(
+            {
+                "task": task_name,
+                "topic": payload.get("topic"),
+                "required_keys": required_keys,
+                "constraints": [
+                    "Use concise educational content.",
+                    "For Mermaid mindmap, start the mermaid field with 'mindmap'.",
+                    "For quiz, include exactly one single_choice question with at least 4 options.",
+                ],
+            },
+            ensure_ascii=False,
+        )
+        raw = self.model.call_text_model(system_prompt, user_prompt, stream=False)
+        return _extract_json_object(raw)
+
+    def generate_mindmap(self, payload):
+        generated = self._call_json(
+            "generate_mindmap",
+            payload,
+            ["title", "root", "nodes", "mermaid"],
+        )
+        mermaid = str(generated.get("mermaid") or "").strip()
+        if not mermaid.startswith("mindmap"):
+            mermaid = "\n".join(["mindmap", f"  root(({payload['topic']}))", "    core idea"])
+        generated["mermaid"] = mermaid
+        generated.setdefault("title", f"{payload['topic']} mindmap")
+        generated.setdefault("root", payload["topic"])
+        generated.setdefault("nodes", [])
+        return generated
+
+    def generate_document(self, payload):
+        generated = self._call_json(
+            "generate_document",
+            payload,
+            ["schema_version", "title", "topic", "summary", "sections", "extension_reading"],
+        )
+        generated["schema_version"] = gt.GENERATIVE_DOCUMENT_SCHEMA_VERSION
+        generated.setdefault("title", f"{payload['topic']} document")
+        generated.setdefault("topic", payload["topic"])
+        generated.setdefault("summary", f"Short explanation for {payload['topic']}.")
+        if not isinstance(generated.get("sections"), list) or not generated["sections"]:
+            generated["sections"] = [{"heading": "Overview", "body": f"Core ideas of {payload['topic']}."}]
+        generated.setdefault("extension_reading", [])
+        return generated
+
+    def generate_quiz(self, payload):
+        generated = self._call_json(
+            "generate_quiz",
+            payload,
+            ["schema_version", "title", "topic", "questions"],
+        )
+        generated["schema_version"] = gt.GENERATIVE_QUIZ_SCHEMA_VERSION
+        generated.setdefault("title", f"{payload['topic']} quiz")
+        generated.setdefault("topic", payload["topic"])
+        if not isinstance(generated.get("questions"), list) or not generated["questions"]:
+            generated["questions"] = [
+                {
+                    "type": "single_choice",
+                    "stem": f"Which option best describes {payload['topic']}?",
+                    "options": ["A core concept", "An unrelated idea", "A file format", "A network port"],
+                    "answer": "A",
+                    "explanation": "The topic is being tested as a core learning concept.",
+                }
+            ]
+        normalized_questions = []
+        for index, question in enumerate(generated["questions"], start=1):
+            if not isinstance(question, dict):
+                question = {}
+            question["type"] = "single_choice"
+            question["stem"] = str(question.get("stem") or f"Which option best describes {payload['topic']}?")
+            options = question.get("options")
+            if not isinstance(options, list) or len(options) < 4:
+                options = ["A core concept", "An unrelated idea", "A file format", "A network port"]
+            question["options"] = options
+            answer = question.get("answer")
+            if answer in (None, ""):
+                answer = "A"
+            question["answer"] = str(answer)
+            question["explanation"] = str(
+                question.get("explanation")
+                or "The selected answer follows from the generated learning content."
+            )
+            question.setdefault("id", f"q{index}")
+            normalized_questions.append(question)
+        generated["questions"] = normalized_questions
+        return generated
+
+
+@pytest.mark.llm
+def test_real_llm_generative_agent_smoke(monkeypatch, tmp_path):
+    if os.getenv("RUN_LLM_TESTS") != "1":
+        pytest.skip("Set RUN_LLM_TESTS=1 to run the real generative agent smoke test.")
+
+    from utils.llm_utils import get_model_instance
+
+    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    agent = RealLLMGenerativeAgent(get_model_instance())
+
+    result = gt.generate_resource(
+        {
+            "user_id": 41,
+            "syllabus_id": 51,
+            "resource_type": "quiz",
+            "topic": "HBase RowKey hotspot avoidance",
+        },
+        agent,
+    )
+
+    manifest = gt.load_manifest(41)
+
+    assert result["success"] is True
+    assert result["resource_type"] == "quiz"
+    assert result["status"] == "ready"
+    assert result["validation"]["valid"] is True
+    assert manifest["resource_count"] == 1
+    assert (tmp_path / result["json_path"]).exists()
+    assert (tmp_path / result["md_path"]).exists()
