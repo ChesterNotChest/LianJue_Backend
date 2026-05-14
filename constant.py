@@ -16,6 +16,7 @@ class JobStatus(Enum):
 class BasePath(Enum):
         FILE_CACHE = "file_cache"
 
+        GENERATIVE_ROOT = "/generative"
         PDF_ROOT = "pdfs"
         MARKDOWN_ROOT = "markdowns"
         TRIPLES_ROOT = "triples"
