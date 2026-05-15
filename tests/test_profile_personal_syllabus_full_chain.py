@@ -1,10 +1,20 @@
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
+import uuid
 
 import pytest
 
+from app import create_app
+from extensions import db
+from schemas.syllabus import Syllabus
+from schemas.user import User
+from schemas.user_syllabus import UserSyllabus
 from tasks import learning_profile_task as lpt
+
+
+WORKING_SYLLABUS_PATH = "tests/fixtures/大数据概论_20260322235507.json"
 
 
 class _FakeRunResult:
@@ -34,6 +44,44 @@ def _normalize_model_for_dashscope():
     if "dashscope.aliyuncs.com" in api_base and model_name.startswith("openai/"):
         text_config["model_name"] = model_name.removeprefix("openai/")
         lpt.get_learning_profile_agent.cache_clear()
+
+
+@pytest.fixture
+def db_real_learning_profile_case():
+    if os.getenv("RUN_LLM_TESTS") != "1":
+        pytest.skip("Set RUN_LLM_TESTS=1 to run the real learning profile agent full-chain integration test.")
+    if not Path(WORKING_SYLLABUS_PATH).exists():
+        pytest.skip(f"Working syllabus file is missing: {WORKING_SYLLABUS_PATH}")
+
+    app = create_app()
+    with app.app_context():
+        suffix = uuid.uuid4().hex[:8]
+        user = User(
+            user_name=f"real-agent-user-{suffix}",
+            password_hash="pytest-not-used",
+            email=f"real-agent-{suffix}@example.com",
+        )
+        syllabus = Syllabus.query.filter_by(syllabus_path=WORKING_SYLLABUS_PATH).first()
+        created_syllabus = False
+        if syllabus is None:
+            syllabus = Syllabus(title="大数据概论", syllabus_path=WORKING_SYLLABUS_PATH)
+            db.session.add(syllabus)
+            created_syllabus = True
+        db.session.add(user)
+        db.session.commit()
+        relation = UserSyllabus(user_id=user.user_id, syllabus_id=syllabus.syllabus_id, syllabus_permission="user")
+        db.session.add(relation)
+        db.session.commit()
+
+        try:
+            yield user, syllabus, relation
+        finally:
+            db.session.rollback()
+            UserSyllabus.query.filter_by(user_id=user.user_id, syllabus_id=syllabus.syllabus_id).delete()
+            User.query.filter_by(user_id=user.user_id).delete()
+            if created_syllabus:
+                Syllabus.query.filter_by(syllabus_id=syllabus.syllabus_id).delete()
+            db.session.commit()
 
 
 def test_profile_personal_syllabus_full_chain(monkeypatch, repo_json_factory):
@@ -298,53 +346,12 @@ def test_profile_personal_syllabus_multi_round_propagation(monkeypatch, repo_jso
 
 
 @pytest.mark.llm
-def test_real_learning_profile_agent_full_chain_integration(monkeypatch, repo_json_factory):
+def test_real_learning_profile_agent_full_chain_integration(monkeypatch, db_real_learning_profile_case):
     if os.getenv("RUN_LLM_TESTS") != "1":
         pytest.skip("Set RUN_LLM_TESTS=1 to run the real learning profile agent full-chain integration test.")
 
     _normalize_model_for_dashscope()
-
-    syllabus_path = repo_json_factory(
-        "schedule/syllabus",
-        {
-            "title": "HBase 真实 Agent 全链路",
-            "period": [
-                {
-                    "week_index": 1,
-                    "content": "HBase RowKey 设计",
-                    "enhanced_content": "RowKey 热点、散列、预分区与查询模式",
-                    "importance": "high",
-                }
-            ],
-        },
-        prefix="real_agent_syllabus",
-    )
-    relation = SimpleNamespace(
-        user_id=73,
-        syllabus_id=173,
-        personal_syllabus_path=None,
-        personal_profile_path=None,
-    )
-    user = SimpleNamespace(user_id=73, user_name="real-agent-user", email="real@example.com")
-    syllabus = SimpleNamespace(syllabus_id=173, title="HBase 真实 Agent 全链路", syllabus_path=str(syllabus_path))
-
-    def fake_set_personal_syllabus_path(user_id, syllabus_id, path):
-        relation.personal_syllabus_path = path
-        return relation
-
-    saved_profile_paths = []
-
-    def fake_set_personal_profile_path(user_id, syllabus_id, path):
-        relation.personal_profile_path = path
-        saved_profile_paths.append(path)
-        return relation
-
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == 73 else None)
-    monkeypatch.setattr(lpt, "get_user_syllabus", lambda user_id, syllabus_id: relation)
-    monkeypatch.setattr(lpt, "list_user_syllabuses", lambda user_id: [relation] if user_id == 73 else [])
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 173 else None)
-    monkeypatch.setattr(lpt, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
-    monkeypatch.setattr(lpt, "set_personal_profile_path", fake_set_personal_profile_path)
+    user, syllabus, relation = db_real_learning_profile_case
     monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
     monkeypatch.setattr(lpt, "time", lambda: 1760000000)
 
@@ -367,58 +374,69 @@ def test_real_learning_profile_agent_full_chain_integration(monkeypatch, repo_js
     monkeypatch.setattr(lpt, "_tool_assemble_profile", wrap("assemble_profile", lpt._tool_assemble_profile))
     monkeypatch.setattr(lpt, "_tool_save_or_update_profile", wrap("save_or_update_profile", lpt._tool_save_or_update_profile))
     lpt.get_learning_profile_agent.cache_clear()
+    payload = {
+        "user_id": user.user_id,
+        "syllabus_id": syllabus.syllabus_id,
+        "dialogue_text": [
+            "我正在学 HBase，RowKey 热点和预分区很容易卡住。",
+            "我希望一周内能做出一个合理的 RowKey 设计。"
+        ],
+        "learning_goal": "掌握 HBase RowKey 设计",
+        "answer_records": [
+            {
+                "question": "RowKey 如何避免热点？",
+                "correct": False,
+                "answered_at": 1760000000,
+                "time_spent_seconds": 180,
+                "meta": {"knowledge_points": ["RowKey 热点"]},
+            }
+        ],
+        "resource_usage": [
+            {
+                "resource_id": "mindmap_rowkey",
+                "action": "view",
+                "timestamp": 1760000000,
+                "meta": {"title": "RowKey 思维导图"},
+            }
+        ],
+    }
 
     try:
-        profile = lpt.build_learning_profile(
-            user_id=73,
-            syllabus_id=173,
-            dialogue_text=[
-                "我正在学 HBase，RowKey 热点和预分区很容易卡住。",
-                "我希望一周内能做出一个合理的 RowKey 设计。"
-            ],
-            learning_goal="掌握 HBase RowKey 设计",
-            answer_records=[
-                {
-                    "question": "RowKey 如何避免热点？",
-                    "correct": False,
-                    "answered_at": 1760000000,
-                    "time_spent_seconds": 180,
-                    "meta": {"knowledge_points": ["RowKey 热点"]},
-                }
-            ],
-            resource_usage=[
-                {
-                    "resource_id": "mindmap_rowkey",
-                    "action": "view",
-                    "timestamp": 1760000000,
-                    "meta": {"title": "RowKey 思维导图"},
-                }
-            ],
-        )
+        profile = lpt.build_learning_profile(**payload)
     finally:
         lpt.get_learning_profile_agent.cache_clear()
 
     initialized = json.loads(open(relation.personal_syllabus_path, "r", encoding="utf-8").read())
+    working_syllabus = json.loads(open(WORKING_SYLLABUS_PATH, "r", encoding="utf-8").read())
+    output = {
+        "profile": profile,
+        "tool_trace": trace,
+        "personal_syllabus_path": relation.personal_syllabus_path,
+        "personal_profile_path": relation.personal_profile_path,
+        "initialized_personal_syllabus": initialized,
+    }
 
-    assert profile is not None
-    assert relation.personal_syllabus_path
-    assert initialized["period"][0]["competance"] == "none"
-    assert initialized["period"][0]["suggestion_history"] == []
-    assert profile["suggested_personal_syllabus_updates"] is not None
+    assert output["profile"] is not None
+    assert output["personal_syllabus_path"]
+    assert len(output["initialized_personal_syllabus"]["period"]) == len(working_syllabus["period"])
+    assert any("HBase" in str(item.get("content", "")) for item in output["initialized_personal_syllabus"]["period"])
+    assert output["initialized_personal_syllabus"]["period"][0]["competance"] == "none"
+    assert output["initialized_personal_syllabus"]["period"][0]["suggestion_history"] == []
+    assert output["profile"]["suggested_personal_syllabus_updates"] is not None
     assert "load_personal_syllabus_context" in trace
     assert "normalize_events" in trace
     assert "compute_features" in trace
     assert "assemble_profile" in trace
-    assert saved_profile_paths
+    assert output["personal_profile_path"]
 
     print(
         "\nREAL_AGENT_FULL_CHAIN_RESULT",
         json.dumps(
             {
                 "tool_trace": trace,
-                "personal_syllabus_path": relation.personal_syllabus_path,
-                "profile_path": relation.personal_profile_path,
-                "initial_personal_competance": initialized["period"][0]["competance"],
+                "personal_syllabus_path": output["personal_syllabus_path"],
+                "profile_path": output["personal_profile_path"],
+                "initial_personal_competance": output["initialized_personal_syllabus"]["period"][0]["competance"],
                 "suggestion_count": len(profile.get("suggested_personal_syllabus_updates") or []),
                 "source_events": profile.get("source_events"),
                 "resource_preference": profile.get("resource_preference"),

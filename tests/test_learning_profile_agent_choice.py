@@ -1,17 +1,28 @@
 import os
-from types import SimpleNamespace
+from pathlib import Path
+import uuid
 
 import pytest
 
+from app import create_app
+from extensions import db
+from schemas.syllabus import Syllabus
+from schemas.user import User
+from schemas.user_syllabus import UserSyllabus
 from tasks import learning_profile_task as lpt
 
 
+WORKING_SYLLABUS_PATH = "tests/fixtures/大数据概论_20260322235507.json"
+
+
 EXPECTED_TOOL_ORDER = [
+    "load_existing_profile_context",
     "load_history_context",
     "load_personal_syllabus_context",
     "normalize_events",
     "compute_features",
     "assemble_profile",
+    "save_or_update_profile",
 ]
 
 
@@ -75,87 +86,128 @@ def _trace_agent_tools(monkeypatch):
     return trace
 
 
+@pytest.fixture
+def db_learning_profile_case():
+    if os.getenv("RUN_LLM_TESTS") != "1":
+        pytest.skip("Set RUN_LLM_TESTS=1 to run the real learning profile agent choice smoke test.")
+    if not Path(WORKING_SYLLABUS_PATH).exists():
+        pytest.skip(f"Working syllabus file is missing: {WORKING_SYLLABUS_PATH}")
+
+    app = create_app()
+    with app.app_context():
+        suffix = uuid.uuid4().hex[:8]
+        user = User(
+            user_name=f"agent-smoke-{suffix}",
+            password_hash="pytest-not-used",
+            email=f"agent-smoke-{suffix}@example.com",
+        )
+        syllabus = Syllabus.query.filter_by(syllabus_path=WORKING_SYLLABUS_PATH).first()
+        created_syllabus = False
+        if syllabus is None:
+            syllabus = Syllabus(title="大数据概论", syllabus_path=WORKING_SYLLABUS_PATH)
+            db.session.add(syllabus)
+            created_syllabus = True
+        db.session.add(user)
+        db.session.commit()
+        relation = UserSyllabus(user_id=user.user_id, syllabus_id=syllabus.syllabus_id, syllabus_permission="user")
+        db.session.add(relation)
+        db.session.commit()
+
+        try:
+            yield user, syllabus, relation
+        finally:
+            db.session.rollback()
+            UserSyllabus.query.filter_by(user_id=user.user_id, syllabus_id=syllabus.syllabus_id).delete()
+            User.query.filter_by(user_id=user.user_id).delete()
+            if created_syllabus:
+                Syllabus.query.filter_by(syllabus_id=syllabus.syllabus_id).delete()
+            db.session.commit()
+
+
 @pytest.mark.llm
-def test_learning_profile_agent_selects_expected_tools(monkeypatch):
+def test_learning_profile_agent_selects_expected_tools(monkeypatch, db_learning_profile_case):
     if os.getenv("RUN_LLM_TESTS") != "1":
         pytest.skip("Set RUN_LLM_TESTS=1 to run the real learning profile agent choice smoke test.")
 
     _normalize_model_for_dashscope()
-    user = SimpleNamespace(
-        user_id=501,
-        user_name="agent-smoke",
-        email="agent-smoke@example.com",
-    )
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == 501 else None)
-    monkeypatch.setattr(lpt, "list_user_syllabuses", lambda user_id: [])
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: None)
+    user, syllabus, relation = db_learning_profile_case
     monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lpt, "_load_personal_syllabus", lambda *args, **kwargs: [])
 
     trace = _trace_agent_tools(monkeypatch)
+    payload = {
+        "user_id": user.user_id,
+        "syllabus_id": syllabus.syllabus_id,
+        "dialogue_text": [
+            "我最近在学大数据概论，HBase 的 RowKey 热点总是搞不懂。",
+            "我希望两周内掌握 HBase 和预分区策略，并多做一点练习。",
+        ],
+        "learning_goal": "掌握大数据概论中的 HBase RowKey 设计",
+        "learning_records": [
+            {
+                "event_type": "study_session",
+                "duration_minutes": 42,
+                "started_at": 1759913600,
+                "meta": {"topic": "HBase"},
+            },
+            {
+                "event_type": "practice",
+                "duration_minutes": 36,
+                "started_at": 1759996400,
+                "meta": {"topic": "RowKey 设计"},
+            },
+        ],
+        "answer_records": [
+            {
+                "question": "RowKey 如何避免热点？",
+                "correct": False,
+                "answered_at": 1759998200,
+                "time_spent_seconds": 160,
+                "meta": {"knowledge_points": ["RowKey 热点"]},
+            },
+            {
+                "question": "HBase 适合什么查询场景？",
+                "correct": True,
+                "answered_at": 1759999000,
+                "time_spent_seconds": 100,
+                "meta": {"knowledge_points": ["HBase"]},
+            },
+            {
+                "question": "预分区策略如何缓解热点？",
+                "correct": False,
+                "answered_at": 1759999800,
+                "time_spent_seconds": 180,
+                "meta": {"knowledge_points": ["RowKey 热点"]},
+            },
+        ],
+        "resource_usage": [
+            {
+                "resource_id": "video_hbase_rowkey",
+                "action": "complete",
+                "timestamp": 1759999900,
+                "duration_seconds": 900,
+                "meta": {"knowledge_points": ["RowKey 热点"]},
+            }
+        ],
+    }
 
     try:
-        profile = lpt.build_learning_profile(
-            user_id=501,
-            dialogue_text=[
-                "我最近在学 Python，函数参数总是搞不懂。",
-                "我希望两周内掌握循环和函数，并多做一点练习。",
-            ],
-            learning_goal="掌握 Python 基础语法",
-            learning_records=[
-                {
-                    "event_type": "study_session",
-                    "duration_minutes": 42,
-                    "started_at": 1759913600,
-                    "meta": {"topic": "循环"},
-                },
-                {
-                    "event_type": "practice",
-                    "duration_minutes": 36,
-                    "started_at": 1759996400,
-                    "meta": {"topic": "函数"},
-                },
-            ],
-            answer_records=[
-                {
-                    "question": "函数参数应该怎么传递？",
-                    "correct": False,
-                    "answered_at": 1759998200,
-                    "time_spent_seconds": 160,
-                    "meta": {"knowledge_points": ["函数参数"]},
-                },
-                {
-                    "question": "循环嵌套如何执行？",
-                    "correct": True,
-                    "answered_at": 1759999000,
-                    "time_spent_seconds": 100,
-                    "meta": {"knowledge_points": ["循环嵌套"]},
-                },
-                {
-                    "question": "函数返回值是什么？",
-                    "correct": False,
-                    "answered_at": 1759999800,
-                    "time_spent_seconds": 180,
-                    "meta": {"knowledge_points": ["函数参数"]},
-                },
-            ],
-            resource_usage=[
-                {
-                    "resource_id": "video_python_functions",
-                    "action": "complete",
-                    "timestamp": 1759999900,
-                    "duration_seconds": 900,
-                    "meta": {"knowledge_points": ["函数参数"]},
-                }
-            ],
-        )
+        profile = lpt.build_learning_profile(**payload)
     finally:
         lpt.get_learning_profile_agent.cache_clear()
 
+    output = {
+        "profile": profile,
+        "tool_trace": trace,
+        "personal_syllabus_path": relation.personal_syllabus_path,
+        "personal_profile_path": relation.personal_profile_path,
+    }
+
     assert trace == EXPECTED_TOOL_ORDER
-    assert profile is not None
-    assert profile["user_id"] == 501
-    assert len(profile) >= 30
-    assert "函数参数" in profile["concept_gaps"]
-    assert profile["source_events"] == ["answer_records", "learning_records", "resource_usage"]
-    assert profile["knowledge_mastery"]["knowledge_point_details"]["函数参数"]["attempt_count"] == 2
+    assert output["profile"] is not None
+    assert output["profile"]["user_id"] == payload["user_id"]
+    assert output["personal_syllabus_path"]
+    assert output["personal_profile_path"]
+    assert len(output["profile"]) >= 30
+    assert "RowKey 热点" in output["profile"]["concept_gaps"]
+    assert output["profile"]["source_events"] == ["answer_records", "learning_records", "resource_usage"]
+    assert output["profile"]["knowledge_mastery"]["knowledge_point_details"]["RowKey 热点"]["attempt_count"] == 2

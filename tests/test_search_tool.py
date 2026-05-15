@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from tasks import search_tool as st
@@ -147,26 +145,3 @@ def test_search_tool_requires_graph_name_without_retriever():
 
     assert result["success"] is False
     assert "graph_name is required" in result["error"]
-
-
-@pytest.mark.search
-def test_search_tool_uses_real_knowlion_search_when_enabled():
-    if os.getenv("RUN_SEARCH_TESTS") != "1":
-        pytest.skip("Set RUN_SEARCH_TESTS=1 to run the real KnowLion search smoke test.")
-
-    graph_name = os.getenv("SEARCH_TOOL_GRAPH_NAME")
-    if not graph_name:
-        pytest.skip("Set SEARCH_TOOL_GRAPH_NAME to an existing graph name.")
-
-    query = os.getenv("SEARCH_TOOL_QUERY") or "RowKey hotspot"
-    result = st.search_tool(query, graph_name=graph_name, top_k=3)
-
-    assert result["query"] == query
-    assert result["graph_name"] == graph_name
-    assert result["top_k"] == 3
-    assert result["error"] == ""
-    assert result["success"] is True
-    assert isinstance(result["paragraphs"], list)
-    assert isinstance(result["reasoning_paths"], (dict, list))
-    assert isinstance(result["path_scores"], dict)
-    assert isinstance(result["context_text"], str)

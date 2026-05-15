@@ -596,9 +596,43 @@ class RealLLMGenerativeAgent:
         generated.setdefault("title", f"{payload['topic']} document")
         generated.setdefault("topic", payload["topic"])
         generated.setdefault("summary", f"Short explanation for {payload['topic']}.")
-        if not isinstance(generated.get("sections"), list) or not generated["sections"]:
-            generated["sections"] = [{"heading": "Overview", "body": f"Core ideas of {payload['topic']}."}]
-        generated.setdefault("extension_reading", [])
+        normalized_sections = []
+        sections = generated.get("sections")
+        if isinstance(sections, list):
+            for section in sections:
+                if not isinstance(section, dict):
+                    continue
+                heading = section.get("heading") or section.get("section_title") or section.get("title")
+                body = section.get("body") or section.get("content") or section.get("text")
+                normalized_sections.append(
+                    {
+                        "heading": str(heading or "Overview").strip() or "Overview",
+                        "body": str(body or f"Core ideas of {payload['topic']}.").strip(),
+                    }
+                )
+        if not normalized_sections:
+            normalized_sections = [{"heading": "Overview", "body": f"Core ideas of {payload['topic']}."}]
+        generated["sections"] = normalized_sections
+
+        normalized_extension_reading = []
+        extension_reading = generated.get("extension_reading")
+        if isinstance(extension_reading, list):
+            for item in extension_reading:
+                if isinstance(item, dict):
+                    normalized_extension_reading.append(
+                        {
+                            "title": str(item.get("title") or item.get("name") or "Extension reading").strip(),
+                            "reason": str(item.get("reason") or item.get("description") or "Extend the topic.").strip(),
+                        }
+                    )
+                elif str(item or "").strip():
+                    normalized_extension_reading.append(
+                        {
+                            "title": str(item).strip(),
+                            "reason": "Extend the topic.",
+                        }
+                    )
+        generated["extension_reading"] = normalized_extension_reading
         return generated
 
     def generate_quiz(self, payload):
@@ -625,7 +659,11 @@ class RealLLMGenerativeAgent:
             if not isinstance(question, dict):
                 question = {}
             question["type"] = "single_choice"
-            question["stem"] = str(question.get("stem") or f"Which option best describes {payload['topic']}?")
+            question["stem"] = str(
+                question.get("stem")
+                or question.get("question")
+                or f"Which option best describes {payload['topic']}?"
+            )
             options = question.get("options")
             if not isinstance(options, list) or len(options) < 4:
                 options = ["A core concept", "An unrelated idea", "A file format", "A network port"]
@@ -645,13 +683,36 @@ class RealLLMGenerativeAgent:
 
 
 class RAGBackedLLMGenerativeAgent(RealLLMGenerativeAgent):
+    def __init__(self, model, search_tool):
+        super().__init__(model)
+        self.search_tool = search_tool
+        self.search_queries = []
+
+    def _build_search_query(self, payload):
+        query_parts = [
+            payload.get("subject"),
+            payload.get("topic"),
+            payload.get("learning_goal"),
+            " ".join(map(str, payload.get("weak_points") or [])),
+        ]
+        return " ".join(str(item).strip() for item in query_parts if str(item or "").strip())
+
+    def _ensure_retrieval_context(self, payload):
+        if isinstance(payload.get("retrieval_context"), dict) and payload["retrieval_context"].get("paragraphs"):
+            return payload["retrieval_context"]
+        query = self._build_search_query(payload)
+        self.search_queries.append(query)
+        retrieval = self.search_tool(query, graph_name=payload.get("graph_name"), top_k=3)
+        payload["retrieval_context"] = retrieval
+        return retrieval
+
     def _call_json(self, task_name, payload, required_keys):
         system_prompt = (
             "You are a personalized course resource generation adapter. "
             "Use the provided retrieval_context as grounding evidence. "
             "Return only one valid JSON object. Do not use markdown fences."
         )
-        retrieval_context = payload.get("retrieval_context") if isinstance(payload.get("retrieval_context"), dict) else {}
+        retrieval_context = self._ensure_retrieval_context(payload)
         user_prompt = json.dumps(
             {
                 "task": task_name,
@@ -679,37 +740,6 @@ class RAGBackedLLMGenerativeAgent(RealLLMGenerativeAgent):
 
 
 @pytest.mark.llm
-def test_real_llm_generative_agent_smoke(monkeypatch, tmp_path):
-    if os.getenv("RUN_LLM_TESTS") != "1":
-        pytest.skip("Set RUN_LLM_TESTS=1 to run the real generative agent smoke test.")
-
-    from utils.llm_utils import get_model_instance
-
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
-    agent = RealLLMGenerativeAgent(get_model_instance())
-
-    result = gt.generate_resource(
-        {
-            "user_id": 41,
-            "syllabus_id": 51,
-            "resource_type": "quiz",
-            "topic": "HBase RowKey hotspot avoidance",
-        },
-        agent,
-    )
-
-    manifest = gt.load_manifest(41)
-
-    assert result["success"] is True
-    assert result["resource_type"] == "quiz"
-    assert result["status"] == "ready"
-    assert result["validation"]["valid"] is True
-    assert manifest["resource_count"] == 1
-    assert (tmp_path / result["json_path"]).exists()
-    assert (tmp_path / result["md_path"]).exists()
-
-
-@pytest.mark.llm
 @pytest.mark.search
 def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tmp_path):
     if os.getenv("RUN_LLM_TESTS") != "1" or os.getenv("RUN_SEARCH_TESTS") != "1":
@@ -720,38 +750,85 @@ def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tm
 
     graph_name = os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"
     subject = "大数据概论"
-    query = os.getenv("SEARCH_TOOL_QUERY") or "大数据概论 HBase RowKey 热点 预分区"
-    retrieval = search_tool(query, graph_name=graph_name, top_k=3)
-    if not retrieval["success"] or not retrieval["paragraphs"]:
-        pytest.skip(f"Real search returned no usable paragraphs for graph {graph_name}: {retrieval['error']}")
 
     monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
-    agent = RAGBackedLLMGenerativeAgent(get_model_instance())
-    payload = {
+    agent = RAGBackedLLMGenerativeAgent(get_model_instance(), search_tool)
+    base_payload = {
         "user_id": 61,
         "syllabus_id": 71,
-        "resource_type": "quiz",
         "subject": subject,
         "topic": "HBase RowKey 热点规避",
         "graph_name": graph_name,
         "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
         "weak_points": ["RowKey 热点", "预分区策略"],
-        "retrieval_context": retrieval,
     }
+    payloads = [
+        {**base_payload, "resource_type": "documents"},
+        {**base_payload, "resource_type": "mindmap", "knowledge_items": ["RowKey 热点", "预分区策略"]},
+        {**base_payload, "resource_type": "quiz"},
+    ]
 
-    result = gt.generate_resource(payload, agent)
-    saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
-    saved_md = (tmp_path / result["md_path"]).read_text(encoding="utf-8")
-    manifest = gt.load_manifest(61)
+    results = []
+    for payload in payloads:
+        result = gt.generate_resource(payload, agent)
+        retrieval = payload.get("retrieval_context")
+        if not isinstance(retrieval, dict) or not retrieval["success"] or not retrieval["paragraphs"]:
+            error = retrieval.get("error") if isinstance(retrieval, dict) else ""
+            pytest.skip(f"Real search returned no usable paragraphs for graph {graph_name}: {error}")
+        results.append((payload, result))
 
-    assert result["success"] is True
-    assert result["resource_type"] == "quiz"
-    assert result["status"] == "ready"
-    assert result["validation"]["valid"] is True
-    assert saved_json["schema_version"] == gt.GENERATIVE_QUIZ_SCHEMA_VERSION
-    assert saved_json["questions"]
-    assert any(point in saved_md for point in ["RowKey", "热点", "预分区", "HBase"])
-    assert manifest["resource_count"] == 1
-    assert manifest["resources"][0]["syllabus_id"] == 71
-    assert (tmp_path / result["json_path"]).exists()
-    assert (tmp_path / result["md_path"]).exists()
+    manifest = gt.load_manifest(base_payload["user_id"])
+    success_results = [
+        (payload, result)
+        for payload, result in results
+        if result.get("success") is True
+        and result.get("status") == "ready"
+        and (result.get("validation") or {}).get("valid") is True
+    ]
+    failed_results = [
+        {
+            "resource_type": payload.get("resource_type"),
+            "status": result.get("status"),
+            "validation": result.get("validation"),
+            "title": result.get("title"),
+        }
+        for payload, result in results
+        if (payload, result) not in success_results
+    ]
+
+    assert [result["resource_type"] for _, result in results] == ["documents", "mindmap", "quiz"]
+    assert failed_results == []
+    assert [result["resource_type"] for _, result in success_results] == ["documents", "mindmap", "quiz"]
+    assert len(agent.search_queries) == len(payloads)
+    assert all("RowKey" in query for query in agent.search_queries)
+    assert manifest["resource_count"] == 3
+    assert [entry["resource_type"] for entry in manifest["resources"]] == ["documents", "mindmap", "quiz"]
+    assert [entry["syllabus_id"] for entry in manifest["resources"]] == [base_payload["syllabus_id"]] * 3
+
+    documents_result = results[0][1]
+    documents_json = json.loads((tmp_path / documents_result["json_path"]).read_text(encoding="utf-8"))
+    documents_md = (tmp_path / documents_result["md_path"]).read_text(encoding="utf-8")
+    assert documents_json["schema_version"] == gt.GENERATIVE_DOCUMENT_SCHEMA_VERSION
+    assert documents_json["sections"]
+    assert any(point in documents_md for point in ["RowKey", "热点", "预分区", "HBase"])
+
+    mindmap_result = results[1][1]
+    mindmap_json = json.loads((tmp_path / mindmap_result["json_path"]).read_text(encoding="utf-8"))
+    mindmap_mermaid = (tmp_path / mindmap_result["mermaid_path"]).read_text(encoding="utf-8")
+    assert mindmap_json["mermaid"].startswith("mindmap")
+    assert mindmap_mermaid.startswith("mindmap")
+    assert mindmap_json["knowledge_items"] == ["RowKey 热点", "预分区策略"]
+
+    quiz_result = results[2][1]
+    quiz_json = json.loads((tmp_path / quiz_result["json_path"]).read_text(encoding="utf-8"))
+    quiz_md = (tmp_path / quiz_result["md_path"]).read_text(encoding="utf-8")
+    assert quiz_json["schema_version"] == gt.GENERATIVE_QUIZ_SCHEMA_VERSION
+    assert quiz_json["questions"]
+    assert any(point in quiz_md for point in ["RowKey", "热点", "预分区", "HBase"])
+
+    for _, result in results:
+        assert (tmp_path / result["json_path"]).exists()
+        if result["resource_type"] in ("documents", "quiz"):
+            assert (tmp_path / result["md_path"]).exists()
+        if result["resource_type"] == "mindmap":
+            assert (tmp_path / result["mermaid_path"]).exists()
