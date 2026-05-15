@@ -122,7 +122,7 @@ def test_profile_personal_syllabus_full_chain(monkeypatch, repo_json_factory):
     monkeypatch.setattr(lpt, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
     monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: True)
     monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: agent)
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
     monkeypatch.setattr(lpt, "time", lambda: 1760000000)
 
     first_profile = lpt.build_learning_profile(
@@ -244,7 +244,7 @@ def test_profile_personal_syllabus_multi_round_propagation(monkeypatch, repo_jso
     monkeypatch.setattr(lpt, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
     monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: True)
     monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: agent)
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
 
     now = {"value": 1760000000}
     monkeypatch.setattr(lpt, "time", lambda: now["value"])
@@ -352,7 +352,7 @@ def test_real_learning_profile_agent_full_chain_integration(monkeypatch, db_real
 
     _normalize_model_for_dashscope()
     user, syllabus, relation = db_real_learning_profile_case
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
     monkeypatch.setattr(lpt, "time", lambda: 1760000000)
 
     trace = []

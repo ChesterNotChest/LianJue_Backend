@@ -30,7 +30,7 @@ def _install_profile_mocks(monkeypatch, user, syllabuses, relations, personal_pa
     monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus_by_id.get(syllabus_id))
     monkeypatch.setattr(
         lpt,
-        "_load_personal_syllabus",
+        "load_personal_syllabus_rows",
         lambda user_id, syllabus_id=None: [
             (
                 sid,
@@ -41,7 +41,7 @@ def _install_profile_mocks(monkeypatch, user, syllabuses, relations, personal_pa
             if syllabus_id is None or sid == syllabus_id
         ],
     )
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
     monkeypatch.setattr(lpt, "set_personal_profile_path", lambda *args, **kwargs: True)
     monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: _ProfileToolchainAgent())
     monkeypatch.setattr(lpt, "time", lambda: 1760000000)

@@ -131,7 +131,7 @@ def test_learning_profile_agent_selects_expected_tools(monkeypatch, db_learning_
 
     _normalize_model_for_dashscope()
     user, syllabus, relation = db_learning_profile_case
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
 
     trace = _trace_agent_tools(monkeypatch)
     payload = {

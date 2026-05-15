@@ -5,6 +5,7 @@ from flask import Flask
 
 from blueprint import user_api
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import storage as profile_storage
 
 
 def test_learning_profile_agent_and_model_can_initialize():
@@ -109,7 +110,7 @@ def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
     }
     updated_paths = []
     monkeypatch.setattr(
-        lpt,
+        profile_storage,
         "set_personal_profile_path",
         lambda user_id, syllabus_id, path: updated_paths.append((user_id, syllabus_id, path)) or True,
     )
@@ -128,7 +129,7 @@ def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
 def test_build_personal_profile_path_has_no_read_side_effect(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
-    profile_path = lpt._build_personal_profile_path(2, 9)
+    profile_path = lpt.build_personal_profile_path(2, 9)
 
     assert Path(profile_path).parts[-2:] == ("profiles", "9-2.json")
     assert not (tmp_path / "profiles").exists()
@@ -136,11 +137,11 @@ def test_build_personal_profile_path_has_no_read_side_effect(monkeypatch, tmp_pa
 
 def test_save_personal_profile_removes_temp_file_when_db_update_fails(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: None)
+    monkeypatch.setattr(profile_storage, "set_personal_profile_path", lambda user_id, syllabus_id, path: None)
     profile = {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
 
-    saved = lpt._save_personal_profile(2, 9, profile)
-    profile_path = Path(lpt._build_personal_profile_path(2, 9))
+    saved = profile_storage.save_personal_profile(2, 9, profile)
+    profile_path = Path(lpt.build_personal_profile_path(2, 9))
 
     assert saved is None
     assert not profile_path.exists()
@@ -150,10 +151,10 @@ def test_save_personal_profile_removes_temp_file_when_db_update_fails(monkeypatc
 
 def test_save_personal_profile_returns_payload_without_mutating_input(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: SimpleNamespace())
+    monkeypatch.setattr(profile_storage, "set_personal_profile_path", lambda user_id, syllabus_id, path: SimpleNamespace())
     profile = {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
 
-    saved = lpt._save_personal_profile(2, 9, profile)
+    saved = profile_storage.save_personal_profile(2, 9, profile)
 
     assert saved["profile_saved"] is True
     assert saved["profile_path"].endswith(str(Path("profiles") / "9-2.json"))
@@ -167,7 +168,7 @@ def test_learning_profile_fallback_prefers_existing_profile_then_save():
         "syllabus_id": 9,
         "existing_profile_loaded": False,
     }
-    assert lpt._fallback_next_learning_profile_tool(load_state)["tool_name"] == "load_existing_profile_context"
+    assert lpt.fallback_next_learning_profile_tool(load_state)["tool_name"] == "load_existing_profile_context"
 
     save_state = {
         "user_id": 2,
@@ -180,7 +181,7 @@ def test_learning_profile_fallback_prefers_existing_profile_then_save():
         "profile": {"user_id": 2},
         "profile_saved": False,
     }
-    assert lpt._fallback_next_learning_profile_tool(save_state)["tool_name"] == "save_or_update_profile"
+    assert lpt.fallback_next_learning_profile_tool(save_state)["tool_name"] == "save_or_update_profile"
 
 
 def test_get_or_build_learning_profile_returns_persisted_profile_without_refresh(monkeypatch):
@@ -192,7 +193,7 @@ def test_get_or_build_learning_profile_returns_persisted_profile_without_refresh
         "saved_at": 1760000000,
     }
     build_calls = []
-    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
+    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
     monkeypatch.setattr(lpt, "build_learning_profile", lambda *args, **kwargs: build_calls.append((args, kwargs)) or {"user_id": 3})
 
     profile = lpt.get_or_build_learning_profile(3, 11)
@@ -210,7 +211,7 @@ def test_get_or_build_learning_profile_builds_when_missing_or_refreshing(monkeyp
         build_calls.append((args, kwargs))
         return {"user_id": args[0], "confidence": 0.6}
 
-    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (None, None))
+    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (None, None))
     monkeypatch.setattr(lpt, "build_learning_profile", fake_build)
 
     missing_profile = lpt.get_or_build_learning_profile(4, 12)
@@ -225,7 +226,7 @@ def test_get_or_build_learning_profile_builds_when_missing_or_refreshing(monkeyp
         "profile_path": "profiles/12-4.json",
         "saved_at": 1760000000,
     }
-    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
+    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
 
     refreshed_profile = lpt.get_or_build_learning_profile(4, 12, refresh_profile=True)
 
@@ -247,10 +248,10 @@ def test_get_persisted_learning_profile_rejects_identity_mismatch(monkeypatch):
         "saved_at": 1760000000,
     }
 
-    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (wrong_user, wrong_user["profile_path"]))
+    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (wrong_user, wrong_user["profile_path"]))
     assert lpt.get_persisted_learning_profile(4, 12) is None
 
-    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (wrong_syllabus, wrong_syllabus["profile_path"]))
+    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (wrong_syllabus, wrong_syllabus["profile_path"]))
     assert lpt.get_persisted_learning_profile(4, 12) is None
 
 
@@ -261,7 +262,7 @@ def test_get_persisted_learning_profile_accepts_root_syllabus_id(monkeypatch):
         "confidence": 0.8,
     }
 
-    monkeypatch.setattr(lpt, "_load_existing_profile", lambda user_id, syllabus_id: (persisted, "profiles/12-4.json"))
+    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (persisted, "profiles/12-4.json"))
 
     profile = lpt.get_persisted_learning_profile(4, 12)
 

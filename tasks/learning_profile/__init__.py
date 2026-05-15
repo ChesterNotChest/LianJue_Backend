@@ -7,5 +7,26 @@ without turning the task file into the whole subsystem.
 """
 
 from .models import LearningProfileDeps, LearningProfileResult
+from .storage import (
+	load_json_file,
+	build_personal_profile_path,
+	get_persisted_learning_profile,
+	load_existing_profile,
+	merge_profile_update,
+	profile_has_required_identity,
+	profile_root_dir,
+	save_personal_profile,
+)
 
-__all__ = ["LearningProfileDeps", "LearningProfileResult"]
+__all__ = [
+	"LearningProfileDeps",
+	"LearningProfileResult",
+	"build_personal_profile_path",
+	"get_persisted_learning_profile",
+	"load_existing_profile",
+	"load_json_file",
+	"merge_profile_update",
+	"profile_has_required_identity",
+	"profile_root_dir",
+	"save_personal_profile",
+]

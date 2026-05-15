@@ -1,9 +1,10 @@
-import json
+﻿import json
 import os
 
 import pytest
 
 from tasks import generative_task as gt
+from tasks.generative import storage as generative_storage
 
 
 class FakeMindmapAgent:
@@ -108,7 +109,7 @@ class InvalidDocumentAgent:
 
 
 def test_ensure_generative_workspace_creates_expected_layout(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     workspace = gt.ensure_generative_workspace(7)
 
@@ -139,7 +140,7 @@ mindmap
 
 
 def test_generate_mindmap_persists_bundle_and_manifest(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_mindmap(
         {
@@ -182,7 +183,7 @@ def test_generate_mindmap_persists_bundle_and_manifest(monkeypatch, tmp_path):
 
 
 def test_generate_resource_dispatches_to_mindmap(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_resource(
         {
@@ -201,7 +202,7 @@ def test_generate_resource_dispatches_to_mindmap(monkeypatch, tmp_path):
 
 
 def test_generate_structured_document_persists_bundle_and_manifest(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_structured_document(
         {
@@ -238,7 +239,7 @@ def test_generate_structured_document_persists_bundle_and_manifest(monkeypatch, 
 
 
 def test_generate_structured_document_marks_invalid_when_schema_validation_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_structured_document(
         {
@@ -262,7 +263,7 @@ def test_generate_structured_document_marks_invalid_when_schema_validation_fails
 
 
 def test_generate_quiz_persists_bundle_and_manifest(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_quiz(
         {
@@ -298,7 +299,7 @@ def test_generate_quiz_persists_bundle_and_manifest(monkeypatch, tmp_path):
 
 
 def test_generate_quiz_marks_invalid_when_schema_validation_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_quiz(
         {
@@ -322,7 +323,7 @@ def test_generate_quiz_marks_invalid_when_schema_validation_fails(monkeypatch, t
 
 
 def test_generate_resource_dispatches_to_quiz(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_resource(
         {
@@ -339,7 +340,7 @@ def test_generate_resource_dispatches_to_quiz(monkeypatch, tmp_path):
 
 
 def test_generate_resource_dispatches_to_documents(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_resource(
         {
@@ -356,7 +357,7 @@ def test_generate_resource_dispatches_to_documents(monkeypatch, tmp_path):
 
 
 def test_generate_mindmap_marks_invalid_when_mermaid_validation_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_mindmap(
         {
@@ -382,7 +383,7 @@ def test_generate_mindmap_marks_invalid_when_mermaid_validation_fails(monkeypatc
 
 
 def test_generate_mindmap_requires_topic(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     with pytest.raises(ValueError, match="topic is required"):
         gt.generate_mindmap(
@@ -395,7 +396,7 @@ def test_generate_mindmap_requires_topic(monkeypatch, tmp_path):
 
 
 def test_generate_resource_rejects_unimplemented_type(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     with pytest.raises(ValueError, match="is not implemented yet"):
         gt.generate_resource(
@@ -448,7 +449,7 @@ def test_validate_document_payload_rejects_missing_summary():
 
 
 def test_load_manifest_backfills_version_and_resource_count(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
     user_root = tmp_path / "generative" / "user_4"
     user_root.mkdir(parents=True, exist_ok=True)
     legacy_manifest_path = user_root / "manifest.json"
@@ -475,7 +476,7 @@ def test_load_manifest_backfills_version_and_resource_count(monkeypatch, tmp_pat
 
 
 def test_generate_resource_full_user_chain_persists_all_resource_types(monkeypatch, tmp_path):
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     user_id = 21
     syllabus_id = 31
@@ -751,7 +752,7 @@ def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tm
     graph_name = os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"
     subject = "大数据概论"
 
-    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
     agent = RAGBackedLLMGenerativeAgent(get_model_instance(), search_tool)
     base_payload = {
         "user_id": 61,
@@ -832,3 +833,4 @@ def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tm
             assert (tmp_path / result["md_path"]).exists()
         if result["resource_type"] == "mindmap":
             assert (tmp_path / result["mermaid_path"]).exists()
+
