@@ -90,93 +90,31 @@ def get_personal_syllabus_detail_info_api():
 
 @bp.route('/learning_ask_question', methods=['POST'])
 def ask_question_api():
-    data = request.get_json(silent=True) or {}
-    user_id = data.get('user_id')
-    syllabus_id = data.get('syllabus_id')
-    question = data.get('question')
+    """Deprecated legacy endpoint.
 
-    if not user_id or not syllabus_id or question is None or str(question).strip() == '':
-        return jsonify({
-            'success': False,
-            'answer': '',
-            'matched_files': [],
-            'raw': None,
-            'error_message': 'missing user_id/syllabus_id/question',
-            'error_code': 'missing_fields'
-        }), 400
-
-    try:
-        result = learning_task.ask_question(int(user_id), int(syllabus_id), str(question))
-        if result is None:
-            return jsonify({
-                'success': False,
-                'answer': '',
-                'matched_files': [],
-                'raw': None,
-                'error_message': 'ask question failed',
-                'error_code': 'ask_failed'
-            }), 500
-
-        return jsonify({
-            'success': True,
-            'answer': result.get('answer', ''),
-            'matched_files': result.get('matched_files', []),
-            'raw': result.get('raw'),
-            'error_message': '',
-            'error_code': ''
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'answer': '',
-            'matched_files': [],
-            'raw': None,
-            'error_message': str(e),
-            'error_code': 'exception'
-        }), 500
+    Learning Q&A will be owned by the future total agent. Keep this route only
+    to make the deprecation explicit for older clients.
+    """
+    return jsonify({
+        'success': False,
+        'answer': '',
+        'matched_files': [],
+        'raw': None,
+        'error_message': 'learning_ask_question is deprecated; use the total agent flow',
+        'error_code': 'deprecated'
+    }), 410
 
 
 @bp.route('/learning_update_personal_syllabus', methods=['POST'])
 def update_personal_syllabus_api():
-    data = request.get_json(silent=True) or {}
-    user_id = data.get('user_id')
-    syllabus_id = data.get('syllabus_id')
-    week_index = data.get('week_index')
-    study_time_spent = data.get('study_time_spent', -1)
+    """Deprecated legacy endpoint.
 
-    if not user_id or not syllabus_id or week_index is None:
-        return jsonify({
-            'success': False,
-            'syllabus': None,
-            'error_message': 'missing user_id/syllabus_id/week_index',
-            'error_code': 'missing_fields'
-        }), 400
-
-    try:
-        syllabus = learning_task.update_personal_syllabus(
-            int(user_id),
-            int(syllabus_id),
-            int(week_index),
-            study_time_spent=int(study_time_spent),
-        )
-        if syllabus is None:
-            return jsonify({
-                'success': False,
-                'syllabus': None,
-                'error_message': 'update failed',
-                'error_code': 'update_failed'
-            }), 400
-
-        return jsonify({
-            'success': True,
-            'syllabus': syllabus,
-            'error_message': '',
-            'error_code': ''
-        }), 200
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'syllabus': None,
-            'error_message': str(e),
-            'error_code': 'exception'
-        }), 500
+    Manual learning record / study-time updates are no longer supported.
+    Personal syllabus changes should come from the profile agent or total agent.
+    """
+    return jsonify({
+        'success': False,
+        'syllabus': None,
+        'error_message': 'learning_update_personal_syllabus is deprecated; manual learning record updates are no longer supported',
+        'error_code': 'deprecated'
+    }), 410

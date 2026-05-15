@@ -1,0 +1,5 @@
+GENERATIVE_RESOURCE_TYPES = ("documents", "mindmap", "quiz", "coding_practice")
+MINDMAP_ALLOWED_DIAGRAM_PREFIXES = ("mindmap", "flowchart", "graph")
+GENERATIVE_MANIFEST_VERSION = "v1"
+GENERATIVE_QUIZ_SCHEMA_VERSION = "v1"
+GENERATIVE_DOCUMENT_SCHEMA_VERSION = "v1"

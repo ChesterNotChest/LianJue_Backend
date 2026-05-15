@@ -63,8 +63,8 @@ def test_build_learning_profile_uses_behavior_answer_and_resource_signals(
         lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 19 else None
     )
     monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: fake_agent)
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda user_id, syllabus_id=None: [])
-    monkeypatch.setattr(lpt, "_load_personal_syllabus", lambda user_id, syllabus_id=None: [])
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda user_id, syllabus_id=None: [])
+    monkeypatch.setattr(lpt, "load_personal_syllabus_rows", lambda user_id, syllabus_id=None: [])
     monkeypatch.setattr(lpt, "time", lambda: 1760000000)
 
     profile = lpt.build_learning_profile(
@@ -212,10 +212,10 @@ def test_build_learning_profile_can_call_context_tools_before_feature_tools(
         lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 20 else None
     )
     monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: fake_agent)
-    monkeypatch.setattr(lpt, "_collect_history_entries", lambda *args, **kwargs: history_entries)
+    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: history_entries)
     monkeypatch.setattr(
         lpt,
-        "_load_personal_syllabus",
+        "load_personal_syllabus_rows",
         lambda *args, **kwargs: [
             (
                 20,
