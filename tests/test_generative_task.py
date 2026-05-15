@@ -644,6 +644,40 @@ class RealLLMGenerativeAgent:
         return generated
 
 
+class RAGBackedLLMGenerativeAgent(RealLLMGenerativeAgent):
+    def _call_json(self, task_name, payload, required_keys):
+        system_prompt = (
+            "You are a personalized course resource generation adapter. "
+            "Use the provided retrieval_context as grounding evidence. "
+            "Return only one valid JSON object. Do not use markdown fences."
+        )
+        retrieval_context = payload.get("retrieval_context") if isinstance(payload.get("retrieval_context"), dict) else {}
+        user_prompt = json.dumps(
+            {
+                "task": task_name,
+                "subject": payload.get("subject"),
+                "topic": payload.get("topic"),
+                "weak_points": payload.get("weak_points") or [],
+                "learning_goal": payload.get("learning_goal"),
+                "required_keys": required_keys,
+                "retrieval_context": {
+                    "query": retrieval_context.get("query"),
+                    "paragraphs": retrieval_context.get("paragraphs") or [],
+                    "reasoning_paths": retrieval_context.get("reasoning_paths") or [],
+                },
+                "constraints": [
+                    "Generate content for the subject 大数据概论.",
+                    "Make the resource personalized to the weak_points.",
+                    "Use retrieved facts when possible.",
+                    "For quiz, include exactly one single_choice question with at least 4 options.",
+                ],
+            },
+            ensure_ascii=False,
+        )
+        raw = self.model.call_text_model(system_prompt, user_prompt, stream=False)
+        return _extract_json_object(raw)
+
+
 @pytest.mark.llm
 def test_real_llm_generative_agent_smoke(monkeypatch, tmp_path):
     if os.getenv("RUN_LLM_TESTS") != "1":
@@ -671,5 +705,53 @@ def test_real_llm_generative_agent_smoke(monkeypatch, tmp_path):
     assert result["status"] == "ready"
     assert result["validation"]["valid"] is True
     assert manifest["resource_count"] == 1
+    assert (tmp_path / result["json_path"]).exists()
+    assert (tmp_path / result["md_path"]).exists()
+
+
+@pytest.mark.llm
+@pytest.mark.search
+def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tmp_path):
+    if os.getenv("RUN_LLM_TESTS") != "1" or os.getenv("RUN_SEARCH_TESTS") != "1":
+        pytest.skip("Set RUN_LLM_TESTS=1 and RUN_SEARCH_TESTS=1 to run the real RAG generative chain.")
+
+    from tasks.search_tool import search_tool
+    from utils.llm_utils import get_model_instance
+
+    graph_name = os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"
+    subject = "大数据概论"
+    query = os.getenv("SEARCH_TOOL_QUERY") or "大数据概论 HBase RowKey 热点 预分区"
+    retrieval = search_tool(query, graph_name=graph_name, top_k=3)
+    if not retrieval["success"] or not retrieval["paragraphs"]:
+        pytest.skip(f"Real search returned no usable paragraphs for graph {graph_name}: {retrieval['error']}")
+
+    monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
+    agent = RAGBackedLLMGenerativeAgent(get_model_instance())
+    payload = {
+        "user_id": 61,
+        "syllabus_id": 71,
+        "resource_type": "quiz",
+        "subject": subject,
+        "topic": "HBase RowKey 热点规避",
+        "graph_name": graph_name,
+        "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
+        "weak_points": ["RowKey 热点", "预分区策略"],
+        "retrieval_context": retrieval,
+    }
+
+    result = gt.generate_resource(payload, agent)
+    saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
+    saved_md = (tmp_path / result["md_path"]).read_text(encoding="utf-8")
+    manifest = gt.load_manifest(61)
+
+    assert result["success"] is True
+    assert result["resource_type"] == "quiz"
+    assert result["status"] == "ready"
+    assert result["validation"]["valid"] is True
+    assert saved_json["schema_version"] == gt.GENERATIVE_QUIZ_SCHEMA_VERSION
+    assert saved_json["questions"]
+    assert any(point in saved_md for point in ["RowKey", "热点", "预分区", "HBase"])
+    assert manifest["resource_count"] == 1
+    assert manifest["resources"][0]["syllabus_id"] == 71
     assert (tmp_path / result["json_path"]).exists()
     assert (tmp_path / result["md_path"]).exists()
