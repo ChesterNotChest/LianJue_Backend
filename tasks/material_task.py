@@ -54,13 +54,17 @@ def _write_json_file(path_value: str, payload: dict) -> bool:
         return False
 
 
+def _get_backend_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
 def _resolve_repo_path(path_value: Any) -> Optional[Path]:
     if not isinstance(path_value, str) or not path_value.strip():
         return None
     path_obj = Path(path_value)
     if path_obj.is_absolute():
         return path_obj
-    return Path.cwd() / path_obj
+    return _get_backend_root() / path_obj
 
 
 def _read_text_file(path_value: Any) -> Optional[str]:

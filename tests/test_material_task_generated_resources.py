@@ -3,6 +3,40 @@ import json
 from tasks import material_task
 
 
+def test_get_generated_resource_detail_resolves_repo_relative_paths(monkeypatch, tmp_path):
+    backend_root = tmp_path / "backend"
+    resource_dir = backend_root / "generative" / "user_5" / "documents" / "doc-1"
+    other_cwd = tmp_path / "other"
+    resource_dir.mkdir(parents=True)
+    other_cwd.mkdir()
+    json_path = resource_dir / "document.json"
+    json_path.write_text(json.dumps({"title": "RowKey document"}, ensure_ascii=False), encoding="utf-8")
+
+    manifest = {
+        "resources": [
+            {
+                "resource_id": "doc-1",
+                "resource_type": "documents",
+                "title": "RowKey document",
+                "syllabus_id": 9,
+                "status": "ready",
+                "resource_dir": "generative/user_5/documents/doc-1",
+                "main_files": {
+                    "json_path": "generative/user_5/documents/doc-1/document.json",
+                },
+                "created_at": 100,
+            }
+        ]
+    }
+    monkeypatch.setattr(material_task, "_get_backend_root", lambda: backend_root)
+    monkeypatch.setattr(material_task.generative_task, "load_manifest", lambda user_id: manifest)
+    monkeypatch.chdir(other_cwd)
+
+    detail = material_task.get_generated_resource_detail(5, "doc-1")
+
+    assert detail["content"] == {"title": "RowKey document"}
+
+
 def test_list_generated_resources_filters_and_sorts(monkeypatch):
     manifest = {
         "resources": [
