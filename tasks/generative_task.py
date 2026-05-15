@@ -6,13 +6,13 @@ from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from constant import BasePath
-
-
-GENERATIVE_RESOURCE_TYPES = ("documents", "mindmap", "quiz", "coding_practice")
-MINDMAP_ALLOWED_DIAGRAM_PREFIXES = ("mindmap", "flowchart", "graph")
-GENERATIVE_MANIFEST_VERSION = "v1"
-GENERATIVE_QUIZ_SCHEMA_VERSION = "v1"
-GENERATIVE_DOCUMENT_SCHEMA_VERSION = "v1"
+from tasks.generative import (
+    GENERATIVE_DOCUMENT_SCHEMA_VERSION,
+    GENERATIVE_MANIFEST_VERSION,
+    GENERATIVE_QUIZ_SCHEMA_VERSION,
+    GENERATIVE_RESOURCE_TYPES,
+    MINDMAP_ALLOWED_DIAGRAM_PREFIXES,
+)
 
 
 def _get_backend_root() -> Path:

@@ -1,14 +1,12 @@
 import json
 import os
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
 from datetime import datetime
 from functools import lru_cache
 from statistics import mean
 from time import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -18,6 +16,7 @@ from constant import BasePath, PersonalSyllabus, ProfilePersonalSyllabusSuggesti
 from repositories.syllabus_repo import get_syllabus_by_id
 from repositories.user_repo import get_user_by_id
 from repositories.user_syllabus_repo import get_user_syllabus, list_user_syllabuses, set_personal_profile_path, set_personal_syllabus_path
+from tasks.learning_profile import LearningProfileDeps, LearningProfileResult
 from utils.llm_utils import get_model_instance
 
 
@@ -1327,18 +1326,6 @@ def _build_confidence(
 		else:
 			freshness_factor = 0.4
 	return round(_clip(0.38 * sample_factor + 0.26 * source_factor + 0.24 * freshness_factor + week_factor), 4)
-
-
-@dataclass
-class LearningProfileDeps:
-	state: Dict[str, Any] = field(default_factory=dict)
-
-
-class LearningProfileResult(BaseModel):
-	success: bool = True
-	profile: Optional[dict] = None
-	error_message: str = ''
-	error_code: str = ''
 
 
 def _build_learning_profile_model() -> OpenAIModel:
