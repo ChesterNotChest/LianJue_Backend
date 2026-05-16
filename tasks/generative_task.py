@@ -9,13 +9,20 @@ from pathlib import Path
 from typing import Any, Optional
 
 from tasks.generative.contracts import (
+    GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
     GENERATIVE_DOCUMENT_SCHEMA_VERSION,
     GENERATIVE_MANIFEST_VERSION,
+    GENERATIVE_PPT_SCHEMA_VERSION,
     GENERATIVE_QUIZ_SCHEMA_VERSION,
     GENERATIVE_RESOURCE_TYPES,
     MINDMAP_ALLOWED_DIAGRAM_PREFIXES,
 )
-from tasks.generative.renderers import render_document_markdown, render_quiz_markdown
+from tasks.generative.renderers import (
+    render_coding_practice_markdown,
+    render_document_markdown,
+    render_ppt_markdown,
+    render_quiz_markdown,
+)
 from tasks.generative.storage import (
     _get_backend_root,
     _get_generative_root,
@@ -35,8 +42,10 @@ from tasks.generative.storage import (
 )
 from tasks.generative.validation import (
     strip_mermaid_fence as _strip_mermaid_fence,
+    validate_coding_practice_payload,
     validate_document_payload,
     validate_mermaid_text,
+    validate_ppt_payload,
     validate_quiz_payload,
 )
 
@@ -86,6 +95,31 @@ def _payload_ids_and_topic(payload: dict) -> tuple[int, Optional[int], str]:
     return user_id, syllabus_id, topic
 
 
+def _build_main_files(*, json_path: str, **extra: Optional[str]) -> dict:
+    main_files = {"json_path": json_path}
+    for key, value in extra.items():
+        if value:
+            main_files[key] = value
+    return main_files
+
+
+def _build_result_payload(*, entry: dict) -> dict:
+    result = {
+        "success": True,
+        "resource_id": entry["resource_id"],
+        "resource_type": entry["resource_type"],
+        "title": entry["title"],
+        "topic": entry["topic"],
+        "status": entry["status"],
+        "resource_dir": entry["resource_dir"],
+        "validation": entry["validation"],
+    }
+    for key, value in entry["main_files"].items():
+        if key not in result:
+            result[key] = value
+    return result
+
+
 def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
     """Generate a single mindmap resource bundle from an agent adapter."""
     if not isinstance(payload, dict):
@@ -127,10 +161,10 @@ def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
     _write_text(mermaid_path, cleaned_mermaid + "\n")
 
     status = "ready" if validation["valid"] else "invalid"
-    main_files = {
-        "json_path": _repo_relative_path(mindmap_json_path),
-        "mermaid_path": _repo_relative_path(mermaid_path),
-    }
+    main_files = _build_main_files(
+        json_path=_repo_relative_path(mindmap_json_path),
+        mermaid_path=_repo_relative_path(mermaid_path),
+    )
     entry = _build_resource_entry(
         user_id=user_id,
         resource_id=resource_id,
@@ -153,18 +187,7 @@ def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
     )
     append_manifest_entry(user_id, entry)
 
-    return {
-        "success": True,
-        "resource_id": resource_id,
-        "resource_type": resource_type,
-        "title": title,
-        "topic": topic,
-        "status": status,
-        "resource_dir": _repo_relative_path(resource_dir),
-        "json_path": entry["main_files"]["json_path"],
-        "mermaid_path": entry["main_files"]["mermaid_path"],
-        "validation": entry["validation"],
-    }
+    return _build_result_payload(entry=entry)
 
 
 def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
@@ -211,10 +234,10 @@ def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
         topic=document_json["topic"],
         syllabus_id=syllabus_id,
         resource_dir=resource_dir,
-        main_files={
-            "json_path": _repo_relative_path(document_json_path),
-            "md_path": _repo_relative_path(document_md_path),
-        },
+        main_files=_build_main_files(
+            json_path=_repo_relative_path(document_json_path),
+            md_path=_repo_relative_path(document_md_path),
+        ),
         status=status,
         validation={
             "valid": validation["valid"],
@@ -231,18 +254,7 @@ def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
     )
     append_manifest_entry(user_id, entry)
 
-    return {
-        "success": True,
-        "resource_id": resource_id,
-        "resource_type": resource_type,
-        "title": title,
-        "topic": document_json["topic"],
-        "status": status,
-        "resource_dir": _repo_relative_path(resource_dir),
-        "json_path": entry["main_files"]["json_path"],
-        "md_path": entry["main_files"]["md_path"],
-        "validation": entry["validation"],
-    }
+    return _build_result_payload(entry=entry)
 
 
 def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
@@ -292,10 +304,10 @@ def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
         topic=quiz_json["topic"],
         syllabus_id=syllabus_id,
         resource_dir=resource_dir,
-        main_files={
-            "json_path": _repo_relative_path(quiz_json_path),
-            "md_path": _repo_relative_path(quiz_md_path),
-        },
+        main_files=_build_main_files(
+            json_path=_repo_relative_path(quiz_json_path),
+            md_path=_repo_relative_path(quiz_md_path),
+        ),
         status=status,
         validation={
             "valid": validation["valid"],
@@ -312,18 +324,185 @@ def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
     )
     append_manifest_entry(user_id, entry)
 
-    return {
-        "success": True,
-        "resource_id": resource_id,
-        "resource_type": resource_type,
+    return _build_result_payload(entry=entry)
+
+
+def _safe_relative_code_path(path_value: Any) -> Optional[Path]:
+    normalized = str(path_value or "").strip().replace("\\", "/")
+    if not normalized:
+        return None
+    candidate = Path(normalized)
+    if candidate.is_absolute():
+        return None
+    if any(part in {"", ".", ".."} for part in candidate.parts):
+        return None
+    return candidate
+
+
+def generate_coding_practice(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single coding practice resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_coding_practice"):
+        raise ValueError("agent_adapter must expose generate_coding_practice(payload)")
+
+    user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
+    ensure_generative_workspace(user_id)
+    resource_type = _normalize_resource_type("coding_practice")
+    resource_id = _new_resource_id(resource_type)
+    resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
+    resource_dir.mkdir(parents=True, exist_ok=True)
+
+    generated = agent_adapter.generate_coding_practice(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_coding_practice must return a dict")
+
+    title = str(generated.get("title") or f"{topic} 实操案例").strip() or f"{topic} 实操案例"
+    language = str(generated.get("language") or payload.get("language") or "").strip() or "python"
+    code_files = generated.get("code_files") if isinstance(generated.get("code_files"), list) else []
+    practice_json = {
+        "schema_version": str(
+            generated.get("schema_version") or GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION
+        ),
         "title": title,
-        "topic": quiz_json["topic"],
-        "status": status,
-        "resource_dir": _repo_relative_path(resource_dir),
-        "json_path": entry["main_files"]["json_path"],
-        "md_path": entry["main_files"]["md_path"],
-        "validation": entry["validation"],
+        "topic": str(generated.get("topic") or topic).strip() or topic,
+        "language": language,
+        "summary": str(generated.get("summary") or "").strip(),
+        "learning_objectives": (
+            generated.get("learning_objectives")
+            if isinstance(generated.get("learning_objectives"), list)
+            else []
+        ),
+        "steps": generated.get("steps") if isinstance(generated.get("steps"), list) else [],
+        "code_files": code_files,
+        "run_guide": generated.get("run_guide") if isinstance(generated.get("run_guide"), dict) else {},
     }
+    validation = validate_coding_practice_payload(practice_json)
+    practice_markdown = render_coding_practice_markdown(practice_json)
+
+    practice_json_path = resource_dir / "practice.json"
+    practice_md_path = resource_dir / "practice.md"
+    _write_json(practice_json_path, practice_json)
+    _write_text(practice_md_path, practice_markdown)
+
+    for item in code_files:
+        if not isinstance(item, dict):
+            continue
+        safe_path = _safe_relative_code_path(item.get("path"))
+        if safe_path is None:
+            continue
+        _write_text(resource_dir / safe_path, str(item.get("content") or ""))
+
+    entry_file = str(practice_json["run_guide"].get("entry_file") or "").strip()
+    safe_entry_file = _safe_relative_code_path(entry_file)
+    entry_file_path = (
+        _repo_relative_path(resource_dir / safe_entry_file) if safe_entry_file is not None else None
+    )
+
+    status = "ready" if validation["valid"] else "invalid"
+    entry = _build_resource_entry(
+        user_id=user_id,
+        resource_id=resource_id,
+        resource_type=resource_type,
+        title=title,
+        topic=practice_json["topic"],
+        syllabus_id=syllabus_id,
+        resource_dir=resource_dir,
+        main_files=_build_main_files(
+            json_path=_repo_relative_path(practice_json_path),
+            md_path=_repo_relative_path(practice_md_path),
+            entry_file_path=entry_file_path,
+        ),
+        status=status,
+        validation={
+            "valid": validation["valid"],
+            "method": validation["method"],
+            "schema_version": validation["schema_version"],
+            "language": validation["language"],
+            "step_count": validation["step_count"],
+            "file_count": validation["file_count"],
+            "errors": validation["errors"],
+            "warnings": validation["warnings"],
+        },
+        metadata={
+            "language": language,
+            "file_count": validation["file_count"],
+            "step_count": validation["step_count"],
+            "entry_file": entry_file or None,
+        },
+    )
+    append_manifest_entry(user_id, entry)
+
+    return _build_result_payload(entry=entry)
+
+
+def generate_ppt(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single ppt resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_ppt"):
+        raise ValueError("agent_adapter must expose generate_ppt(payload)")
+
+    user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
+    ensure_generative_workspace(user_id)
+    resource_type = _normalize_resource_type("ppt")
+    resource_id = _new_resource_id(resource_type)
+    resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
+    resource_dir.mkdir(parents=True, exist_ok=True)
+
+    generated = agent_adapter.generate_ppt(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_ppt must return a dict")
+
+    title = str(generated.get("title") or f"{topic} PPT").strip() or f"{topic} PPT"
+    ppt_json = {
+        "schema_version": str(generated.get("schema_version") or GENERATIVE_PPT_SCHEMA_VERSION),
+        "title": title,
+        "topic": str(generated.get("topic") or topic).strip() or topic,
+        "summary": str(generated.get("summary") or "").strip(),
+        "theme": str(generated.get("theme") or "").strip(),
+        "slide_style": str(generated.get("slide_style") or "").strip(),
+        "slides": generated.get("slides") if isinstance(generated.get("slides"), list) else [],
+    }
+    validation = validate_ppt_payload(ppt_json)
+    ppt_markdown = render_ppt_markdown(ppt_json)
+
+    ppt_json_path = resource_dir / "ppt.json"
+    ppt_md_path = resource_dir / "ppt.md"
+    _write_json(ppt_json_path, ppt_json)
+    _write_text(ppt_md_path, ppt_markdown)
+
+    status = "ready" if validation["valid"] else "invalid"
+    entry = _build_resource_entry(
+        user_id=user_id,
+        resource_id=resource_id,
+        resource_type=resource_type,
+        title=title,
+        topic=ppt_json["topic"],
+        syllabus_id=syllabus_id,
+        resource_dir=resource_dir,
+        main_files=_build_main_files(
+            json_path=_repo_relative_path(ppt_json_path),
+            md_path=_repo_relative_path(ppt_md_path),
+        ),
+        status=status,
+        validation={
+            "valid": validation["valid"],
+            "method": validation["method"],
+            "schema_version": validation["schema_version"],
+            "slide_count": validation["slide_count"],
+            "errors": validation["errors"],
+            "warnings": validation["warnings"],
+        },
+        metadata={
+            "slide_count": validation["slide_count"],
+            "theme": ppt_json["theme"] or None,
+            "slide_style": ppt_json["slide_style"] or None,
+        },
+    )
+    append_manifest_entry(user_id, entry)
+
+    return _build_result_payload(entry=entry)
 
 
 def generate_resource(payload: dict, agent_adapter: Any) -> dict:
@@ -338,5 +517,9 @@ def generate_resource(payload: dict, agent_adapter: Any) -> dict:
         return generate_mindmap(payload, agent_adapter)
     if resource_type == "quiz":
         return generate_quiz(payload, agent_adapter)
+    if resource_type == "coding_practice":
+        return generate_coding_practice(payload, agent_adapter)
+    if resource_type == "ppt":
+        return generate_ppt(payload, agent_adapter)
 
     raise ValueError(f"resource_type {resource_type} is not implemented yet")

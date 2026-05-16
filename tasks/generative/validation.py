@@ -1,7 +1,11 @@
 import re
+from ast import parse as ast_parse
+from pathlib import PurePosixPath
 
 from tasks.generative.contracts import (
+    GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
     GENERATIVE_DOCUMENT_SCHEMA_VERSION,
+    GENERATIVE_PPT_SCHEMA_VERSION,
     GENERATIVE_QUIZ_SCHEMA_VERSION,
     MINDMAP_ALLOWED_DIAGRAM_PREFIXES,
 )
@@ -190,4 +194,178 @@ def validate_document_payload(document: dict) -> dict:
         "method": "schema",
         "schema_version": schema_version or None,
         "section_count": len(sections),
+    }
+
+
+def _is_safe_relative_resource_path(path_value: str) -> bool:
+    normalized = str(path_value or "").strip().replace("\\", "/")
+    if not normalized:
+        return False
+    pure_path = PurePosixPath(normalized)
+    if pure_path.is_absolute():
+        return False
+    if any(part in {"", ".", ".."} for part in pure_path.parts):
+        return False
+    return True
+
+
+def validate_coding_practice_payload(practice: dict) -> dict:
+    errors = []
+    warnings = []
+
+    if not isinstance(practice, dict):
+        return {
+            "valid": False,
+            "errors": ["coding practice payload must be a dict"],
+            "warnings": warnings,
+            "method": "schema+python_syntax",
+            "schema_version": None,
+            "language": None,
+            "step_count": 0,
+            "file_count": 0,
+        }
+
+    schema_version = str(practice.get("schema_version") or "").strip()
+    if schema_version != GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION}")
+
+    title = str(practice.get("title") or "").strip()
+    topic = str(practice.get("topic") or "").strip()
+    language = str(practice.get("language") or "").strip()
+    summary = str(practice.get("summary") or "").strip()
+    if not title:
+        errors.append("title is required")
+    if not topic:
+        errors.append("topic is required")
+    if not language:
+        errors.append("language is required")
+    if not summary:
+        errors.append("summary is required")
+
+    steps = practice.get("steps")
+    if not isinstance(steps, list) or not steps:
+        errors.append("steps must be a non-empty list")
+        steps = []
+
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            errors.append(f"step #{index} must be a dict")
+            continue
+        if not str(step.get("title") or "").strip():
+            errors.append(f"step #{index} missing title")
+        if not str(step.get("instruction") or "").strip():
+            errors.append(f"step #{index} missing instruction")
+
+    code_files = practice.get("code_files")
+    if not isinstance(code_files, list) or not code_files:
+        errors.append("code_files must be a non-empty list")
+        code_files = []
+
+    python_file_count = 0
+    for index, item in enumerate(code_files, start=1):
+        if not isinstance(item, dict):
+            errors.append(f"code_file #{index} must be a dict")
+            continue
+        file_path = str(item.get("path") or "").strip()
+        content = str(item.get("content") or "")
+        if not file_path:
+            errors.append(f"code_file #{index} missing path")
+            continue
+        if not _is_safe_relative_resource_path(file_path):
+            errors.append(f"code_file #{index} path must be a safe relative path")
+        if not content.strip():
+            errors.append(f"code_file #{index} missing content")
+        if file_path.replace("\\", "/").endswith(".py"):
+            python_file_count += 1
+            try:
+                ast_parse(content)
+            except SyntaxError as exc:
+                errors.append(f"code_file #{index} python syntax error: {exc.msg}")
+
+    run_guide = practice.get("run_guide")
+    if not isinstance(run_guide, dict):
+        errors.append("run_guide must be a dict")
+        run_guide = {}
+
+    entry_file = str(run_guide.get("entry_file") or "").strip()
+    command = str(run_guide.get("command") or "").strip()
+    if not entry_file:
+        errors.append("run_guide missing entry_file")
+    elif not _is_safe_relative_resource_path(entry_file):
+        errors.append("run_guide entry_file must be a safe relative path")
+    if not command:
+        errors.append("run_guide missing command")
+
+    if language == "python" and python_file_count == 0:
+        errors.append("python coding practice must contain at least one .py code file")
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "method": "schema+python_syntax",
+        "schema_version": schema_version or None,
+        "language": language or None,
+        "step_count": len(steps),
+        "file_count": len(code_files),
+    }
+
+
+def validate_ppt_payload(ppt: dict) -> dict:
+    errors = []
+    warnings = []
+
+    if not isinstance(ppt, dict):
+        return {
+            "valid": False,
+            "errors": ["ppt payload must be a dict"],
+            "warnings": warnings,
+            "method": "schema",
+            "schema_version": None,
+            "slide_count": 0,
+        }
+
+    schema_version = str(ppt.get("schema_version") or "").strip()
+    if schema_version != GENERATIVE_PPT_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {GENERATIVE_PPT_SCHEMA_VERSION}")
+
+    title = str(ppt.get("title") or "").strip()
+    topic = str(ppt.get("topic") or "").strip()
+    summary = str(ppt.get("summary") or "").strip()
+    if not title:
+        errors.append("title is required")
+    if not topic:
+        errors.append("topic is required")
+    if not summary:
+        errors.append("summary is required")
+
+    slides = ppt.get("slides")
+    if not isinstance(slides, list) or not slides:
+        errors.append("slides must be a non-empty list")
+        slides = []
+
+    for index, slide in enumerate(slides, start=1):
+        if not isinstance(slide, dict):
+            errors.append(f"slide #{index} must be a dict")
+            continue
+        if not str(slide.get("title") or "").strip():
+            errors.append(f"slide #{index} missing title")
+        bullets = slide.get("bullets")
+        if not isinstance(bullets, list) or not bullets:
+            errors.append(f"slide #{index} bullets must be a non-empty list")
+            bullets = []
+        for bullet_index, bullet in enumerate(bullets, start=1):
+            if not str(bullet or "").strip():
+                errors.append(f"slide #{index} bullet #{bullet_index} is empty")
+        speaker_notes = slide.get("speaker_notes")
+        if speaker_notes is not None and not str(speaker_notes).strip():
+            warnings.append(f"slide #{index} has empty speaker_notes")
+
+    return {
+        "valid": len(errors) == 0,
+        "errors": errors,
+        "warnings": warnings,
+        "method": "schema",
+        "schema_version": schema_version or None,
+        "slide_count": len(slides),
     }

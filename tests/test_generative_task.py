@@ -108,6 +108,113 @@ class InvalidDocumentAgent:
         }
 
 
+class FakeCodingPracticeAgent:
+    def generate_coding_practice(self, payload):
+        return {
+            "schema_version": gt.GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
+            "title": f"{payload['topic']} 实操案例",
+            "topic": payload["topic"],
+            "language": "python",
+            "summary": "通过一个可运行示例理解函数定义、参数传递和返回值。",
+            "learning_objectives": [
+                "理解函数定义",
+                "理解参数传递",
+            ],
+            "steps": [
+                {"step_index": 1, "title": "阅读案例目标", "instruction": "先理解程序要完成的功能。"},
+                {"step_index": 2, "title": "运行示例程序", "instruction": "执行 main.py，观察输出。"},
+            ],
+            "code_files": [
+                {
+                    "path": "code/main.py",
+                    "purpose": "entry",
+                    "content": (
+                        "def greet(name):\n"
+                        "    # 返回问候语\n"
+                        "    return f'Hello, {name}'\n\n"
+                        "print(greet('Alice'))\n"
+                    ),
+                }
+            ],
+            "run_guide": {
+                "entry_file": "code/main.py",
+                "command": "python code/main.py",
+                "expected_output": "Hello, Alice",
+            },
+        }
+
+
+class InvalidCodingPracticeAgent:
+    def generate_coding_practice(self, payload):
+        return {
+            "schema_version": gt.GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
+            "title": payload["topic"],
+            "topic": payload["topic"],
+            "language": "python",
+            "summary": "非法结构",
+            "learning_objectives": [],
+            "steps": [
+                {"step_index": 1, "title": "坏步骤", "instruction": ""}
+            ],
+            "code_files": [
+                {
+                    "path": "code/main.py",
+                    "purpose": "entry",
+                    "content": "def broken(:\n    pass\n",
+                }
+            ],
+            "run_guide": {
+                "entry_file": "code/main.py",
+                "command": "python code/main.py",
+            },
+        }
+
+
+class FakePptAgent:
+    def generate_ppt(self, payload):
+        return {
+            "schema_version": gt.GENERATIVE_PPT_SCHEMA_VERSION,
+            "title": f"{payload['topic']} 教学课件",
+            "topic": payload["topic"],
+            "summary": "用于课堂讲解的结构化课件大纲。",
+            "theme": "academic-clean",
+            "slide_style": "teaching-outline",
+            "slides": [
+                {
+                    "slide_index": 1,
+                    "title": "课程目标",
+                    "bullets": ["理解核心概念", "掌握关键步骤"],
+                    "speaker_notes": "先说明本节课要解决的问题。",
+                    "visual_hint": "简洁标题页 + 目标列表",
+                },
+                {
+                    "slide_index": 2,
+                    "title": "关键知识点",
+                    "bullets": ["概念定义", "应用场景", "注意事项"],
+                    "speaker_notes": "结合实例展开讲解。",
+                    "visual_hint": "左右分栏信息结构",
+                },
+            ],
+        }
+
+
+class InvalidPptAgent:
+    def generate_ppt(self, payload):
+        return {
+            "schema_version": gt.GENERATIVE_PPT_SCHEMA_VERSION,
+            "title": payload["topic"],
+            "topic": payload["topic"],
+            "summary": "",
+            "slides": [
+                {
+                    "slide_index": 1,
+                    "title": "",
+                    "bullets": [],
+                }
+            ],
+        }
+
+
 def test_ensure_generative_workspace_creates_expected_layout(monkeypatch, tmp_path):
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
@@ -116,6 +223,7 @@ def test_ensure_generative_workspace_creates_expected_layout(monkeypatch, tmp_pa
     assert workspace["user_root"] == "generative/user_7"
     assert (tmp_path / "generative" / "user_7" / "documents").exists()
     assert (tmp_path / "generative" / "user_7" / "mindmap").exists()
+    assert (tmp_path / "generative" / "user_7" / "ppt").exists()
     manifest = json.loads((tmp_path / workspace["manifest_path"]).read_text(encoding="utf-8"))
     assert manifest["version"] == gt.GENERATIVE_MANIFEST_VERSION
     assert manifest["user_id"] == 7
@@ -356,6 +464,176 @@ def test_generate_resource_dispatches_to_documents(monkeypatch, tmp_path):
     assert result["status"] == "ready"
 
 
+def test_generate_coding_practice_persists_bundle_and_manifest(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_coding_practice(
+        {
+            "user_id": 14,
+            "syllabus_id": 18,
+            "topic": "Python 函数封装与参数传递",
+            "language": "python",
+        },
+        FakeCodingPracticeAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["resource_type"] == "coding_practice"
+    assert result["status"] == "ready"
+
+    resource_dir = tmp_path / result["resource_dir"]
+    saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
+    saved_md = (tmp_path / result["md_path"]).read_text(encoding="utf-8")
+    saved_code = (tmp_path / result["entry_file_path"]).read_text(encoding="utf-8")
+
+    assert resource_dir.exists()
+    assert saved_json["schema_version"] == gt.GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION
+    assert saved_json["language"] == "python"
+    assert saved_json["run_guide"]["entry_file"] == "code/main.py"
+    assert saved_md.startswith("# Python 函数封装与参数传递 实操案例")
+    assert "## Learning Objectives" in saved_md
+    assert "## Practice Steps" in saved_md
+    assert "Command: `python code/main.py`" in saved_md
+    assert "def greet(name):" in saved_md
+    assert "def greet(name):" in saved_code
+
+    manifest = json.loads((tmp_path / "generative" / "user_14" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["resource_count"] == 1
+    entry = manifest["resources"][0]
+    assert entry["resource_type"] == "coding_practice"
+    assert entry["main_files"]["json_path"] == result["json_path"]
+    assert entry["main_files"]["md_path"] == result["md_path"]
+    assert entry["main_files"]["entry_file_path"] == result["entry_file_path"]
+    assert entry["validation"]["language"] == "python"
+    assert entry["validation"]["step_count"] == 2
+    assert entry["metadata"]["file_count"] == 1
+    assert entry["metadata"]["entry_file"] == "code/main.py"
+
+
+def test_generate_coding_practice_marks_invalid_when_validation_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_coding_practice(
+        {
+            "user_id": 15,
+            "topic": "非法代码案例",
+            "language": "python",
+        },
+        InvalidCodingPracticeAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "invalid"
+    assert result["validation"]["valid"] is False
+    assert result["validation"]["errors"]
+
+    manifest = json.loads((tmp_path / "generative" / "user_15" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["resource_count"] == 1
+    entry = manifest["resources"][0]
+    assert entry["resource_type"] == "coding_practice"
+    assert entry["status"] == "invalid"
+    assert any("instruction" in error or "syntax error" in error for error in entry["validation"]["errors"])
+
+
+def test_generate_resource_dispatches_to_coding_practice(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_resource(
+        {
+            "user_id": 16,
+            "resource_type": "coding_practice",
+            "topic": "Python 函数封装与参数传递",
+            "language": "python",
+        },
+        FakeCodingPracticeAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["resource_type"] == "coding_practice"
+    assert result["status"] == "ready"
+
+
+def test_generate_ppt_persists_bundle_and_manifest(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_ppt(
+        {
+            "user_id": 17,
+            "syllabus_id": 18,
+            "topic": "MapReduce 基础",
+        },
+        FakePptAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["resource_type"] == "ppt"
+    assert result["status"] == "ready"
+
+    resource_dir = tmp_path / result["resource_dir"]
+    saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
+    saved_md = (tmp_path / result["md_path"]).read_text(encoding="utf-8")
+
+    assert resource_dir.exists()
+    assert saved_json["schema_version"] == gt.GENERATIVE_PPT_SCHEMA_VERSION
+    assert saved_json["theme"] == "academic-clean"
+    assert len(saved_json["slides"]) == 2
+    assert saved_md.startswith("# MapReduce 基础 教学课件")
+    assert "## Slide 1: 课程目标" in saved_md
+    assert "Speaker Notes:" in saved_md
+    assert "Visual Hint: 简洁标题页 + 目标列表" in saved_md
+
+    manifest = json.loads((tmp_path / "generative" / "user_17" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["resource_count"] == 1
+    entry = manifest["resources"][0]
+    assert entry["resource_type"] == "ppt"
+    assert entry["main_files"]["json_path"] == result["json_path"]
+    assert entry["main_files"]["md_path"] == result["md_path"]
+    assert entry["validation"]["slide_count"] == 2
+    assert entry["metadata"]["theme"] == "academic-clean"
+    assert entry["metadata"]["slide_style"] == "teaching-outline"
+
+
+def test_generate_ppt_marks_invalid_when_schema_validation_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_ppt(
+        {
+            "user_id": 18,
+            "topic": "非法课件",
+        },
+        InvalidPptAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "invalid"
+    assert result["validation"]["valid"] is False
+    assert result["validation"]["errors"]
+
+    manifest = json.loads((tmp_path / "generative" / "user_18" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["resource_count"] == 1
+    entry = manifest["resources"][0]
+    assert entry["resource_type"] == "ppt"
+    assert entry["status"] == "invalid"
+    assert any("summary" in error or "bullets" in error for error in entry["validation"]["errors"])
+
+
+def test_generate_resource_dispatches_to_ppt(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_resource(
+        {
+            "user_id": 19,
+            "resource_type": "ppt",
+            "topic": "Spark Shuffle",
+        },
+        FakePptAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["resource_type"] == "ppt"
+    assert result["status"] == "ready"
+
+
 def test_generate_mindmap_marks_invalid_when_mermaid_validation_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
@@ -390,20 +668,6 @@ def test_generate_mindmap_requires_topic(monkeypatch, tmp_path):
             {
                 "user_id": 1,
                 "topic": "",
-            },
-            FakeMindmapAgent(),
-        )
-
-
-def test_generate_resource_rejects_unimplemented_type(monkeypatch, tmp_path):
-    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
-
-    with pytest.raises(ValueError, match="is not implemented yet"):
-        gt.generate_resource(
-            {
-                "user_id": 1,
-                "resource_type": "coding_practice",
-                "topic": "HDFS",
             },
             FakeMindmapAgent(),
         )
@@ -446,6 +710,53 @@ def test_validate_document_payload_rejects_missing_summary():
 
     assert validation["valid"] is False
     assert any("summary" in error for error in validation["errors"])
+
+
+def test_validate_coding_practice_payload_rejects_unsafe_path_and_empty_steps():
+    validation = gt.validate_coding_practice_payload(
+        {
+            "schema_version": gt.GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
+            "title": "bad coding practice",
+            "topic": "Python basics",
+            "language": "python",
+            "summary": "bad",
+            "steps": [],
+            "code_files": [
+                {
+                    "path": "../escape.py",
+                    "content": "print('bad')\n",
+                }
+            ],
+            "run_guide": {
+                "entry_file": "../escape.py",
+                "command": "python ../escape.py",
+            },
+        }
+    )
+
+    assert validation["valid"] is False
+    assert any("steps" in error for error in validation["errors"])
+    assert any("safe relative path" in error for error in validation["errors"])
+
+
+def test_validate_ppt_payload_rejects_empty_slides():
+    validation = gt.validate_ppt_payload(
+        {
+            "schema_version": gt.GENERATIVE_PPT_SCHEMA_VERSION,
+            "title": "bad ppt",
+            "topic": "Spark",
+            "summary": "bad",
+            "slides": [
+                {
+                    "title": "",
+                    "bullets": [],
+                }
+            ],
+        }
+    )
+
+    assert validation["valid"] is False
+    assert any("missing title" in error or "bullets" in error for error in validation["errors"])
 
 
 def test_load_manifest_backfills_version_and_resource_count(monkeypatch, tmp_path):
@@ -509,17 +820,36 @@ def test_generate_resource_full_user_chain_persists_all_resource_types(monkeypat
             },
             FakeQuizAgent(),
         ),
+        gt.generate_resource(
+            {
+                "user_id": user_id,
+                "syllabus_id": syllabus_id,
+                "resource_type": "coding_practice",
+                "topic": "HBase RowKey",
+                "language": "python",
+            },
+            FakeCodingPracticeAgent(),
+        ),
+        gt.generate_resource(
+            {
+                "user_id": user_id,
+                "syllabus_id": syllabus_id,
+                "resource_type": "ppt",
+                "topic": "HBase RowKey",
+            },
+            FakePptAgent(),
+        ),
     ]
 
     manifest = gt.load_manifest(user_id)
 
-    assert [item["resource_type"] for item in resources] == ["documents", "mindmap", "quiz"]
+    assert [item["resource_type"] for item in resources] == ["documents", "mindmap", "quiz", "coding_practice", "ppt"]
     assert all(item["success"] is True for item in resources)
     assert all(item["status"] == "ready" for item in resources)
-    assert manifest["resource_count"] == 3
-    assert [entry["resource_type"] for entry in manifest["resources"]] == ["documents", "mindmap", "quiz"]
-    assert [entry["syllabus_id"] for entry in manifest["resources"]] == [syllabus_id, syllabus_id, syllabus_id]
-    assert len({entry["resource_id"] for entry in manifest["resources"]}) == 3
+    assert manifest["resource_count"] == 5
+    assert [entry["resource_type"] for entry in manifest["resources"]] == ["documents", "mindmap", "quiz", "coding_practice", "ppt"]
+    assert [entry["syllabus_id"] for entry in manifest["resources"]] == [syllabus_id, syllabus_id, syllabus_id, syllabus_id, syllabus_id]
+    assert len({entry["resource_id"] for entry in manifest["resources"]}) == 5
 
     for entry in manifest["resources"]:
         assert (tmp_path / entry["resource_dir"]).exists()
@@ -833,4 +1163,3 @@ def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tm
             assert (tmp_path / result["md_path"]).exists()
         if result["resource_type"] == "mindmap":
             assert (tmp_path / result["mermaid_path"]).exists()
-
