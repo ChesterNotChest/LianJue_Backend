@@ -120,12 +120,11 @@ def _build_result_payload(*, entry: dict) -> dict:
     return result
 
 
-def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
-    """Generate a single mindmap resource bundle from an agent adapter."""
+def persist_mindmap_resource(payload: dict, generated: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
-    if agent_adapter is None or not hasattr(agent_adapter, "generate_mindmap"):
-        raise ValueError("agent_adapter must expose generate_mindmap(payload)")
+    if not isinstance(generated, dict):
+        raise ValueError("generated mindmap content must be a dict")
 
     user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
     ensure_generative_workspace(user_id)
@@ -134,14 +133,10 @@ def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
     resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
     resource_dir.mkdir(parents=True, exist_ok=True)
 
-    generated = agent_adapter.generate_mindmap(payload)
-    if not isinstance(generated, dict):
-        raise ValueError("generate_mindmap must return a dict")
-
     title = str(generated.get("title") or topic).strip() or topic
     mermaid_text = str(generated.get("mermaid") or "").strip()
     if not mermaid_text:
-        raise ValueError("agent output must include non-empty mermaid text")
+        raise ValueError("generated mindmap content must include non-empty mermaid text")
 
     validation = validate_mermaid_text(mermaid_text)
     cleaned_mermaid = validation["cleaned_text"]
@@ -161,10 +156,6 @@ def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
     _write_text(mermaid_path, cleaned_mermaid + "\n")
 
     status = "ready" if validation["valid"] else "invalid"
-    main_files = _build_main_files(
-        json_path=_repo_relative_path(mindmap_json_path),
-        mermaid_path=_repo_relative_path(mermaid_path),
-    )
     entry = _build_resource_entry(
         user_id=user_id,
         resource_id=resource_id,
@@ -173,7 +164,10 @@ def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
         topic=topic,
         syllabus_id=syllabus_id,
         resource_dir=resource_dir,
-        main_files=main_files,
+        main_files=_build_main_files(
+            json_path=_repo_relative_path(mindmap_json_path),
+            mermaid_path=_repo_relative_path(mermaid_path),
+        ),
         status=status,
         validation={
             "valid": validation["valid"],
@@ -186,16 +180,14 @@ def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
         metadata={"knowledge_item_count": len(mindmap_json["knowledge_items"])},
     )
     append_manifest_entry(user_id, entry)
-
     return _build_result_payload(entry=entry)
 
 
-def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
-    """Generate a single structured document resource bundle from an agent adapter."""
+def persist_structured_document_resource(payload: dict, generated: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
-    if agent_adapter is None or not hasattr(agent_adapter, "generate_document"):
-        raise ValueError("agent_adapter must expose generate_document(payload)")
+    if not isinstance(generated, dict):
+        raise ValueError("generated document content must be a dict")
 
     user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
     ensure_generative_workspace(user_id)
@@ -203,10 +195,6 @@ def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
     resource_id = _new_resource_id(resource_type)
     resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
     resource_dir.mkdir(parents=True, exist_ok=True)
-
-    generated = agent_adapter.generate_document(payload)
-    if not isinstance(generated, dict):
-        raise ValueError("generate_document must return a dict")
 
     title = str(generated.get("title") or f"{topic} document").strip() or f"{topic} document"
     document_json = {
@@ -253,16 +241,14 @@ def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
         },
     )
     append_manifest_entry(user_id, entry)
-
     return _build_result_payload(entry=entry)
 
 
-def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
-    """Generate a single quiz resource bundle from an agent adapter."""
+def persist_quiz_resource(payload: dict, generated: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
-    if agent_adapter is None or not hasattr(agent_adapter, "generate_quiz"):
-        raise ValueError("agent_adapter must expose generate_quiz(payload)")
+    if not isinstance(generated, dict):
+        raise ValueError("generated quiz content must be a dict")
 
     user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
     ensure_generative_workspace(user_id)
@@ -270,10 +256,6 @@ def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
     resource_id = _new_resource_id(resource_type)
     resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
     resource_dir.mkdir(parents=True, exist_ok=True)
-
-    generated = agent_adapter.generate_quiz(payload)
-    if not isinstance(generated, dict):
-        raise ValueError("generate_quiz must return a dict")
 
     title = str(generated.get("title") or f"{topic} quiz").strip() or f"{topic} quiz"
     quiz_json = {
@@ -323,8 +305,46 @@ def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
         },
     )
     append_manifest_entry(user_id, entry)
-
     return _build_result_payload(entry=entry)
+
+
+def generate_mindmap(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single mindmap resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_mindmap"):
+        raise ValueError("agent_adapter must expose generate_mindmap(payload)")
+
+    generated = agent_adapter.generate_mindmap(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_mindmap must return a dict")
+    return persist_mindmap_resource(payload, generated)
+
+
+def generate_structured_document(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single structured document resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_document"):
+        raise ValueError("agent_adapter must expose generate_document(payload)")
+
+    generated = agent_adapter.generate_document(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_document must return a dict")
+    return persist_structured_document_resource(payload, generated)
+
+
+def generate_quiz(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single quiz resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_quiz"):
+        raise ValueError("agent_adapter must expose generate_quiz(payload)")
+
+    generated = agent_adapter.generate_quiz(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_quiz must return a dict")
+    return persist_quiz_resource(payload, generated)
 
 
 def _safe_relative_code_path(path_value: Any) -> Optional[Path]:
@@ -339,12 +359,11 @@ def _safe_relative_code_path(path_value: Any) -> Optional[Path]:
     return candidate
 
 
-def generate_coding_practice(payload: dict, agent_adapter: Any) -> dict:
-    """Generate a single coding practice resource bundle from an agent adapter."""
+def persist_coding_practice_resource(payload: dict, generated: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
-    if agent_adapter is None or not hasattr(agent_adapter, "generate_coding_practice"):
-        raise ValueError("agent_adapter must expose generate_coding_practice(payload)")
+    if not isinstance(generated, dict):
+        raise ValueError("generated coding practice content must be a dict")
 
     user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
     ensure_generative_workspace(user_id)
@@ -352,10 +371,6 @@ def generate_coding_practice(payload: dict, agent_adapter: Any) -> dict:
     resource_id = _new_resource_id(resource_type)
     resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
     resource_dir.mkdir(parents=True, exist_ok=True)
-
-    generated = agent_adapter.generate_coding_practice(payload)
-    if not isinstance(generated, dict):
-        raise ValueError("generate_coding_practice must return a dict")
 
     title = str(generated.get("title") or f"{topic} 实操案例").strip() or f"{topic} 实操案例"
     language = str(generated.get("language") or payload.get("language") or "").strip() or "python"
@@ -432,16 +447,14 @@ def generate_coding_practice(payload: dict, agent_adapter: Any) -> dict:
         },
     )
     append_manifest_entry(user_id, entry)
-
     return _build_result_payload(entry=entry)
 
 
-def generate_ppt(payload: dict, agent_adapter: Any) -> dict:
-    """Generate a single ppt resource bundle from an agent adapter."""
+def persist_ppt_resource(payload: dict, generated: dict) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
-    if agent_adapter is None or not hasattr(agent_adapter, "generate_ppt"):
-        raise ValueError("agent_adapter must expose generate_ppt(payload)")
+    if not isinstance(generated, dict):
+        raise ValueError("generated ppt content must be a dict")
 
     user_id, syllabus_id, topic = _payload_ids_and_topic(payload)
     ensure_generative_workspace(user_id)
@@ -449,10 +462,6 @@ def generate_ppt(payload: dict, agent_adapter: Any) -> dict:
     resource_id = _new_resource_id(resource_type)
     resource_dir = get_generative_user_root(user_id) / resource_type / resource_id
     resource_dir.mkdir(parents=True, exist_ok=True)
-
-    generated = agent_adapter.generate_ppt(payload)
-    if not isinstance(generated, dict):
-        raise ValueError("generate_ppt must return a dict")
 
     title = str(generated.get("title") or f"{topic} PPT").strip() or f"{topic} PPT"
     ppt_json = {
@@ -501,8 +510,51 @@ def generate_ppt(payload: dict, agent_adapter: Any) -> dict:
         },
     )
     append_manifest_entry(user_id, entry)
-
     return _build_result_payload(entry=entry)
+
+
+def generate_coding_practice(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single coding practice resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_coding_practice"):
+        raise ValueError("agent_adapter must expose generate_coding_practice(payload)")
+
+    generated = agent_adapter.generate_coding_practice(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_coding_practice must return a dict")
+    return persist_coding_practice_resource(payload, generated)
+
+
+def generate_ppt(payload: dict, agent_adapter: Any) -> dict:
+    """Generate a single ppt resource bundle from an agent adapter."""
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+    if agent_adapter is None or not hasattr(agent_adapter, "generate_ppt"):
+        raise ValueError("agent_adapter must expose generate_ppt(payload)")
+
+    generated = agent_adapter.generate_ppt(payload)
+    if not isinstance(generated, dict):
+        raise ValueError("generate_ppt must return a dict")
+    return persist_ppt_resource(payload, generated)
+
+
+def persist_generated_resource(payload: dict, generated_content: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a dict")
+
+    resource_type = _normalize_resource_type(payload.get("resource_type"))
+    if resource_type == "documents":
+        return persist_structured_document_resource(payload, generated_content)
+    if resource_type == "mindmap":
+        return persist_mindmap_resource(payload, generated_content)
+    if resource_type == "quiz":
+        return persist_quiz_resource(payload, generated_content)
+    if resource_type == "coding_practice":
+        return persist_coding_practice_resource(payload, generated_content)
+    if resource_type == "ppt":
+        return persist_ppt_resource(payload, generated_content)
+    raise ValueError(f"resource_type {resource_type} is not implemented yet")
 
 
 def generate_resource(payload: dict, agent_adapter: Any) -> dict:

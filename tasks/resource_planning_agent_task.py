@@ -1,0 +1,187 @@
+"""Resource planning agent task.
+
+Atomic tool responsibilities in this stage:
+
+- read generation plan
+- write generation plan
+- retrieve materials
+- read generation draft
+- write generation draft
+"""
+
+from __future__ import annotations
+
+from typing import Any, Callable, Dict, List, Optional
+
+
+def _safe_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
+def _normalize_str_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    items = value if isinstance(value, list) else [value]
+    normalized: List[str] = []
+    for item in items:
+        text = _safe_text(item)
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
+def _tool_read_generation_plan(state: dict, resource_type: str) -> dict:
+    state["tool_trace"].append("read_generation_plan")
+    return dict(state["plans"].get(resource_type) or {})
+
+
+def _tool_write_generation_plan(state: dict, resource_type: str, plan: dict) -> dict:
+    state["tool_trace"].append("write_generation_plan")
+    state["plans"][resource_type] = dict(plan or {})
+    return dict(state["plans"][resource_type])
+
+
+def _tool_retrieve_generation_materials(state: dict, resource_type: str, search_fn: Optional[Callable[..., Dict[str, Any]]]) -> dict:
+    state["tool_trace"].append("retrieve_generation_materials")
+    existing = state["request"].get("retrieval_context")
+    if isinstance(existing, dict) and (
+        existing.get("paragraphs")
+        or existing.get("results")
+        or existing.get("success") is False
+    ):
+        return existing
+
+    graph_name = _safe_text(state["request"].get("graph_name"))
+    if not search_fn or not graph_name:
+        return {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}
+
+    query_parts = [
+        state["request"].get("question"),
+        state["request"].get("topic"),
+        " ".join(_normalize_str_list(state["request"].get("knowledge_items"))),
+        " ".join(_normalize_str_list(state["request"].get("weak_points"))),
+        resource_type,
+    ]
+    query = " ".join(_safe_text(item) for item in query_parts if _safe_text(item))
+    if not query:
+        return {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}
+    return search_fn(query, graph_name=graph_name, top_k=3)
+
+
+def _tool_read_generation_draft(state: dict, resource_type: str) -> dict:
+    state["tool_trace"].append("read_generation_draft")
+    return dict(state["drafts"].get(resource_type) or {})
+
+
+def _tool_write_generation_draft(state: dict, resource_type: str, draft: dict) -> dict:
+    state["tool_trace"].append("write_generation_draft")
+    state["drafts"][resource_type] = dict(draft or {})
+    return dict(state["drafts"][resource_type])
+
+
+def _build_default_plan(request_payload: dict, resource_type: str) -> dict:
+    return {
+        "resource_type": resource_type,
+        "topic": request_payload.get("topic"),
+        "student_question": request_payload.get("question"),
+        "selected_weeks": request_payload.get("selected_weeks") or [],
+        "knowledge_items": request_payload.get("knowledge_items") or [],
+        "weak_points": request_payload.get("weak_points") or [],
+        "learning_goal": request_payload.get("learning_goal"),
+        "objective": f"生成一份围绕“{request_payload.get('question')}”的 {resource_type} 资源",
+    }
+
+
+def _build_default_draft(request_payload: dict, resource_type: str, plan: dict, retrieval_context: dict) -> dict:
+    paragraphs = retrieval_context.get("paragraphs") if isinstance(retrieval_context, dict) else []
+    paragraphs = paragraphs if isinstance(paragraphs, list) else []
+    evidence = [str(item).strip() for item in paragraphs[:3] if str(item).strip()]
+    return {
+        "resource_type": resource_type,
+        "title": f"{request_payload.get('topic')} {resource_type}",
+        "summary": f"围绕学生问题“{request_payload.get('question')}”的草稿。",
+        "outline": [
+            "问题背景",
+            "核心知识点",
+            "重点难点",
+            "针对性练习或结构梳理",
+        ],
+        "evidence": evidence,
+        "plan_objective": plan.get("objective"),
+    }
+
+
+class ResourcePlanningAgent:
+    def __init__(self, search_fn: Optional[Callable[..., Dict[str, Any]]] = None) -> None:
+        self.search_fn = search_fn
+        self._sessions: Dict[str, dict] = {}
+
+    def _get_search_fn(self) -> Optional[Callable[..., Dict[str, Any]]]:
+        if self.search_fn is not None:
+            return self.search_fn
+        try:
+            from tasks.search_tool import search_tool
+        except Exception:
+            return None
+        self.search_fn = search_tool
+        return self.search_fn
+
+    def _get_session(self, request_payload: dict) -> dict:
+        session_key = f"{request_payload.get('user_id')}::{request_payload.get('question')}::{request_payload.get('topic')}"
+        if session_key not in self._sessions:
+            self._sessions[session_key] = {
+                "request": request_payload,
+                "plans": {},
+                "drafts": {},
+                "tool_trace": [],
+            }
+        else:
+            self._sessions[session_key]["request"] = request_payload
+            self._sessions[session_key]["tool_trace"] = []
+        return self._sessions[session_key]
+
+    def run(self, request_payload: dict, resource_type: str) -> dict:
+        state = self._get_session(request_payload)
+
+        plan = _tool_read_generation_plan(state, resource_type)
+        if not plan:
+            plan = _build_default_plan(request_payload, resource_type)
+            plan = _tool_write_generation_plan(state, resource_type, plan)
+
+        retrieval_context = _tool_retrieve_generation_materials(
+            state,
+            resource_type,
+            self._get_search_fn(),
+        )
+
+        draft = _tool_read_generation_draft(state, resource_type)
+        if not draft:
+            draft = _build_default_draft(request_payload, resource_type, plan, retrieval_context)
+            draft = _tool_write_generation_draft(state, resource_type, draft)
+
+        return {
+            "success": True,
+            "resource_type": resource_type,
+            "plan": plan,
+            "retrieval_context": retrieval_context if isinstance(retrieval_context, dict) else {},
+            "draft": draft,
+            "tool_trace": state["tool_trace"][:],
+        }
+
+
+def get_resource_planning_agent() -> ResourcePlanningAgent:
+    return ResourcePlanningAgent()
+
+
+def run_resource_planning_agent(
+    request_payload: dict,
+    resource_type: str,
+    *,
+    planning_agent: Any = None,
+) -> dict:
+    agent = planning_agent or get_resource_planning_agent()
+    return agent.run(request_payload, resource_type)

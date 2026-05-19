@@ -86,6 +86,7 @@ def create_app():
 
     blueprint_targets = [
         ("blueprint.file_transmit_api", "bp"),
+        ("blueprint.generative_api", "bp"),
         ("blueprint.knowledge_build_api", "bp"),
         ("blueprint.learning_api", "bp"),
         ("blueprint.syllabus_material_api", "bp"),
