@@ -120,44 +120,47 @@ def _personal_syllabus_hit(payload: dict, normalized_title: str) -> float:
 
 def _collect_candidate_titles(payload: dict) -> list[str]:
     candidate_titles: list[str] = []
+    direct_titles: list[str] = []
+    context_titles: list[str] = []
+    fallback_titles: list[str] = []
+
+    def append_unique(target: list[str], value: Any) -> None:
+        title = str(value or "").strip()
+        if title and title not in target:
+            target.append(title)
+
     for item in payload.get("detected_topics") or []:
         if isinstance(item, dict):
-            title = str(item.get("title") or "").strip()
-            if title and title not in candidate_titles:
-                candidate_titles.append(title)
+            append_unique(direct_titles, item.get("title"))
     for item in payload.get("events") or []:
         if not isinstance(item, dict):
             continue
-        for key in ("topic", "question", "content"):
-            title = str(item.get(key) or "").strip()
-            if title and title not in candidate_titles:
-                candidate_titles.append(title)
+        append_unique(direct_titles, item.get("topic"))
+        append_unique(fallback_titles, item.get("question"))
+        append_unique(fallback_titles, item.get("content"))
         meta_points = item.get("meta", {}).get("knowledge_points") if isinstance(item.get("meta"), dict) else []
         if isinstance(meta_points, list):
             for point in meta_points:
-                title = str(point or "").strip()
-                if title and title not in candidate_titles:
-                    candidate_titles.append(title)
+                append_unique(direct_titles, point)
     context = payload.get("personal_syllabus_context") if isinstance(payload.get("personal_syllabus_context"), dict) else {}
     for week in context.get("matched_weeks") or []:
         if not isinstance(week, dict):
             continue
         for key in ("title", "content", "enhanced_content"):
-            title = str(week.get(key) or "").strip()
-            if title and title not in candidate_titles:
-                candidate_titles.append(title)
+            append_unique(context_titles, week.get(key))
     for item in payload.get("rag_context") or []:
         if isinstance(item, dict):
-            title = str(item.get("title") or "").strip()
-            if title and title not in candidate_titles:
-                candidate_titles.append(title)
-    question = str(payload.get("question") or "").strip()
-    if question and question not in candidate_titles:
-        candidate_titles.append(question)
+            append_unique(context_titles, item.get("title"))
+    append_unique(fallback_titles, payload.get("question"))
+
+    for title in direct_titles + context_titles + ([] if direct_titles else fallback_titles):
+        append_unique(candidate_titles, title)
     return candidate_titles
 
 
 def _has_touch_evidence(payload: dict, normalized_title: str) -> bool:
+    if _detect_topic_hit(payload, normalized_title)[0] > 0:
+        return True
     if _question_hit(payload, normalized_title) >= 1.0:
         return True
     if _event_hit(payload, normalized_title) >= 1.0:
@@ -175,7 +178,6 @@ def build_study_graph_changes_from_student_payload(payload: dict) -> list[dict]:
     syllabus_id = payload.get("syllabus_id")
     source_kind = str((payload.get("source") or {}).get("kind") or payload.get("source_kind") or "student").strip() or "student"
     evidence_key = evidence_key_from_payload(payload)
-    detected_topics = payload.get("detected_topics") or []
     rag_context = payload.get("rag_context") or []
     parent_candidates = payload.get("parent_candidates") or []
     candidate_titles = _collect_candidate_titles(payload)
@@ -199,6 +201,8 @@ def build_study_graph_changes_from_student_payload(payload: dict) -> list[dict]:
                 + 0.00 * rag_only_hit,
             ),
         )
+        if detected_topic_hit > 0:
+            evidence_score = max(evidence_score, min(1.0, detected_topic_hit))
         if evidence_score < 0.60:
             continue
         if evidence_score < 0.80 and not _has_touch_evidence(payload, normalized_title):
@@ -267,9 +271,25 @@ def build_study_graph_changes_from_resource_event(event: dict) -> list[dict]:
     ]
 
 
-def submit_learning_tree_changes(user_id: int, syllabus_id: int, changes: list[dict], source: dict | None = None, timestamp: int | None = None) -> dict:
+def submit_learning_tree_changes(
+    user_id: int,
+    syllabus_id: int,
+    changes: list[dict],
+    source: dict | None = None,
+    timestamp: int | None = None,
+    subject_title: str | None = None,
+) -> dict:
     now_ts = int(timestamp or time())
-    validation = validate_change_request({"user_id": user_id, "syllabus_id": syllabus_id, "changes": changes, "source": source or {}, "timestamp": now_ts})
+    validation = validate_change_request(
+        {
+            "user_id": user_id,
+            "syllabus_id": syllabus_id,
+            "changes": changes,
+            "source": source or {},
+            "timestamp": now_ts,
+            "subject_title": subject_title,
+        }
+    )
     if not validation["valid"]:
         return {
             "success": False,

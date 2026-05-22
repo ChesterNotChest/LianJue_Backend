@@ -146,6 +146,7 @@ def get_student_agent() -> Agent:
             changes,
             source=payload.get("source") or {"kind": "total_agent"},
             timestamp=payload.get("timestamp"),
+            subject_title=payload.get("subject_title"),
         )
         ctx.deps.state["submit_result"] = result
         return {"tool": "submit_learning_tree_changes", "success": result.get("success"), "result_count": len(result.get("results") or [])}

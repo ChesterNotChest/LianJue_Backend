@@ -6,6 +6,7 @@ config.json
 # Python artifacts
 __pycache__/
 *.pyc
+tests/artifacts/
 
 model/*
 !model/.gitkeep
@@ -60,3 +61,6 @@ history/*
 
 profiles/*
 !profiles/.gitkeep
+
+study_graph/*
+!study_graph/.gitkeep

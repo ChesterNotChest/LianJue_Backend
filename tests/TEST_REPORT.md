@@ -7,6 +7,7 @@
 - 集成测试验证 LLM/Agent 是否能承担调度职责。
 - `generative_task` 集成测试必须包含真实 Agent + search。
 - `learning_profile_task` 集成测试必须包含真实 Agent。
+- `study_graph_task` 集成测试必须包含真实 Student Agent。
 - `alignment`、`profile_builder`、`storage`、`validation`、`renderers` 等包内低层模块不单独作为集成测试入口；它们通过 task 工具链被间接覆盖，细节由单元测试验证。
 - `material_task` 是生成结果的展示包装层，不属于真实 Agent 集成链路；它放在资源生成单元测试包中验证。
 - 单元测试只验证各工具自身，不调用真实 Agent，不调用真实搜索。
@@ -38,37 +39,49 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py 
 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -q tests/test_generative_task.py -m "llm and search"
 ```
 
-### 1.d 单元测试包 1 - 用户画像
+### 1.d 集成测试 3 - 学习成长树
+
+```bash
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_study_graph_agent_choice.py -m llm
+```
+
+### 1.e 单元测试包 1 - 学习成长树
+
+```bash
+python -m pytest -q tests/test_study_graph_student_payload_flow.py
+```
+
+### 1.f 单元测试包 2 - 用户画像
 
 ```bash
 python -m pytest -q tests/test_learning_profile.py tests/test_learning_profile_toolchain.py tests/test_learning_profile_input_variants.py tests/test_learning_profile_api.py tests/test_profile_personal_syllabus_tools.py tests/test_profile_personal_syllabus_full_chain.py
 ```
 
-### 1.e 单元测试包 2 - 资源生成
+### 1.g 单元测试包 3 - 资源生成
 
 ```bash
 python -m pytest -q tests/test_generative_task.py tests/test_material_task_generated_resources.py tests/test_material_api_legacy.py -m "not llm and not search"
 ```
 
-### 1.f 单元测试包 3 - 公共 search tool
+### 1.h 单元测试包 4 - 公共 search tool
 
 ```bash
 python -m pytest -q tests/test_search_tool.py
 ```
 
-### 1.g 单元测试包 4 - Search Call
+### 1.i 单元测试包 5 - Search Call
 
 ```bash
 python -m pytest -q tests/test_search_call.py -m "not llm"
 ```
 
-### 1.h 单元测试包 5 - Syllabus
+### 1.j 单元测试包 6 - Syllabus
 
 ```bash
 python -m pytest -q tests/test_create_syllabus_draft.py tests/test_build_syllabus.py tests/test_update_syllabus_draft.py tests/test_update_syllabus.py
 ```
 
-### 1.i 单元测试包 6 - JobChecker
+### 1.k 单元测试包 7 - JobChecker
 
 ```bash
 python -m pytest -q tests/test_job_checker_startup_graph_sync.py
@@ -177,7 +190,7 @@ markers =
 - `generative_task` 是本链路的 Agent 调度入口。
 - `search_tool` 必须由资源生成 Agent 根据 payload 自行调用，测试不允许外部预先指定检索 query。
 - `generative.validation`、`generative.renderers`、`generative.storage` 是生成链路内部实现模块，本集成测试只检查最终生成、校验、渲染和落盘结果。
-- `material_task` 不在本集成测试中验证；它只负责读取 manifest 并包装成前端可渲染 detail，属于单元测试包 2。
+- `material_task` 不在本集成测试中验证；它只负责读取 manifest 并包装成前端可渲染 detail，属于单元测试包 3。
 
 默认场景：
 
@@ -260,7 +273,103 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 ```
 
 
-### 2.d 单元测试包 1 - 用户画像
+### 2.d 集成测试 3 - 学习成长树
+
+目标：验证真实 Student Agent 能根据学习 payload 自行调度学习成长树工具链。
+
+覆盖范围：
+
+- 真实模型驱动 Student Agent 选择学习成长树工具。
+- Agent 先读取学习树上下文，再提交学习树变更，最后读回学习树和学习树特征。
+- 多轮场景连续提交 4 个外部总 Agent payload，每轮都走真实 `run_student_agent(payload)`，最终同一棵树至少累计多个节点和一条父子边。
+- `submit_learning_tree_changes` 仍由工具层负责最终裁决、合并和落盘，Agent 只提交候选。
+- 学习树测试产物写入 `tests/artifacts/study_graph/integration_agent_choice/` 和 `tests/artifacts/study_graph/integration_multi_payload_tree/`，不写入真实 `study_graph/` 根目录。该目录被 `.gitignore` 忽略，跑完可直接检查最近一次 manifest。
+- 本测试不验证真实 KnowLion 图谱搜索；`search_tool` 使用 monkeypatch 的稳定返回，避免把图谱可用性混入 Student Agent 调度验收。
+
+测试输入 payload：
+
+- `test_study_graph_agent_choice.py::test_student_agent_selects_expected_tools`
+  测试开始时在数据库中创建唯一 mock 用户，并复用或创建指向 `tests/fixtures/大数据概论_20260322235507.json` 的真实 `Syllabus` 行，再创建 `UserSyllabus` 绑定关系。测试结束后清理绑定关系和 mock 用户；如果测试创建了大纲行，也一并清理。测试调用入口是 `run_student_agent(payload)`：
+
+```json
+{
+  "dispatch_id": "dispatch:<user_id>:<syllabus_id>:001",
+  "source_kind": "total_agent",
+  "user_id": "<测试运行时创建的 mock 用户 ID>",
+  "syllabus_id": "<测试运行时创建或复用的大数据概论 Syllabus ID>",
+  "subject_title": "大数据概论",
+  "question": "RowKey 如何避免热点？",
+  "learning_goal": "掌握 HBase RowKey 设计",
+  "personal_syllabus_context": {
+    "learning_goal": "掌握 HBase RowKey 设计",
+    "matched_weeks": [
+      {"week_index": 1, "title": "HBase RowKey 设计", "content": "RowKey 热点、散列、预分区"}
+    ]
+  },
+  "rag_context": [
+    {"title": "HBase RowKey 设计", "summary": "RowKey 热点通常来自单调递增键或访问集中。"}
+  ],
+  "detected_topics": [{"title": "RowKey 热点", "confidence": 0.78, "signal": "struggled"}],
+  "events": [{"kind": "answer", "question": "RowKey 如何避免热点？", "is_correct": false}],
+  "parent_candidates": [],
+  "source": {"kind": "total_agent", "summary": "total agent dispatch"},
+  "timestamp": 1760000000
+}
+```
+
+测试断言输出：
+
+```json
+{
+  "success": true,
+  "tree": "<学习成长树读取结果>",
+  "features": "<学习成长树特征摘要>",
+  "tool_trace_required_prefix": ["get_student_learning_tree_context", "submit_learning_tree_changes"],
+  "tool_trace_required_after_submit": ["get_student_learning_tree", "get_learning_tree_features"]
+}
+```
+
+- `test_study_graph_agent_choice.py::test_student_agent_accumulates_multi_payload_tree`
+  该用例连续输入 4 个外部总 Agent payload，分别覆盖 `HBase RowKey 设计`、`RowKey 热点`、`预分区策略`、`散列前缀`。每轮都调用真实 `run_student_agent(payload)`，但 RAG 仍使用 monkeypatch 的稳定返回。测试最终直接读取同一棵学习树：
+
+```json
+{
+  "success": true,
+  "subject_title": "大数据概论",
+  "title": "大数据概论学习成长树",
+  "min_node_count": 3,
+  "min_edge_count": 1,
+  "required_topics": ["HBase RowKey 设计", "RowKey 热点"],
+  "submit_call_count": ">= payload_count"
+}
+```
+
+该用例是深度 Agent 集成 smoke，只验证多轮真实 Agent 调度能累计建树；完整拓扑、节点数和边数的确定性断言仍放在单元测试包中。
+
+注意：真实 Student Agent 工具选择存在轻微波动。如果同一命令重跑通过，通常视为外部模型行为波动，而不是确定性代码回归。
+
+### 2.e 单元测试包 1 - 学习成长树
+
+目标：验证学习成长树 payload 到 manifest 存储、树读取和特征读取的本地闭环，不验证真实 Agent 调度。
+
+覆盖文件：
+
+- `test_study_graph_student_payload_flow.py`
+
+覆盖范围：
+
+- `build_study_graph_changes_from_student_payload()` 从学生学习 payload 生成变更候选。
+- `submit_learning_tree_changes()` 接收候选并写入 `tests/artifacts/study_graph/unit_payload_flow/user_{user_id}/syllabus_{syllabus_id}/manifest.json`。
+- `get_student_learning_tree()` 能读取可渲染的学习成长树。
+- `get_learning_tree_features()` 能返回 Agent 可消费的 learned / weak / mastered / recent 摘要。
+- 单元测试使用多轮确定性 payload 生成一棵可检查的样例树：`HBase RowKey 设计 -> RowKey 热点 -> 预分区策略 / 散列前缀`。
+- 样例树会保留 `subject_title=大数据概论`，树标题为 `大数据概论学习成长树`，虚拟根标题为 `大数据概论`。
+- `user_id + syllabus_id` 是学习树的身份边界，`tree_id` 固定为 `study_tree:{user_id}:{syllabus_id}`。
+- 单元测试使用高位 fake id：`user_id=900008`、`syllabus_id=900020`，便于和真实数据区分。
+
+这些测试不调用真实 Agent，不调用真实 LLM，不调用真实搜索。测试开始时会清空对应 `tests/artifacts/study_graph/unit_payload_flow/` 子目录，测试结束后保留最新产物便于人工检查。
+
+### 2.f 单元测试包 2 - 用户画像
 
 目标：验证画像相关工具、规则和持久化逻辑，不验证真实 Agent 调度。
 
@@ -283,7 +392,7 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 
 这些测试使用 fake agent / mock repository，不调用真实 Agent，不调用真实 LLM。
 
-### 2.e 单元测试包 2 - 资源生成
+### 2.g 单元测试包 3 - 资源生成
 
 目标：验证资源生成工具本身，不验证真实 Agent 和真实搜索。
 
@@ -309,7 +418,7 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 
 这些测试使用 fake adapter，不调用真实 Agent，不调用真实图谱。
 
-### 2.f 单元测试包 3 - 公共 search tool
+### 2.h 单元测试包 4 - 公共 search tool
 
 目标：验证 `search_tool()` 包装和结构化返回，不验证真实图谱。
 
@@ -328,7 +437,7 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 
 这些测试使用 fake retriever，不连接真实 Agent，不连接真实图谱。真实 KnowLion 图谱搜索不在本模块单独 smoke；它只通过资源生成 Agent 集成测试验证。
 
-### 2.g 单元测试包 4 - Search Call
+### 2.i 单元测试包 5 - Search Call
 
 目标：验证 `KnowLion.search_call()` 的 prompt 组装和模型调用入口。
 
@@ -344,7 +453,7 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 
 该单元包不运行 `llm` 标记测试。
 
-### 2.h 单元测试包 5 - Syllabus
+### 2.j 单元测试包 6 - Syllabus
 
 目标：验证 syllabus draft / final 的 task 层编排、JSON 持久化、字段更新和 fake 检索隔离。
 
@@ -364,7 +473,7 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 
 这些测试不证明真实数据库、真实 KnowLion 或真实 LLM 可用。
 
-### 2.i 单元测试包 6 - JobChecker
+### 2.k 单元测试包 7 - JobChecker
 
 目标：验证 JobChecker 启动时的 graph 同步逻辑。
 

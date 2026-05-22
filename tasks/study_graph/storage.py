@@ -3,7 +3,7 @@ from pathlib import Path
 from time import time
 from typing import Any, Optional
 
-from tasks.study_graph.contracts import STUDY_GRAPH_MANIFEST_VERSION, build_tree_id, make_empty_tree, study_graph_root
+from tasks.study_graph.contracts import STUDY_GRAPH_MANIFEST_VERSION, build_tree_id, build_virtual_root_node, make_empty_tree, study_graph_root
 
 
 def _tree_dir(user_id: int, syllabus_id: int) -> Path:
@@ -102,6 +102,7 @@ def create_tree_if_missing(user_id: int, syllabus_id: int, title: str | None, no
         if resolved_subject and (not manifest.get("subject_title") or manifest.get("subject_title") == manifest.get("title")):
             manifest["subject_title"] = resolved_subject
             manifest["title"] = f"{resolved_subject}学习成长树"
+            manifest["virtual_root"] = build_virtual_root_node(user_id, syllabus_id, resolved_subject, now_ts)
             save_tree_manifest(user_id, syllabus_id, manifest)
     return manifest
 
