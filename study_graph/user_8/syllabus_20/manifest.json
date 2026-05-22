@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "tree_id": "study_tree:8:20",
+  "user_id": 8,
+  "syllabus_id": 20,
+  "subject_title": null,
+  "title": "学习成长树",
+  "virtual_root": {
+    "node_id": "study_tree_root:8:20",
+    "tree_id": "study_tree:8:20",
+    "type": "tree_root",
+    "title": "学习成长树",
+    "virtual": true,
+    "created_at": 1760000000,
+    "updated_at": 1760000000
+  },
+  "nodes": [],
+  "edges": [],
+  "summary": {
+    "learned_node_count": 0,
+    "mastered_node_count": 0,
+    "weak_node_count": 0,
+    "tree_growth": 0.0,
+    "last_updated_at": 1760000000
+  },
+  "created_at": 1760000000,
+  "updated_at": 1760000000
+}

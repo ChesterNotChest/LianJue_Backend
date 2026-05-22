@@ -17,6 +17,7 @@ class BasePath(Enum):
         FILE_CACHE = "file_cache"
 
         GENERATIVE_ROOT = "/generative"
+        STUDY_GRAPH_ROOT = "/study_graph"
         PDF_ROOT = "pdfs"
         MARKDOWN_ROOT = "markdowns"
         TRIPLES_ROOT = "triples"
