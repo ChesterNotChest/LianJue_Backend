@@ -1,6 +1,7 @@
 import shutil
 from pathlib import Path
 
+from tasks.student_agent_task import get_student_learning_graph
 from tasks.study_graph import storage as study_graph_storage
 from tasks.study_graph_task import build_study_graph_changes_from_student_payload, get_student_learning_tree, get_learning_tree_features, submit_learning_tree_changes
 
@@ -111,4 +112,11 @@ def test_student_payload_round_trip_builds_changes_and_tree(monkeypatch):
     assert nodes_by_title["预分区策略"]["parent_node_id"] == nodes_by_title["RowKey 热点"]["node_id"]
     assert nodes_by_title["散列前缀"]["parent_node_id"] == nodes_by_title["RowKey 热点"]["node_id"]
     assert len(tree["tree"]["edges"]) == 3
+
+    graph = get_student_learning_graph(parent_payload["user_id"], parent_payload["syllabus_id"], include_debug=True)
+    assert graph["success"] is True
+    assert graph["tree_id"] == tree["tree"]["tree_id"]
+    assert graph["tree"]["title"] == "大数据概论学习成长树"
+    assert {"HBase RowKey 设计", "RowKey 热点"}.issubset(set(graph["features"]["learned_topics"]))
+    assert graph["debug"]
 

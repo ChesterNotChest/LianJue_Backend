@@ -362,6 +362,7 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 - `submit_learning_tree_changes()` 接收候选并写入 `tests/artifacts/study_graph/unit_payload_flow/user_{user_id}/syllabus_{syllabus_id}/manifest.json`。
 - `get_student_learning_tree()` 能读取可渲染的学习成长树。
 - `get_learning_tree_features()` 能返回 Agent 可消费的 learned / weak / mastered / recent 摘要。
+- `student_agent_task.get_student_learning_graph()` 能作为只读 task 入口返回完整 tree + features bundle，不调用真实 Agent。
 - 单元测试使用多轮确定性 payload 生成一棵可检查的样例树：`HBase RowKey 设计 -> RowKey 热点 -> 预分区策略 / 散列前缀`。
 - 样例树会保留 `subject_title=大数据概论`，树标题为 `大数据概论学习成长树`，虚拟根标题为 `大数据概论`。
 - `user_id + syllabus_id` 是学习树的身份边界，`tree_id` 固定为 `study_tree:{user_id}:{syllabus_id}`。

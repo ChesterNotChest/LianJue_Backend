@@ -43,6 +43,24 @@ class StudentAgentResult(BaseModel):
     error_code: str = ""
 
 
+def get_student_learning_graph(user_id: int, syllabus_id: int, include_debug: bool = False) -> dict:
+    """Read the complete study graph bundle without invoking the LLM agent."""
+    tree_result = get_student_learning_tree(user_id, syllabus_id, include_debug=include_debug)
+    features_result = get_learning_tree_features(user_id, syllabus_id)
+    success = bool(tree_result.get("success")) and bool(features_result.get("success"))
+    return {
+        "success": success,
+        "user_id": user_id,
+        "syllabus_id": syllabus_id,
+        "tree_id": (features_result.get("tree_id") or (tree_result.get("tree") or {}).get("tree_id")),
+        "tree": tree_result.get("tree"),
+        "features": {key: value for key, value in features_result.items() if key != "success"},
+        "debug": tree_result.get("debug", {}) if include_debug else {},
+        "error_message": tree_result.get("error_message") or features_result.get("error_message") or "",
+        "error_code": tree_result.get("error_code") or features_result.get("error_code") or "",
+    }
+
+
 def _build_student_agent_model() -> OpenAIModel:
     text_config = OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
     model_name = str(text_config.get("model_name") or "").strip()
