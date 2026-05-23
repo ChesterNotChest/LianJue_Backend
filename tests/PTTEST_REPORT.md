@@ -81,12 +81,7 @@ c:/Users/Lenovo/Desktop/基于动态知识图谱的RAG增强大模型辅助专�
 
 以下为本次真实执行 `prototype_recommendation/run_demo.py` 的原始结果，用于说明“最终路径是如何产生的”。
 
-### 8.1 执行命令
 
-```powershell
-Set-Location "c:/Users/Lenovo/Desktop/基于动态知识图谱的RAG增强大模型辅助专家系统/LianJue_Backend-main"
-c:/Users/Lenovo/Desktop/基于动态知识图谱的RAG增强大模型辅助专家系统/.venv/Scripts/python.exe prototype_recommendation/run_demo.py
-```
 
 ### 8.2 真实输出摘要
 
