@@ -81,6 +81,15 @@ c:/Users/Lenovo/Desktop/基于动态知识图谱的RAG增强大模型辅助专�
 
 以下为本次真实执行 `prototype_recommendation/run_demo.py` 的原始结果，用于说明“最终路径是如何产生的”。
 
+### 8.1 客户展示版推荐路径
+
+基于远程图服务检索到的真实主题，可以给客户直接展示为：
+
+- 推荐路径：监督学习 -> 机器学习
+- 节点说明：
+  - 监督学习：通过训练数据学习一个能够预测结果的模型。
+  - 机器学习：人工智能的重要分支，包含监督学习、无监督学习、强化学习等方法。
+
 
 
 ### 8.2 真实输出摘要
@@ -108,3 +117,12 @@ c:/Users/Lenovo/Desktop/基于动态知识图谱的RAG增强大模型辅助专�
 - 第 5 章中的 pttest 集成测试，验证的是“已真实连接远程 Abution 图数据库并可读图列表”。
 - 本节 run_demo 展示的是“推荐算法路径生成与选择逻辑”的真实运行结果（使用示例学习图数据）。
 - 两者共同说明：远程图服务连通性已验证，算法链路也可实际跑通并产出最终路径。
+
+## 9. 新增：个性化推荐接口（最小可用原型）
+
+- 新增接口：`POST /api/personal_recommendation`
+- 功能：接受 `user_id`（可选 `syllabus_id`、`goals`），从用户画像构建决策上下文并在示例学习图上生成候选路径与最终选中路径。
+- 实现位置：[`blueprint/learning_api.py`](blueprint/learning_api.py#L1)
+- 说明：该接口使用已有的 `get_or_build_learning_profile` 拉取/构造 `user_profile`，再调用 `prototype_recommendation` 的 `generate_state` + `generate` + 剪枝/评分/选择流水线输出结果。当前为最小可用原型并依赖 `prototype_recommendation.sample_data` 作为学习图数据源。
+
+如需我把该接口接入真实 syllabus 的学习树或添加更多运行时参数（超时、并发限制、审计日志等），我可以继续实现。

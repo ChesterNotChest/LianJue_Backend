@@ -1,9 +1,9 @@
-from sample_data import learning_tree, user_profile, goals
-from perception import generate_state
-from candidate_generator import generate
-from evaluator import score
-from selector_ib_grpo import ib_grpo_select
-from pruning import hard_prune, soft_prune_by_dominance
+from .sample_data import learning_tree, user_profile, goals
+from .perception import generate_state
+from .candidate_generator import generate
+from .evaluator import score
+from .selector_ib_grpo import ib_grpo_select
+from .pruning import hard_prune, soft_prune_by_dominance
 
 
 def main():
@@ -12,7 +12,7 @@ def main():
     candidates = generate(starts, goals, learning_tree, S, L_max=6, T_max=50, K=20)
     # 早期替换算子：在进行硬剪枝/评分前尝试本地替换以提升候选多样性与效率
     try:
-        from pruning import local_replace_candidates
+        from .pruning import local_replace_candidates
     except Exception:
         from prototype_recommendation.pruning import local_replace_candidates
     candidates = local_replace_candidates(candidates, learning_tree, S, max_attempts=100)

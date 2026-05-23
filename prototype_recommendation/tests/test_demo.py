@@ -1,7 +1,4 @@
-import sys
-sys.path.append('..')
-
-from run_demo import main as run_main
+from prototype_recommendation.run_demo import main as run_main
 
 
 def test_run_demo():
