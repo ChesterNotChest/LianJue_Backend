@@ -12,6 +12,7 @@ tenacity
 html5lib
 easyocr
 pypdf
+python-pptx
 tomlkit
 flask
 flask_sqlalchemy

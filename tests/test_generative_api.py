@@ -11,7 +11,7 @@ FIXED_PAYLOAD = {
     "syllabus_id": 23,
     "question": "我最近在学 HBase，RowKey 热点和预分区策略总是搞不懂，想要一些针对性的学习资源。",
     "topic": "HBase RowKey 热点规避",
-    "resource_types": ["documents", "mindmap", "quiz"],
+    "resource_types": ["documents", "mindmap", "quiz", "ppt"],
     "selected_weeks": [5],
     "knowledge_items": ["RowKey 热点", "预分区策略"],
     "weak_points": ["RowKey 热点", "预分区策略"],
@@ -75,6 +75,31 @@ class FakeResourceGenerationAgent:
                     }
                 ],
             }
+        if resource_type == "ppt":
+            return {
+                "schema_version": "v1",
+                "title": f"{topic} 课件",
+                "topic": topic,
+                "summary": "面向学生问题的结构化极简课件。",
+                "theme": "academic-clean",
+                "slide_style": "teaching-outline",
+                "slides": [
+                    {
+                        "slide_index": 1,
+                        "title": "问题背景",
+                        "bullets": [request_payload["question"], "理解热点形成机制"],
+                        "speaker_notes": "先交代问题，再切入概念。",
+                        "visual_hint": "标题 + 双要点",
+                    },
+                    {
+                        "slide_index": 2,
+                        "title": "解决方案",
+                        "bullets": ["优化 RowKey", "预分区缓解热点"],
+                        "speaker_notes": "收束到两条关键方案。",
+                        "visual_hint": "左右分栏",
+                    },
+                ],
+            }
         raise ValueError(f"unsupported resource_type: {resource_type}")
 
 
@@ -111,8 +136,8 @@ def test_generative_api_full_chain_generate_list_and_detail(monkeypatch, tmp_pat
     assert generate_response.status_code == 200
     generate_payload = generate_response.get_json()
     assert generate_payload["success"] is True
-    assert generate_payload["resource_count"] == 3
-    assert [item["resource_type"] for item in generate_payload["resources"]] == ["documents", "mindmap", "quiz"]
+    assert generate_payload["resource_count"] == 4
+    assert [item["resource_type"] for item in generate_payload["resources"]] == ["documents", "mindmap", "quiz", "ppt"]
 
     list_response = client.post(
         "/api/generative_list",
@@ -121,7 +146,7 @@ def test_generative_api_full_chain_generate_list_and_detail(monkeypatch, tmp_pat
     assert list_response.status_code == 200
     list_payload = list_response.get_json()
     assert list_payload["success"] is True
-    assert len(list_payload["materials"]) == 3
+    assert len(list_payload["materials"]) == 4
 
     quiz_item = next(item for item in list_payload["materials"] if item["resource_type"] == "quiz")
     detail_response = client.post(
@@ -134,3 +159,15 @@ def test_generative_api_full_chain_generate_list_and_detail(monkeypatch, tmp_pat
     assert detail_payload["material"]["resource_id"] == quiz_item["resource_id"]
     assert detail_payload["material"]["content"]["title"] == quiz_item["title"]
     assert detail_payload["material"]["render"]["markdown"]
+
+    ppt_item = next(item for item in list_payload["materials"] if item["resource_type"] == "ppt")
+    ppt_detail_response = client.post(
+        "/api/generative_detail",
+        json={"user_id": FIXED_PAYLOAD["user_id"], "resource_id": ppt_item["resource_id"]},
+    )
+    assert ppt_detail_response.status_code == 200
+    ppt_detail_payload = ppt_detail_response.get_json()
+    assert ppt_detail_payload["success"] is True
+    assert ppt_detail_payload["material"]["main_files"]["pptx_path"].endswith(".pptx")
+    assert (tmp_path / ppt_detail_payload["material"]["main_files"]["pptx_path"]).exists()
+    assert ppt_detail_payload["material"]["render"]["markdown"]

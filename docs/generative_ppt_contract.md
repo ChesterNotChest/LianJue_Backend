@@ -15,7 +15,8 @@ GENERATIVE_PPT_SCHEMA_VERSION = "v1"
 - `manifest.json` 是实际运行中的用户级资源索引文件
 - SQL 表结构由 `schema` 侧单独定义
 - manifest 只保留后续迁移 SQL 所需的核心业务字段
-- 第一版严格收口到“结构化课件内容 + 可预览大纲”，不直接生成 `.pptx`
+- 当前阶段收口到“结构化课件内容 + Markdown 大纲 + 可直接打开的 `.pptx` 文件”
+- `.pptx` 导出已经支持按 slide role 做差异化版式，而不是单一纯文本列表
 
 ## 1. 影响的文件范围
 
@@ -37,7 +38,7 @@ GENERATIVE_PPT_SCHEMA_VERSION = "v1"
 - blueprint API
 - SQLAlchemy schema
 - 数据库迁移脚本
-- 真实 `.pptx` 导出器
+- 复杂模板/主题引擎
 
 ## 2. 函数级收口的完整数据流
 
@@ -70,6 +71,7 @@ generative/
       {resource_id}/
         ppt.json
         ppt.md
+        ppt.pptx
 ```
 
 数据流：
@@ -95,9 +97,11 @@ generative/
 8. Tool 写入：
    - `ppt.json`
    - `ppt.md`
+   - `ppt.pptx`
 9. Tool 执行 PPT schema 轻量校验
-10. Tool 生成一条 manifest entry 并追加到 `manifest.json`
-11. Tool 返回统一结构化结果
+10. Tool 用 `python-pptx` 将 `slides` 渲染为结构化课件
+11. Tool 生成一条 manifest entry 并追加到 `manifest.json`
+12. Tool 返回统一结构化结果
 
 ### 2.3 manifest.json 的收口定位
 
@@ -244,6 +248,21 @@ generative_resource
 7. 渲染 bullet 列表
 8. 若存在 `visual_hint` 或 `speaker_notes`，则一并输出
 
+#### `render_pptx_file(ppt: dict, output_path: Path) -> None`
+
+输出：
+
+- 一个真实 `.pptx` 文件
+
+内部逻辑：
+
+1. 使用 `python-pptx` 创建 Presentation
+2. 为每个 slide 生成与内容匹配的结构化版式
+3. 把 `speaker_notes` 写入 notes
+4. 把 `visual_hint` 作为页脚辅助信息
+5. 对常规内容自动做主点/子点整理，对 `术语:解释` 形式内容可转成两列表格，对流程页可转成步骤卡片
+6. 保存到 `ppt.pptx`
+
 #### `generate_ppt(payload: dict, agent_adapter: Any) -> dict`
 
 输出：
@@ -259,6 +278,7 @@ generative_resource
   "resource_dir": "generative/user_19/ppt/...",
   "json_path": "generative/user_19/ppt/.../ppt.json",
   "md_path": "generative/user_19/ppt/.../ppt.md",
+  "pptx_path": "generative/user_19/ppt/.../ppt.pptx",
   "validation": {
     "valid": true,
     "method": "schema",
@@ -279,15 +299,17 @@ generative_resource
 5. 组织 `ppt.json`
 6. 调用 `validate_ppt_payload(...)`
 7. 调用 `render_ppt_markdown(...)`
-8. 写入：
+8. 调用 `render_pptx_file(...)`
+9. 写入：
    - `ppt.json`
    - `ppt.md`
-9. 根据校验结果计算 `status`
+   - `ppt.pptx`
+10. 根据校验结果计算 `status`
    - 通过：`ready`
    - 不通过：`invalid`
-10. 生成 manifest entry
-11. 追加到 `manifest.json`
-12. 返回统一结果
+11. 生成 manifest entry
+12. 追加到 `manifest.json`
+13. 返回统一结果
 
 #### `generate_resource(payload: dict, agent_adapter: Any) -> dict`
 
@@ -329,7 +351,8 @@ generative_resource
       "resource_dir": "generative/user_19/ppt/ppt-20260516-abc123",
       "main_files": {
         "json_path": "generative/user_19/ppt/.../ppt.json",
-        "md_path": "generative/user_19/ppt/.../ppt.md"
+        "md_path": "generative/user_19/ppt/.../ppt.md",
+        "pptx_path": "generative/user_19/ppt/.../ppt.pptx"
       },
       "validation": {
         "valid": true,
@@ -367,6 +390,7 @@ generative_resource
 1. `generate_ppt()` 能写：
    - `ppt.json`
    - `ppt.md`
+   - `ppt.pptx`
    - `manifest.json` 追加记录
 2. `ppt.json` 中的 `schema_version`、`theme`、`slides` 正确
 3. `ppt.md` 中包含：
@@ -380,11 +404,11 @@ generative_resource
 6. slide 缺少 `title` 或 `bullets` 时校验失败
 7. `generate_resource()` 能正确分发到 `ppt`
 8. manifest 中 `metadata.slide_count` 和 `validation.slide_count` 正确
+9. `.pptx` 能被 `python-pptx` 重新打开，并读到正确的页数
 
 当前不验证：
 
 - 真实 LLM 内容质量
-- 真实 `.pptx` 导出
 - 图片素材生成
 - 前端展示
 - SQL 持久化行为

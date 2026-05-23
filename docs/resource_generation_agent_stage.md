@@ -68,6 +68,7 @@
 - 持久化 `ppt`
 - 更新 `manifest.json`
 - 执行本地校验
+- 为 `ppt` 额外导出真实 `.pptx`
 
 与各资源类型契约的关系：
 
@@ -94,6 +95,14 @@
 - `quiz`
 - `coding_practice`
 - `ppt`
+
+其中 `ppt` 当前会同时产出：
+
+- `ppt.json`
+- `ppt.md`
+- `ppt.pptx`
+
+当前 `.pptx` 渲染不再是单一标题加纯 bullet 列表，而是会根据 slide 内容自动选择封面、双栏、流程步骤、总结、答疑和表格化内容布局。
 
 ## 6. 测试
 
@@ -124,8 +133,16 @@
 
 当前已验证结果：
 
-- 资源编排 agent 集成测试 + 资源生成 API 测试 + 资源生成 agent 全流程测试：`9 passed`
-- `generative_task` 非 LLM/非 search 回归：`24 passed, 1 deselected`
+- `tests/test_generative_task.py`：`25 passed, 1 skipped`
+- `tests/test_generative_api.py`：`2 passed`
+- `tests/test_resource_generation_agent_task.py`：`9 passed, 3 skipped`
+- 已通过真实 `curl` 请求验证 `ppt` 资源可生成 `ppt.pptx`
+
+2026-05-23 的本地回归结果：
+
+- `tests/test_generative_task.py`：`25 passed, 1 skipped`
+- `tests/test_resource_generation_agent_task.py`：`9 passed, 3 skipped`
+- `tests/test_generative_api.py`：`2 passed`
 
 当前测试的文件落盘方式：
 
@@ -139,6 +156,11 @@
 - 不依赖数据库持久化
 - 不会因为“数据库开着”而把生成结果写入数据库
 - 主要验证的是 agent/tool/file system 这条链
+
+补充：
+
+- 真实 `curl` 验证时会经过真实 Flask API、真实 search、真实 LLM 和真实 `python-pptx` 导出
+- 该链路需要可用的 `MySQL`、`AbutionGraph`、模型 API 网络以及 `lianjue` 环境
 
 ## 7. 固定 payload 收口
 

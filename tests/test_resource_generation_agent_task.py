@@ -9,6 +9,15 @@ from tasks import resource_planning_agent_task as rpat
 from tasks.generative import storage as generative_storage
 
 
+def _load_presentation(path_value):
+    pptx = pytest.importorskip("pptx")
+    return pptx.Presentation(str(path_value))
+
+
+def _slide_texts(slide):
+    return [shape.text for shape in slide.shapes if hasattr(shape, "text") and str(shape.text).strip()]
+
+
 FIXED_PAYLOAD = {
     "user_id": 19,
     "syllabus_id": 23,
@@ -214,6 +223,87 @@ def _build_real_search_ppt_payload():
     return payload
 
 
+def test_ppt_generation_prefers_ppt_specific_model_key(monkeypatch):
+    monkeypatch.setattr(
+        rgat,
+        "LITELLM_MODEL_CONFIGS",
+        {
+            "text": {"model_name": "baseline"},
+            "ppt_text": {"model_name": "ppt-strong"},
+            "text_cheap": {"model_name": "deepseek-chat"},
+        },
+    )
+    agent = rgat.LLMResourceGenerationAgent(model=object())
+
+    selected = agent._resolve_model_key(
+        "ppt",
+        {"generation_requirements": {}},
+    )
+
+    assert selected == "ppt_text"
+
+
+def test_default_generation_prefers_cheap_tier_model(monkeypatch):
+    monkeypatch.setattr(
+        rgat,
+        "LITELLM_MODEL_CONFIGS",
+        {
+            "text": {"model_name": "baseline"},
+            "text_cheap": {"model_name": "deepseek-chat"},
+            "text_strong": {"model_name": "qwen-max"},
+        },
+    )
+    agent = rgat.LLMResourceGenerationAgent(model=object())
+
+    selected = agent._resolve_model_key(
+        "documents",
+        {"generation_requirements": {}},
+    )
+
+    assert selected == "text_cheap"
+
+
+def test_ppt_generation_honors_explicit_model_key(monkeypatch):
+    monkeypatch.setattr(
+        rgat,
+        "LITELLM_MODEL_CONFIGS",
+        {
+            "text": {"model_name": "baseline"},
+            "ppt_text": {"model_name": "ppt-strong"},
+            "text_strong": {"model_name": "general-strong"},
+        },
+    )
+    agent = rgat.LLMResourceGenerationAgent(model=object())
+
+    selected = agent._resolve_model_key(
+        "ppt",
+        {"generation_requirements": {"model_key": "text_strong"}},
+    )
+
+    assert selected == "text_strong"
+
+
+def test_generation_honors_explicit_model_tier(monkeypatch):
+    monkeypatch.setattr(
+        rgat,
+        "LITELLM_MODEL_CONFIGS",
+        {
+            "text": {"model_name": "baseline"},
+            "text_cheap": {"model_name": "deepseek-chat"},
+            "text_standard": {"model_name": "qwen-plus"},
+            "text_strong": {"model_name": "qwen-max"},
+        },
+    )
+    agent = rgat.LLMResourceGenerationAgent(model=object())
+
+    selected = agent._resolve_model_key(
+        "documents",
+        {"generation_requirements": {"model_tier": "strong"}},
+    )
+
+    assert selected == "text_strong"
+
+
 def test_resource_planning_agent_runs_atomic_tools_in_order():
     planner = rpat.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
 
@@ -344,10 +434,15 @@ def test_resource_generation_agent_full_chain_persists_ppt(monkeypatch, tmp_path
 
     ppt_json = json.loads((tmp_path / resource["json_path"]).read_text(encoding="utf-8"))
     ppt_md = (tmp_path / resource["md_path"]).read_text(encoding="utf-8")
+    pptx_path = tmp_path / resource["pptx_path"]
+    presentation = _load_presentation(pptx_path)
 
     assert ppt_json["theme"] == "academic-clean"
     assert ppt_json["slide_style"] == "teaching-outline"
     assert len(ppt_json["slides"]) == 2
+    assert pptx_path.exists()
+    assert len(presentation.slides) == 2
+    assert "解决思路" in _slide_texts(presentation.slides[1])
     assert "Slide 1" in ppt_md
     assert "问题背景" in ppt_md
 
@@ -544,9 +639,13 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_ppt(
 
     ppt_json = json.loads((tmp_path / resource["json_path"]).read_text(encoding="utf-8"))
     ppt_md = (tmp_path / resource["md_path"]).read_text(encoding="utf-8")
+    pptx_path = tmp_path / resource["pptx_path"]
+    presentation = _load_presentation(pptx_path)
 
     assert isinstance(ppt_json.get("slides"), list) and ppt_json["slides"]
     assert isinstance(ppt_json.get("summary"), str) and ppt_json["summary"].strip()
+    assert pptx_path.exists()
+    assert len(presentation.slides) == len(ppt_json["slides"])
     assert any(keyword in ppt_md for keyword in ["Slide 1", "HBase", "RowKey", "热点", "预分区"])
 
     artifact_json_path = write_test_artifact(

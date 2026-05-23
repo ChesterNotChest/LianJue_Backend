@@ -2,6 +2,7 @@
 config.json
 
 .codex_tmp
+.tmp_*
 
 # Python artifacts
 __pycache__/

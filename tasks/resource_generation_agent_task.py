@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
+from config import LITELLM_MODEL_CONFIGS
 from tasks import generative_task
 from tasks import resource_planning_agent_task as planning_task
 from tasks.generative.storage import (
@@ -28,6 +29,37 @@ from tasks.generative.storage import (
 
 
 DEFAULT_RESOURCE_TYPES = ("documents", "mindmap", "quiz")
+MODEL_TIERS = ("cheap", "standard", "strong")
+GENERAL_MODEL_KEYS_BY_TIER = {
+    "cheap": ("text_cheap", "deepseek_text", "text_deepseek", "deepseek_chat", "text"),
+    "standard": ("text_standard", "text", "text_cheap", "deepseek_text", "text_strong"),
+    "strong": ("text_strong", "text", "text_standard", "text_cheap"),
+}
+PPT_MODEL_KEYS_BY_TIER = {
+    "cheap": (
+        "ppt_text_cheap",
+        "ppt_text",
+        "text_cheap",
+        "deepseek_text",
+        "text_deepseek",
+        "deepseek_chat",
+        "text",
+    ),
+    "standard": (
+        "ppt_text",
+        "text_standard",
+        "text",
+        "text_cheap",
+        "deepseek_text",
+    ),
+    "strong": (
+        "ppt_text_strong",
+        "ppt_text",
+        "text_strong",
+        "text",
+        "text_standard",
+    ),
+}
 
 
 def _safe_text(value: Any) -> str:
@@ -162,6 +194,7 @@ class LLMResourceGenerationAgent:
 
     def __init__(self, model: Any = None) -> None:
         self.model = model or self._load_default_model()
+        self._model_cache: Dict[str, Any] = {"text": self.model}
 
     @staticmethod
     def _load_default_model() -> Any:
@@ -169,14 +202,71 @@ class LLMResourceGenerationAgent:
 
         return get_model_instance()
 
+    @staticmethod
+    def _build_text_only_model(model_key: str) -> Any:
+        from knowlion.multi_model_litellm import LitellmMultiModel
+
+        model_config = LITELLM_MODEL_CONFIGS.get(model_key)
+        if not isinstance(model_config, dict):
+            raise ValueError(f"model config {model_key} is unavailable")
+        return LitellmMultiModel({"text": model_config})
+
+    def _resolve_model_tier(self, resource_type: str, request_payload: dict) -> str:
+        requirements = request_payload.get("generation_requirements") if isinstance(request_payload, dict) else {}
+        requirements = requirements if isinstance(requirements, dict) else {}
+
+        explicit_tier = _safe_text(
+            requirements.get("model_tier")
+            or requirements.get("llm_tier")
+            or (requirements.get("ppt_model_tier") if resource_type == "ppt" else None)
+        ).lower()
+        if explicit_tier in MODEL_TIERS:
+            return explicit_tier
+
+        # Default to the cheapest tier first so resource generation can prefer low-cost DeepSeek-like models.
+        return "cheap"
+
+    def _candidate_model_keys(self, resource_type: str, tier: str) -> tuple[str, ...]:
+        normalized_tier = tier if tier in MODEL_TIERS else "cheap"
+        if resource_type == "ppt":
+            return PPT_MODEL_KEYS_BY_TIER[normalized_tier]
+        return GENERAL_MODEL_KEYS_BY_TIER[normalized_tier]
+
+    def _resolve_model_key(self, resource_type: str, request_payload: dict) -> str:
+        requirements = request_payload.get("generation_requirements") if isinstance(request_payload, dict) else {}
+        requirements = requirements if isinstance(requirements, dict) else {}
+
+        explicit_model_key = _safe_text(requirements.get("model_key") or requirements.get("llm_model_key"))
+        if explicit_model_key and explicit_model_key in LITELLM_MODEL_CONFIGS:
+            return explicit_model_key
+
+        if resource_type == "ppt":
+            ppt_model_key = _safe_text(requirements.get("ppt_model_key"))
+            if ppt_model_key and ppt_model_key in LITELLM_MODEL_CONFIGS:
+                return ppt_model_key
+        tier = self._resolve_model_tier(resource_type, request_payload)
+        for candidate in self._candidate_model_keys(resource_type, tier):
+            if candidate in LITELLM_MODEL_CONFIGS:
+                return candidate
+        return "text"
+
+    def _get_model_for_resource_type(self, resource_type: str, request_payload: dict) -> Any:
+        model_key = self._resolve_model_key(resource_type, request_payload)
+        if model_key in self._model_cache:
+            return self._model_cache[model_key]
+        self._model_cache[model_key] = self._build_text_only_model(model_key)
+        return self._model_cache[model_key]
+
     def _call_json(
         self,
         task_name: str,
         request_payload: dict,
         planning_bundle: dict,
         required_keys: List[str],
+        *,
+        system_prompt_override: Optional[str] = None,
     ) -> dict:
-        system_prompt = (
+        system_prompt = system_prompt_override or (
             "你是联觉系统的资源生成agent。"
             "你会收到学生问题、资源类型、规划结果、检索资料和草稿。"
             "你只返回一个合法 JSON 对象，不要输出 Markdown 代码块，不要输出解释。"
@@ -191,6 +281,7 @@ class LLMResourceGenerationAgent:
                 "weak_points": request_payload.get("weak_points") or [],
                 "knowledge_items": request_payload.get("knowledge_items") or [],
                 "selected_weeks": request_payload.get("selected_weeks") or [],
+                "generation_requirements": request_payload.get("generation_requirements") if isinstance(request_payload.get("generation_requirements"), dict) else {},
                 "required_keys": required_keys,
                 "planning_bundle": {
                     "plan": planning_bundle.get("plan") if isinstance(planning_bundle.get("plan"), dict) else {},
@@ -200,7 +291,11 @@ class LLMResourceGenerationAgent:
             },
             ensure_ascii=False,
         )
-        raw = self.model.call_text_model(system_prompt, user_prompt, stream=False)
+        model = self._get_model_for_resource_type(
+            _safe_text(request_payload.get("resource_type")) or task_name,
+            request_payload,
+        )
+        raw = model.call_text_model(system_prompt, user_prompt, stream=False)
         return _extract_json_object(raw)
 
     def _generate_document_content(self, request_payload: dict, planning_bundle: dict) -> dict:
@@ -331,18 +426,35 @@ class LLMResourceGenerationAgent:
         return generated
 
     def _generate_ppt_content(self, request_payload: dict, planning_bundle: dict) -> dict:
+        requirements = request_payload.get("generation_requirements") if isinstance(request_payload.get("generation_requirements"), dict) else {}
+        slide_target = int(requirements.get("slide_count_target") or requirements.get("slide_count_limit") or 8)
+        slide_target = min(max(slide_target, 6), 12)
+        ppt_system_prompt = (
+            "你是联觉系统里的高级课件设计 agent。"
+            "你的职责是把学生问题、检索证据、知识点和学习目标，转成一份内容扎实、层次分明、适合课堂直接展示的教学 PPT JSON。"
+            "不要写空泛口号，不要只写标题。"
+            "每页都要有实质内容，每条 bullet 尽量具体，体现概念、原因、方法、例子或结论。"
+            "优先生成以下结构中的大部分页面：封面、问题导入、概念澄清、机制/原理、对比分析、步骤/策略、例子/案例、总结。"
+            "不要生成 Q&A、答疑页或致谢页。"
+            "slides 中每页必须包含 slide_index、title、bullets、speaker_notes、visual_hint。"
+            "speaker_notes 需要比 bullets 更完整，适合老师口头讲解。"
+            "visual_hint 要明确描述页面布局，例如“双色对比卡片”“时间线”“流程箭头”“重点高亮侧栏”。"
+            "如果检索结果里有证据，要把证据转写成课件内容，而不是忽略。"
+            "你只返回一个合法 JSON 对象，不要输出 Markdown，不要解释。"
+        )
         generated = self._call_json(
             "generate_ppt",
             request_payload,
             planning_bundle,
             ["schema_version", "title", "topic", "summary", "theme", "slide_style", "slides"],
+            system_prompt_override=ppt_system_prompt,
         )
         generated["schema_version"] = generative_task.GENERATIVE_PPT_SCHEMA_VERSION
         generated["title"] = _safe_text(generated.get("title")) or f"{request_payload['topic']} 教学课件"
         generated["topic"] = _safe_text(generated.get("topic")) or request_payload["topic"]
         generated["summary"] = _safe_text(generated.get("summary")) or f"围绕“{request_payload['question']}”的结构化课件。"
-        generated["theme"] = _safe_text(generated.get("theme")) or "academic-clean"
-        generated["slide_style"] = _safe_text(generated.get("slide_style")) or "teaching-outline"
+        generated["theme"] = _safe_text(generated.get("theme")) or _safe_text(requirements.get("theme")) or "academic-rich"
+        generated["slide_style"] = _safe_text(generated.get("slide_style")) or _safe_text(requirements.get("style")) or "teaching-storyboard"
         raw_slides = generated.get("slides") if isinstance(generated.get("slides"), list) else []
         normalized_slides = []
         for index, slide in enumerate(raw_slides, start=1):
@@ -359,26 +471,110 @@ class LLMResourceGenerationAgent:
                     bullets = [_safe_text(content)]
             if not title and bullets:
                 title = f"要点 {index}"
+            role = _safe_text(slide.get("slide_role") or slide.get("role"))
+            visual_hint = _safe_text(slide.get("visual_hint") or slide.get("type"))
+            if not visual_hint:
+                visual_hint = "标题 + 重点列表"
+                if index == 1:
+                    visual_hint = "封面标题 + 副标题 + 主题标签"
+                elif "对比" in title or "区别" in title:
+                    visual_hint = "双色对比卡片"
+                elif "流程" in title or "步骤" in title or "策略" in title:
+                    visual_hint = "流程箭头 + 分步说明"
+                elif "总结" in title or "回顾" in title:
+                    visual_hint = "重点高亮总结卡片"
+            speaker_notes = _safe_text(slide.get("speaker_notes") or slide.get("notes") or slide.get("content"))
+            if not speaker_notes:
+                speaker_notes = "围绕本页 bullet 展开解释，并补充检索证据、易错点和课堂串讲过渡。"
             normalized_slides.append(
                 {
                     "slide_index": int(slide.get("slide_index") or index),
                     "title": title or f"第{index}页",
-                    "bullets": bullets or [request_payload["topic"]],
-                    "speaker_notes": _safe_text(slide.get("speaker_notes") or slide.get("notes") or slide.get("content"))
-                    or "围绕当前页要点进行讲解。",
-                    "visual_hint": _safe_text(slide.get("visual_hint") or slide.get("type"))
-                    or "标题 + 要点列表",
+                    "bullets": bullets[:6] or [request_payload["topic"]],
+                    "speaker_notes": speaker_notes,
+                    "visual_hint": visual_hint,
+                    "slide_role": role or ("cover" if index == 1 else "content"),
+                    "key_takeaway": _safe_text(slide.get("key_takeaway") or slide.get("takeaway")),
                 }
             )
-        generated["slides"] = normalized_slides or [
-            {
-                "slide_index": 1,
-                "title": "学习目标",
-                "bullets": [request_payload["question"], request_payload["topic"]],
-                "speaker_notes": "先说明本次资源围绕的问题。",
-                "visual_hint": "标题 + 目标列表",
-            }
-        ]
+        if len(normalized_slides) < 4:
+            normalized_slides = [
+                {
+                    "slide_index": 1,
+                    "title": "封面",
+                    "bullets": [request_payload["topic"], request_payload["learning_goal"] or "围绕学生问题展开定向讲解"],
+                    "speaker_notes": "开场说明问题背景、课程位置和本次课件目标。",
+                    "visual_hint": "封面标题 + 副标题 + 主题标签",
+                    "slide_role": "cover",
+                    "key_takeaway": "先让学生知道这份课件要解决什么问题。",
+                },
+                {
+                    "slide_index": 2,
+                    "title": "问题导入",
+                    "bullets": [
+                        request_payload["question"],
+                        "结合学习目标定位当前薄弱点。",
+                        "明确为什么这个知识点容易出错。",
+                    ],
+                    "speaker_notes": "把学生原问题转成课堂导入，强调痛点和目标。",
+                    "visual_hint": "问题卡片 + 目标列表",
+                    "slide_role": "intro",
+                    "key_takeaway": "先聚焦问题，再进入知识讲解。",
+                },
+                {
+                    "slide_index": 3,
+                    "title": "核心讲解",
+                    "bullets": [
+                        f"围绕 {request_payload['topic']} 解释核心概念和机制。",
+                        "结合检索资料说明常见误区与判断依据。",
+                        "给出一条可复用的分析思路或设计原则。",
+                    ],
+                    "speaker_notes": "这是主讲页，需要把知识点讲透并联系检索证据。",
+                    "visual_hint": "标题 + 重点列表 + 侧栏提示",
+                    "slide_role": "concept",
+                    "key_takeaway": "不仅给结论，还要解释为什么。",
+                },
+                {
+                    "slide_index": 4,
+                    "title": "总结",
+                    "bullets": [
+                        "回顾本节课的关键结论。",
+                        "指出后续练习或复习方向。",
+                        "把知识点与学生原问题闭环。",
+                    ],
+                    "speaker_notes": "收束内容，形成可带走的结论。",
+                    "visual_hint": "重点高亮总结卡片",
+                    "slide_role": "summary",
+                    "key_takeaway": "让学生带着清晰结论离开。",
+                },
+            ]
+
+        normalized_slides = sorted(normalized_slides, key=lambda item: int(item.get("slide_index") or 0))
+        for next_index, slide in enumerate(normalized_slides, start=1):
+            slide["slide_index"] = next_index
+        if len(normalized_slides) < slide_target:
+            supplement_titles = [
+                ("概念拆解", "双色概念卡片"),
+                ("机制原理", "流程箭头 + 机制说明"),
+                ("对比分析", "双色对比卡片"),
+                ("案例分析", "案例卡片 + 结论高亮"),
+                ("课堂总结", "重点高亮总结卡片"),
+            ]
+            for title, visual_hint in supplement_titles:
+                if len(normalized_slides) >= slide_target:
+                    break
+                normalized_slides.append(
+                    {
+                        "slide_index": len(normalized_slides) + 1,
+                        "title": title,
+                        "bullets": [f"围绕 {request_payload['topic']} 补充 {title} 视角。", "结合当前薄弱点给出课堂讲解要点。"] ,
+                        "speaker_notes": "补足课件节奏，避免内容过于单薄。",
+                        "visual_hint": visual_hint,
+                        "slide_role": "content",
+                        "key_takeaway": "",
+                    }
+                )
+        generated["slides"] = normalized_slides[:12]
         return generated
 
     def generate_resource_content(self, request_payload: dict, resource_type: str, planning_bundle: dict) -> dict:

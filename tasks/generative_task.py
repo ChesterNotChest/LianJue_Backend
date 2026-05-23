@@ -21,6 +21,7 @@ from tasks.generative.renderers import (
     render_coding_practice_markdown,
     render_document_markdown,
     render_ppt_markdown,
+    render_pptx_file,
     render_quiz_markdown,
 )
 from tasks.generative.storage import (
@@ -118,6 +119,23 @@ def _build_result_payload(*, entry: dict) -> dict:
         if key not in result:
             result[key] = value
     return result
+
+
+def _is_terminal_qa_slide(slide: Any) -> bool:
+    if not isinstance(slide, dict):
+        return False
+    role = str(slide.get("slide_role") or slide.get("role") or "").strip().lower()
+    title = str(slide.get("title") or "").strip().lower()
+    if role == "qa":
+        return True
+    return "q&a" in title or "答疑" in title or title == "qa"
+
+
+def _strip_terminal_qa_slides(slides: Any) -> list:
+    normalized = slides if isinstance(slides, list) else []
+    while normalized and _is_terminal_qa_slide(normalized[-1]):
+        normalized = normalized[:-1]
+    return normalized
 
 
 def persist_mindmap_resource(payload: dict, generated: dict) -> dict:
@@ -471,15 +489,17 @@ def persist_ppt_resource(payload: dict, generated: dict) -> dict:
         "summary": str(generated.get("summary") or "").strip(),
         "theme": str(generated.get("theme") or "").strip(),
         "slide_style": str(generated.get("slide_style") or "").strip(),
-        "slides": generated.get("slides") if isinstance(generated.get("slides"), list) else [],
+        "slides": _strip_terminal_qa_slides(generated.get("slides")),
     }
     validation = validate_ppt_payload(ppt_json)
     ppt_markdown = render_ppt_markdown(ppt_json)
 
     ppt_json_path = resource_dir / "ppt.json"
     ppt_md_path = resource_dir / "ppt.md"
+    pptx_path = resource_dir / "ppt.pptx"
     _write_json(ppt_json_path, ppt_json)
     _write_text(ppt_md_path, ppt_markdown)
+    render_pptx_file(ppt_json, pptx_path)
 
     status = "ready" if validation["valid"] else "invalid"
     entry = _build_resource_entry(
@@ -493,6 +513,7 @@ def persist_ppt_resource(payload: dict, generated: dict) -> dict:
         main_files=_build_main_files(
             json_path=_repo_relative_path(ppt_json_path),
             md_path=_repo_relative_path(ppt_md_path),
+            pptx_path=_repo_relative_path(pptx_path),
         ),
         status=status,
         validation={

@@ -35,7 +35,13 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py 
 ### 1.c 集成测试 2 - 资源生成
 
 ```bash
-RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -q tests/test_generative_task.py -m "llm and search"
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_resource_generation_agent_task.py -m "llm and search"
+```
+
+### 1.c.1 集成测试 2a - 真实 PPT 生成链路
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_resource_generation_agent_task.py::test_resource_generation_agent_full_chain_with_real_search_and_real_llm_ppt -rs
 ```
 
 ### 1.d 单元测试包 1 - 用户画像
@@ -73,6 +79,22 @@ python -m pytest -q tests/test_create_syllabus_draft.py tests/test_build_syllabu
 ```bash
 python -m pytest -q tests/test_job_checker_startup_graph_sync.py
 ```
+
+### 1.j 2026-05-23 PPT 回归
+
+本轮为了验证 `python-pptx` 导出的真实 PPT 链路，实际使用了 `lianjue` 环境内解释器直接运行：
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/anaconda3/envs/lianjue/bin/python -m pytest -p no:debugging -q tests/test_generative_task.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/anaconda3/envs/lianjue/bin/python -m pytest -p no:debugging -q tests/test_resource_generation_agent_task.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/anaconda3/envs/lianjue/bin/python -m pytest -p no:debugging -q tests/test_generative_api.py
+```
+
+结果：
+
+- `tests/test_generative_task.py`：`25 passed, 1 skipped`
+- `tests/test_resource_generation_agent_task.py`：`9 passed, 3 skipped`
+- `tests/test_generative_api.py`：`2 passed`
 
 ## 2 用例描述
 
@@ -185,7 +207,7 @@ markers =
 - 假大纲：`syllabus_id=71`
 - 学科：`大数据概论`
 - 图名：`RAG`
-- 资源类型：`documents`、`mindmap`、`quiz`
+- 资源类型：`documents`、`mindmap`、`quiz`、`ppt`
 - 主题：`HBase RowKey 热点规避`
 - 学习目标：`掌握大数据概论中的 HBase RowKey 设计与热点规避`
 - 个性化薄弱点：`RowKey 热点`、`预分区策略`
@@ -225,6 +247,17 @@ markers =
     "graph_name": "RAG",
     "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
     "weak_points": ["RowKey 热点", "预分区策略"]
+  },
+  {
+    "user_id": 61,
+    "syllabus_id": 71,
+    "resource_type": "ppt", // 课件
+    "subject": "大数据概论",
+    "topic": "HBase RowKey 热点规避",
+    "graph_name": "RAG",
+    "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
+    "weak_points": ["RowKey 热点", "预分区策略"],
+    "knowledge_items": ["RowKey 热点", "预分区策略"]
   }
 ]
 ```
@@ -256,7 +289,7 @@ markers =
 链路：
 
 ```text
-payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval_context 回填 payload -> LLM adapter 生成资源 -> generative_task 校验、渲染、落盘、写 manifest
+payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval_context 回填 payload -> LLM adapter 生成资源 -> generative_task 校验、渲染、落盘、写 manifest -> ppt 额外导出 `.pptx`
 ```
 
 
@@ -299,9 +332,11 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 - `generate_mindmap()` 写出 `mindmap.json` 和 `mindmap.mmd`。
 - `generate_structured_document()` 写出 `document.json` 和 `document.md`。
 - `generate_quiz()` 写出 `quiz.json` 和 `quiz.md`。
-- `generate_resource()` 分发到 `documents`、`mindmap`、`quiz`。
+- `generate_ppt()` 写出 `ppt.json`、`ppt.md` 和 `ppt.pptx`。
+- `generate_resource()` 分发到 `documents`、`mindmap`、`quiz`、`ppt`。
 - invalid Mermaid / quiz / document payload 标记为 `invalid`。
-- 同一用户连续生成三类资源时，manifest 能累计记录所有资源。
+- invalid ppt payload 标记为 `invalid`。
+- 同一用户连续生成四类资源时，manifest 能累计记录所有资源。
 - `material_task` 能按 `created_at` 列出最新生成资源，并按资源类型分组。
 - `material_task` 能基于 manifest 读取生成资源 detail，返回可直接渲染的 `content` 和 `render`。
 - 生成资源 manifest 中的 repo-relative 路径固定按后端根目录解析，不依赖服务启动时的当前工作目录。
@@ -387,6 +422,8 @@ monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
 ```
 
 因此测试生成的 JSON / Markdown / Mermaid 文件会写到 pytest 的临时目录，而不是仓库里的 `generative/` 目录。这样做是为了避免测试污染真实项目数据。
+
+对于 `ppt` 资源，测试还会在临时目录写出真实的 `ppt.pptx` 文件，并用 `python-pptx` 回读页数和标题；标题断言已经改成按 slide 文本查找，不再依赖固定 shape 索引，因此可以承受封面、流程卡片、表格等样式扩展。
 
 如果需要检查测试产物，可以在测试里临时打印：
 

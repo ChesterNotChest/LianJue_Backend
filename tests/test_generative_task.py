@@ -7,6 +7,15 @@ from tasks import generative_task as gt
 from tasks.generative import storage as generative_storage
 
 
+def _load_presentation(path_value):
+    pptx = pytest.importorskip("pptx")
+    return pptx.Presentation(str(path_value))
+
+
+def _slide_texts(slide):
+    return [shape.text for shape in slide.shapes if hasattr(shape, "text") and str(shape.text).strip()]
+
+
 class FakeMindmapAgent:
     def generate_mindmap(self, payload):
         return {
@@ -193,6 +202,49 @@ class FakePptAgent:
                     "bullets": ["概念定义", "应用场景", "注意事项"],
                     "speaker_notes": "结合实例展开讲解。",
                     "visual_hint": "左右分栏信息结构",
+                },
+            ],
+        }
+
+
+class RichLayoutPptAgent:
+    def generate_ppt(self, payload):
+        return {
+            "schema_version": gt.GENERATIVE_PPT_SCHEMA_VERSION,
+            "title": f"{payload['topic']} 进阶课件",
+            "topic": payload["topic"],
+            "summary": "覆盖封面、流程页和表格化内容页。",
+            "theme": "academic-clean",
+            "slide_style": "teaching-outline",
+            "slides": [
+                {
+                    "slide_index": 1,
+                    "title": "课程导入",
+                    "bullets": ["统一目标", "明确场景"],
+                    "speaker_notes": "先说明今天的分析范围。",
+                    "visual_hint": "封面页",
+                },
+                {
+                    "slide_index": 2,
+                    "title": "实施步骤",
+                    "bullets": [
+                        "第1步：识别热点；定位高频前缀",
+                        "第2步：设计 RowKey；加入散列或盐值",
+                        "第3步：验证效果；观察 Region 分布",
+                    ],
+                    "speaker_notes": "按阶段讲清输入、动作和结果。",
+                    "visual_hint": "流程图",
+                },
+                {
+                    "slide_index": 3,
+                    "title": "策略对照",
+                    "bullets": [
+                        "热点成因：单调递增前缀导致写入集中",
+                        "预分区策略：提前拆分 Region，降低单点压力",
+                        "盐值方案：打散写入键空间，均衡落点",
+                    ],
+                    "speaker_notes": "把策略放在同一页方便横向比较。",
+                    "visual_hint": "表格对照",
                 },
             ],
         }
@@ -572,11 +624,16 @@ def test_generate_ppt_persists_bundle_and_manifest(monkeypatch, tmp_path):
     resource_dir = tmp_path / result["resource_dir"]
     saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
     saved_md = (tmp_path / result["md_path"]).read_text(encoding="utf-8")
+    saved_pptx = tmp_path / result["pptx_path"]
+    presentation = _load_presentation(saved_pptx)
 
     assert resource_dir.exists()
     assert saved_json["schema_version"] == gt.GENERATIVE_PPT_SCHEMA_VERSION
     assert saved_json["theme"] == "academic-clean"
     assert len(saved_json["slides"]) == 2
+    assert saved_pptx.exists()
+    assert len(presentation.slides) == 2
+    assert "课程目标" in _slide_texts(presentation.slides[0])
     assert saved_md.startswith("# MapReduce 基础 教学课件")
     assert "## Slide 1: 课程目标" in saved_md
     assert "Speaker Notes:" in saved_md
@@ -588,9 +645,32 @@ def test_generate_ppt_persists_bundle_and_manifest(monkeypatch, tmp_path):
     assert entry["resource_type"] == "ppt"
     assert entry["main_files"]["json_path"] == result["json_path"]
     assert entry["main_files"]["md_path"] == result["md_path"]
+    assert entry["main_files"]["pptx_path"] == result["pptx_path"]
     assert entry["validation"]["slide_count"] == 2
     assert entry["metadata"]["theme"] == "academic-clean"
     assert entry["metadata"]["slide_style"] == "teaching-outline"
+
+
+def test_generate_ppt_supports_process_and_table_like_layouts(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    result = gt.generate_ppt(
+        {
+            "user_id": 27,
+            "syllabus_id": 18,
+            "topic": "HBase RowKey 热点规避",
+        },
+        RichLayoutPptAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "ready"
+    presentation = _load_presentation(tmp_path / result["pptx_path"])
+
+    assert len(presentation.slides) == 3
+    assert "课程导入" in _slide_texts(presentation.slides[0])
+    assert "实施步骤" in _slide_texts(presentation.slides[1])
+    assert any("1" in text for text in _slide_texts(presentation.slides[1]))
 
 
 def test_generate_ppt_marks_invalid_when_schema_validation_fails(monkeypatch, tmp_path):
