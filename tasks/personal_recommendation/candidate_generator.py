@@ -1,14 +1,6 @@
 import heapq
-try:
-    # when imported as package
-    from prototype_recommendation.graph_adapter import InMemoryGraphAdapter, GraphAdapter
-except Exception:
-    # when executed as a script from the repo root
-    from graph_adapter import InMemoryGraphAdapter, GraphAdapter
-try:
-    from prototype_recommendation.evaluator import score as eval_score, normalize_scores as eval_normalize, scalar_scores as eval_scalar
-except Exception:
-    from evaluator import score as eval_score, normalize_scores as eval_normalize, scalar_scores as eval_scalar
+from .graph_adapter import InMemoryGraphAdapter, GraphAdapter
+from .evaluator import score as eval_score, normalize_scores as eval_normalize, scalar_scores as eval_scalar
 
 
 def h_estimate(node, goals, learning_tree, knowledge):
@@ -26,7 +18,7 @@ def generate(start_nodes, goals, learning_tree, S, L_max=6, T_max=100, K=20,
       - beam_width: 每层保留的路径数量（控制分支）
       - expand_mode: 'forward'（默认）或 'backward'，控制展开方向
       - heuristic_weight: 启发式权重，f = g + heuristic_weight * h
-    返回: list of {'path':..., 'cost':..., 'skills': set(...)}
+    返回: list of {'path':..., 'cost':..., 'skills': set(...) }
     """
     # normalize adapter: if none provided, use in-memory adapter backed by learning_tree
     adapter = graph_adapter if graph_adapter is not None else InMemoryGraphAdapter(learning_tree)

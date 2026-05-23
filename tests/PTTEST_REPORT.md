@@ -118,11 +118,11 @@ c:/Users/Lenovo/Desktop/基于动态知识图谱的RAG增强大模型辅助专�
 - 本节 run_demo 展示的是“推荐算法路径生成与选择逻辑”的真实运行结果（使用示例学习图数据）。
 - 两者共同说明：远程图服务连通性已验证，算法链路也可实际跑通并产出最终路径。
 
-## 9. 新增：个性化推荐接口（最小可用原型）
+## 9. 个性化推荐接口（最小可用原型）
 
 - 新增接口：`POST /api/personal_recommendation`
 - 功能：接受 `user_id`（可选 `syllabus_id`、`goals`），从用户画像构建决策上下文并在示例学习图上生成候选路径与最终选中路径。
 - 实现位置：[`blueprint/learning_api.py`](blueprint/learning_api.py#L1)
-- 说明：该接口使用已有的 `get_or_build_learning_profile` 拉取/构造 `user_profile`，再调用 `prototype_recommendation` 的 `generate_state` + `generate` + 剪枝/评分/选择流水线输出结果。当前为最小可用原型并依赖 `prototype_recommendation.sample_data` 作为学习图数据源。
+- 说明：该接口使用已有的 `get_or_build_learning_profile` 拉取/构造 `user_profile`，再调用 `tasks.personal_recommendation` 的 `generate_state` + `generate` + 剪枝/评分/选择流水线输出结果。当前为最小可用原型并依赖 `tasks/personal_recommendation/sample_data.py` 作为学习图数据源。
 
-如需我把该接口接入真实 syllabus 的学习树或添加更多运行时参数（超时、并发限制、审计日志等），我可以继续实现。
+

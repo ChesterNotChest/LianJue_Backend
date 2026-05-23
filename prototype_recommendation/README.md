@@ -7,12 +7,6 @@ python prototype_recommendation/run_demo.py
 ```
 
 包含模块：
-- perception.py
-- candidate_generator.py
-- evaluator.py
-- selector_ib_grpo.py
-- sample_data.py
-- run_demo.py
  - benchmarks/benchmark_perf.py  # 性能基准测试脚本
  - graph_adapter.py  # 提供 `GraphAdapter` 抽象与 `InMemoryGraphAdapter` / `KnowLionGraphAdapter`
 
@@ -24,7 +18,11 @@ python prototype_recommendation/benchmarks/benchmark_perf.py --nodes 200 --runs 
 
 输出保存到 `prototype_recommendation/benchmarks/results`。
 
-切换数据源：
-- `candidate_generator.generate(..., graph_adapter=adapter)` 接受一个 `GraphAdapter` 实例，
-	若不提供则使用内存实现。
-- 可实现 `KnowLionGraphAdapter` 来对接仓库内的 `KnowLion` 驱动（`knowlion/abution_knowlion_driver.py`）。
+ 运行方法：
+
+ 示例已迁移至 `tasks/personal_recommendation`，请参见项目中的演示和测试：
+
+ `tasks/personal_recommendation/sample_data.py` 与 `tests/personal_recommendation` 包含示例数据与集成测试。
+ 
+ 切换数据源：已集成到 `tasks/personal_recommendation/graph_adapter.py`，默认使用内存实现。
+ 如需对接 KnowLion，请使用 `tasks/personal_recommendation/graph_adapter.KnowLionGraphAdapter`。

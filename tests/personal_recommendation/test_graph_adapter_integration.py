@@ -1,5 +1,5 @@
-from prototype_recommendation.candidate_generator import generate
-from prototype_recommendation.graph_adapter import InMemoryGraphAdapter
+from tasks.personal_recommendation.candidate_generator import generate
+from tasks.personal_recommendation.graph_adapter import InMemoryGraphAdapter
 
 
 def make_tree():

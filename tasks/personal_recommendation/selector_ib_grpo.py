@@ -1,8 +1,5 @@
 import random
-try:
-    from prototype_recommendation.evaluator import normalize_scores, scalar_scores, DEFAULT_WEIGHTS
-except Exception:
-    from evaluator import normalize_scores, scalar_scores, DEFAULT_WEIGHTS
+from .evaluator import normalize_scores, scalar_scores, DEFAULT_WEIGHTS
 
 
 def dominates(a, b):

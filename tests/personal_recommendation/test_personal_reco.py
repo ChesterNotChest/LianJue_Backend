@@ -1,6 +1,6 @@
-from prototype_recommendation.sample_data import learning_tree, user_profile, goals
-from prototype_recommendation.perception import generate_state
-from prototype_recommendation.candidate_generator import generate
+from tasks.personal_recommendation.sample_data import learning_tree, user_profile, goals
+from tasks.personal_recommendation.perception import generate_state
+from tasks.personal_recommendation.candidate_generator import generate
 
 
 def test_generate_with_sample_profile():

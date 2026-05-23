@@ -7,12 +7,12 @@ from tasks.learning_profile.storage import load_json_file
 from tasks.syllabus_to_learning_tree import syllabus_json_to_learning_tree
 
 try:
-    from prototype_recommendation.sample_data import learning_tree as _sample_learning_tree
-    from prototype_recommendation.perception import generate_state as _pr_generate_state
-    from prototype_recommendation.candidate_generator import generate as _pr_generate
-    from prototype_recommendation.pruning import hard_prune, soft_prune_by_dominance
-    from prototype_recommendation.evaluator import score as _pr_score
-    from prototype_recommendation.selector_ib_grpo import ib_grpo_select
+    from tasks.personal_recommendation.sample_data import learning_tree as _sample_learning_tree
+    from tasks.personal_recommendation.perception import generate_state as _pr_generate_state
+    from tasks.personal_recommendation.candidate_generator import generate as _pr_generate
+    from tasks.personal_recommendation.pruning import hard_prune, soft_prune_by_dominance
+    from tasks.personal_recommendation.evaluator import score as _pr_score
+    from tasks.personal_recommendation.selector_ib_grpo import ib_grpo_select
 except Exception:
     _sample_learning_tree = None
     _pr_generate_state = None
