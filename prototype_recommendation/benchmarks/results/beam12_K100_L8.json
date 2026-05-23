@@ -1,0 +1,74 @@
+{
+  "cfg": {
+    "beam_width": 12,
+    "K": 100,
+    "L_max": 8,
+    "iterations": 80,
+    "N": 5
+  },
+  "runs": [
+    {
+      "perception_time": 0.0004749000072479248,
+      "gen_time": 0.015805099974386394,
+      "score_time": 1.600012183189392e-06,
+      "select_time": 7.200054824352264e-06,
+      "total_time": 0.016291200066916645,
+      "candidates": 0,
+      "selected": 0,
+      "mem_peak_bytes": 77856,
+      "node_reads": 0
+    },
+    {
+      "perception_time": 0.0006673999596387148,
+      "gen_time": 0.01999579998664558,
+      "score_time": 2.100015990436077e-06,
+      "select_time": 8.599949069321156e-06,
+      "total_time": 0.02067709993571043,
+      "candidates": 0,
+      "selected": 0,
+      "mem_peak_bytes": 73320,
+      "node_reads": 0
+    },
+    {
+      "perception_time": 0.0008767999242991209,
+      "gen_time": 0.01733619999140501,
+      "score_time": 2.00001522898674e-06,
+      "select_time": 6.800051778554916e-06,
+      "total_time": 0.018224800005555153,
+      "candidates": 0,
+      "selected": 0,
+      "mem_peak_bytes": 73400,
+      "node_reads": 0
+    }
+  ],
+  "summary": {
+    "gen_time": {
+      "mean": 0.017712366650812328,
+      "stdev": 0.001731399754519356
+    },
+    "score_time": {
+      "mean": 1.9000144675374031e-06,
+      "stdev": 2.1602633486549805e-07
+    },
+    "select_time": {
+      "mean": 7.533351890742779e-06,
+      "stdev": 7.716747005378644e-07
+    },
+    "total_time": {
+      "mean": 0.018397700002727408,
+      "stdev": 0.0017947052165630546
+    },
+    "candidates": {
+      "mean": 0,
+      "stdev": 0.0
+    },
+    "selected": {
+      "mean": 0,
+      "stdev": 0.0
+    },
+    "mem_peak_bytes": {
+      "mean": 74858.66666666667,
+      "stdev": 2119.68634996365
+    }
+  }
+}
