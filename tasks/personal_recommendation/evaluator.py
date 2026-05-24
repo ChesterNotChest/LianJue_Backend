@@ -50,12 +50,10 @@ def normalize_scores(score_dicts, keys=None):
             lo = mins[k]
             hi = maxs[k]
             val = s.get(k, 0.0)
-            # invert D and R since lower is better
-            if k in ('D', 'R'):
-                # after inversion larger -> better
-                val = hi - val
             if hi - lo < 1e-9:
                 ns[k] = 0.0
+            elif k in ('D', 'R'):
+                ns[k] = (hi - val) / (hi - lo)
             else:
                 ns[k] = (val - lo) / (hi - lo)
         out.append(ns)

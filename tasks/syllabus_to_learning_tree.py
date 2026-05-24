@@ -16,6 +16,39 @@ def _pick_id(item: dict) -> Optional[str]:
     return None
 
 
+def _normalize_links(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if item not in (None, "")]
+    return [str(value)]
+
+
+def _normalize_number(value: Any, default: float = 1.0) -> float:
+    try:
+        if value in (None, ""):
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _normalize_node(node: dict, include_depends_on: bool = False) -> Dict[str, Any]:
+    prereq = node.get('prerequisites') or node.get('prereq') or node.get('parents')
+    if include_depends_on and not prereq:
+        prereq = node.get('depends_on')
+    outcomes = node.get('outcomes') or node.get('skills') or node.get('learning_outcomes') or []
+    return {
+        'prerequisites': _normalize_links(prereq),
+        'outcomes': _normalize_links(outcomes),
+        'learning_time_est': _normalize_number(node.get('learning_time_est') or node.get('duration') or node.get('learning_time') or 1),
+        'difficulty': _normalize_number(node.get('difficulty') or node.get('level') or 1),
+        'title': node.get('title') or node.get('name') or None,
+    }
+
+
 def syllabus_json_to_learning_tree(syllabus_json: Any) -> Dict[str, Dict]:
     if not syllabus_json:
         return {}
@@ -37,13 +70,7 @@ def syllabus_json_to_learning_tree(syllabus_json: Any) -> Dict[str, Dict]:
         for nid, node in nodes.items():
             if not isinstance(node, dict):
                 continue
-            result[str(nid)] = {
-                'prerequisites': list(node.get('prerequisites') or node.get('prereq') or node.get('parents') or []),
-                'outcomes': list(node.get('outcomes') or node.get('skills') or []),
-                'learning_time_est': float(node.get('learning_time_est') or node.get('duration') or node.get('learning_time') or 1),
-                'difficulty': float(node.get('difficulty') or node.get('level') or 1),
-                'title': node.get('title') or node.get('name') or None,
-            }
+            result[str(nid)] = _normalize_node(node)
         return result
 
     # If nodes is a list
@@ -55,27 +82,7 @@ def syllabus_json_to_learning_tree(syllabus_json: Any) -> Dict[str, Dict]:
             if not nid:
                 # skip items without id/title
                 continue
-            prereq = item.get('prerequisites') or item.get('prereq') or item.get('parents') or item.get('depends_on') or []
-            if isinstance(prereq, str):
-                prereq = [prereq]
-            outcomes = item.get('outcomes') or item.get('skills') or item.get('learning_outcomes') or []
-            if isinstance(outcomes, str):
-                outcomes = [outcomes]
-            try:
-                time_est = float(item.get('learning_time_est') or item.get('duration') or item.get('learning_time') or 1)
-            except Exception:
-                time_est = 1.0
-            try:
-                diff = float(item.get('difficulty') or item.get('level') or 1)
-            except Exception:
-                diff = 1.0
-            result[str(nid)] = {
-                'prerequisites': list(prereq),
-                'outcomes': list(outcomes),
-                'learning_time_est': time_est,
-                'difficulty': diff,
-                'title': item.get('title') or item.get('name') or None,
-            }
+            result[str(nid)] = _normalize_node(item, include_depends_on=True)
         return result
 
     # Fallback: if syllabus_json itself looks like mapping id->node
@@ -87,15 +94,8 @@ def syllabus_json_to_learning_tree(syllabus_json: Any) -> Dict[str, Dict]:
                 break
         if ok:
             for nid, node in syllabus_json.items():
-                result[str(nid)] = {
-                    'prerequisites': list(node.get('prerequisites') or node.get('prereq') or []),
-                    'outcomes': list(node.get('outcomes') or node.get('skills') or []),
-                    'learning_time_est': float(node.get('learning_time_est') or node.get('duration') or 1),
-                    'difficulty': float(node.get('difficulty') or node.get('level') or 1),
-                    'title': node.get('title') or node.get('name') or None,
-                }
+                result[str(nid)] = _normalize_node(node)
             return result
 
     return {}
-
 

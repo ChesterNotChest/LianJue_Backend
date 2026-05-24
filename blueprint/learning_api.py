@@ -129,7 +129,7 @@ def personal_recommendation_api():
       - user_id: int (required)
       - syllabus_id: int (optional)
       - goals: [str,...] (optional)
-      - max_candidates, beam_width 等可选参数
+      - K / max_candidates, L_max, T_max, beam_width 等可选参数
 
     输出（JSON）:
       - success: bool

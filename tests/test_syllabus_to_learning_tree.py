@@ -1,6 +1,3 @@
-import json
-import os
-
 from tasks.syllabus_to_learning_tree import syllabus_json_to_learning_tree
 
 
@@ -30,3 +27,14 @@ def test_map_dict_nodes():
 def test_unknown_shape_returns_empty():
     assert syllabus_json_to_learning_tree(None) == {}
     assert syllabus_json_to_learning_tree({"foo": "bar"}) == {}
+
+
+def test_map_dict_nodes_normalizes_string_and_invalid_numbers():
+    syllabus = {
+        "n1": {"title": "A", "prerequisites": "root", "outcomes": "skill_a", "duration": "oops", "difficulty": "bad"},
+    }
+    lt = syllabus_json_to_learning_tree(syllabus)
+    assert lt["n1"]["prerequisites"] == ["root"]
+    assert lt["n1"]["outcomes"] == ["skill_a"]
+    assert lt["n1"]["learning_time_est"] == 1.0
+    assert lt["n1"]["difficulty"] == 1.0

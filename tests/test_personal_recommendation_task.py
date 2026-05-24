@@ -2,7 +2,9 @@ import json
 import shutil
 from pathlib import Path
 
+from tasks.personal_recommendation.evaluator import normalize_scores
 from tasks.personal_recommendation.graph_adapter import InMemoryGraphAdapter
+from tasks.personal_recommendation.perception import generate_state
 from tasks.personal_recommendation.sample_data import goals, learning_tree, user_profile
 from tasks.personal_recommendation_task import run_recommendation_route
 from tasks import personal_recommendation_task as prt
@@ -240,3 +242,105 @@ def test_personal_recommendation_mock_rag_route_graph_closes(monkeypatch):
             "recommendation": result,
         },
     )
+
+
+def test_normalize_scores_inverts_lower_is_better_metrics():
+    normalized = normalize_scores([
+        {"E": 1.0, "D": 2.0, "R": 0.4, "P": 0.5},
+        {"E": 2.0, "D": 4.0, "R": 0.8, "P": 0.5},
+    ])
+
+    assert normalized[0]["D"] == 1.0
+    assert normalized[1]["D"] == 0.0
+    assert normalized[0]["R"] == 1.0
+    assert normalized[1]["R"] == 0.0
+
+
+def test_build_recommendation_profile_normalizes_learning_profile(monkeypatch):
+    raw_profile = {
+        "user_id": 8,
+        "learning_goal": "掌握 HBase RowKey 设计",
+        "concept_gaps": ["rowkey_design"],
+        "resource_preference": ["video", "practice"],
+        "learning_style": "example-driven",
+        "knowledge_mastery": {
+            "by_knowledge_point": {"rowkey_design": 0.2},
+            "knowledge_point_details": {
+                "rowkey_design": {"score": 0.25, "confidence": 0.8},
+            },
+        },
+    }
+    monkeypatch.setattr(prt, "get_or_build_learning_profile", lambda *args, **kwargs: raw_profile)
+
+    profile = prt.build_recommendation_profile(8, 20)
+
+    assert profile["knowledge_levels"] == {"rowkey_design": 0.25}
+    assert profile["learning_goals"] == ["掌握 HBase RowKey 设计", "rowkey_design"]
+    assert profile["preferences"]["preferred_formats"] == ["video", "practice"]
+    assert profile["preferences"]["learning_style"] == "example-driven"
+
+
+def test_run_recommendation_route_uses_learning_profile_goal_fallback(monkeypatch):
+    captured = {}
+
+    def fake_generate(start_nodes, route_goals, learning_tree, state, **kwargs):
+        captured["goals"] = list(route_goals)
+        return []
+
+    monkeypatch.setattr(
+        prt,
+        "build_recommendation_profile",
+        lambda user_id, syllabus_id=None: {
+            "knowledge_levels": {},
+            "learning_goal": "rowkey_design",
+            "learning_goals": ["rowkey_design"],
+            "preferences": {},
+            "constraints": {},
+        },
+    )
+    monkeypatch.setattr(
+        prt,
+        "load_recommendation_learning_tree",
+        lambda syllabus_id=None: {
+            "n1": {"title": "RowKey 设计", "outcomes": ["rowkey_design"], "prerequisites": [], "learning_time_est": 1, "difficulty": 1},
+        },
+    )
+    monkeypatch.setattr(prt, "generate", fake_generate)
+
+    prt.run_recommendation_route(user_id=8, syllabus_id=20, goals=None)
+
+    assert captured["goals"] == ["rowkey_design"]
+
+
+def test_generate_state_accepts_learning_profile_mastery_schema():
+    state, starts = generate_state(
+        {
+            "knowledge_mastery": {
+                "knowledge_point_details": {
+                    "data_basic": {"score": 1.0},
+                    "stats_basic": {"score": 0.0},
+                }
+            }
+        },
+        {
+            "n1": {"outcomes": ["data_basic"], "prerequisites": []},
+            "n2": {"outcomes": ["stats_basic"], "prerequisites": []},
+        },
+    )
+
+    assert state["knowledge"]["data_basic"] == 1.0
+    assert "n2" in starts
+
+
+def test_run_recommendation_route_from_payload_accepts_max_candidates_alias(monkeypatch):
+    captured = {}
+
+    def fake_route(**kwargs):
+        captured.update(kwargs)
+        return {"success": True}
+
+    monkeypatch.setattr(prt, "run_recommendation_route", fake_route)
+
+    prt.run_recommendation_route_from_payload({"user_id": 1, "max_candidates": 7})
+
+    assert captured["K"] == 7

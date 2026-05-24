@@ -159,6 +159,174 @@ def load_recommendation_learning_tree(syllabus_id: Optional[int] = None) -> Dict
         return sample_learning_tree
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value in (None, ""):
+            return float(default)
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _as_string_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    if isinstance(value, (list, tuple, set)):
+        items = []
+        for item in value:
+            if item in (None, ""):
+                continue
+            text = str(item).strip()
+            if text:
+                items.append(text)
+        return items
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _dedupe_keep_order(items: List[str]) -> List[str]:
+    seen = set()
+    result = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def _normalize_knowledge_levels(profile: Dict[str, Any]) -> Dict[str, float]:
+    knowledge = profile.get("knowledge_levels")
+    if isinstance(knowledge, dict) and knowledge:
+        return {
+            str(key): _safe_float(value, 0.0)
+            for key, value in knowledge.items()
+        }
+
+    mastery = profile.get("knowledge_mastery")
+    if not isinstance(mastery, dict):
+        return {}
+
+    details = mastery.get("knowledge_point_details")
+    if isinstance(details, dict) and details:
+        normalized = {}
+        for key, item in details.items():
+            if not isinstance(item, dict):
+                continue
+            normalized[str(key)] = _safe_float(item.get("score"), 0.0)
+        if normalized:
+            return normalized
+
+    by_point = mastery.get("by_knowledge_point")
+    if isinstance(by_point, dict):
+        return {
+            str(key): _safe_float(value, 0.0)
+            for key, value in by_point.items()
+        }
+    return {}
+
+
+def _normalize_preferences(profile: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(profile.get("preferences") or {}) if isinstance(profile.get("preferences"), dict) else {}
+    preferred_formats = normalized.get("preferred_formats")
+    if not preferred_formats:
+        resource_preference = _as_string_list(profile.get("resource_preference"))
+        if resource_preference:
+            normalized["preferred_formats"] = resource_preference
+    if not normalized.get("learning_style") and profile.get("learning_style"):
+        normalized["learning_style"] = profile.get("learning_style")
+    return normalized
+
+
+def _normalize_constraints(profile: Dict[str, Any]) -> Dict[str, Any]:
+    return dict(profile.get("constraints") or {}) if isinstance(profile.get("constraints"), dict) else {}
+
+
+def _normalize_learning_goals(profile: Dict[str, Any]) -> List[str]:
+    goals = []
+    goals.extend(_as_string_list(profile.get("learning_goals")))
+    goals.extend(_as_string_list(profile.get("learning_goal")))
+    goals.extend(_as_string_list(profile.get("concept_gaps")))
+    goals.extend(_as_string_list(profile.get("bottleneck_topics")))
+    return _dedupe_keep_order(goals)
+
+
+def _normalize_recommendation_profile(
+    profile: Optional[Dict[str, Any]],
+    user_id: int,
+    syllabus_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    normalized = dict(profile) if isinstance(profile, dict) else {}
+    normalized["user_id"] = int(normalized.get("user_id") or user_id)
+    normalized["syllabus_id"] = int(normalized.get("syllabus_id") or syllabus_id) if (normalized.get("syllabus_id") or syllabus_id) else None
+    normalized["knowledge_levels"] = _normalize_knowledge_levels(normalized)
+    normalized["learning_goals"] = _normalize_learning_goals(normalized)
+    normalized["preferences"] = _normalize_preferences(normalized)
+    normalized["constraints"] = _normalize_constraints(normalized)
+    return normalized
+
+
+def _resolve_recommendation_goals(
+    goals: Optional[List[str]],
+    profile: Dict[str, Any],
+    learning_tree: Dict[str, Any],
+) -> List[str]:
+    requested = _as_string_list(goals)
+    if not requested:
+        requested = _normalize_learning_goals(profile)
+    if not requested:
+        return []
+
+    outcome_lookup: Dict[str, List[str]] = {}
+    title_lookup: Dict[str, List[str]] = {}
+    node_lookup: Dict[str, List[str]] = {}
+    all_outcomes: List[str] = []
+
+    for node_id, raw_node in learning_tree.items():
+        node = raw_node if isinstance(raw_node, dict) else {}
+        outcomes = _as_string_list(node.get("outcomes"))
+        title = str(node.get("title") or "").strip().lower()
+        node_key = str(node_id).strip().lower()
+        if outcomes:
+            node_lookup[node_key] = outcomes
+        for outcome in outcomes:
+            all_outcomes.append(outcome)
+            outcome_lookup.setdefault(outcome.lower(), []).append(outcome)
+        if title and outcomes:
+            title_lookup[title] = outcomes
+
+    resolved: List[str] = []
+    for goal in requested:
+        lowered = goal.lower()
+        exact_matches = outcome_lookup.get(lowered)
+        if exact_matches:
+            resolved.extend(exact_matches)
+            continue
+
+        title_matches = title_lookup.get(lowered)
+        if title_matches:
+            resolved.extend(title_matches)
+            continue
+
+        node_matches = node_lookup.get(lowered)
+        if node_matches:
+            resolved.extend(node_matches)
+            continue
+
+        fuzzy_matches = []
+        for outcome in all_outcomes:
+            outcome_lower = outcome.lower()
+            if outcome_lower in lowered or lowered in outcome_lower:
+                fuzzy_matches.append(outcome)
+        if len(set(fuzzy_matches)) == 1:
+            resolved.extend(fuzzy_matches)
+
+    resolved = _dedupe_keep_order(resolved)
+    return resolved or requested
+
+
 def build_recommendation_profile(user_id: int, syllabus_id: Optional[int] = None) -> Dict[str, Any]:
     """Fetch or build a profile, falling back to a minimal transient profile."""
     profile = get_or_build_learning_profile(
@@ -167,13 +335,13 @@ def build_recommendation_profile(user_id: int, syllabus_id: Optional[int] = None
         refresh_profile=False,
     )
     if profile is not None:
-        return profile
-    return {
+        return _normalize_recommendation_profile(profile, int(user_id), int(syllabus_id) if syllabus_id else None)
+    return _normalize_recommendation_profile({
         "user_id": int(user_id),
         "syllabus_id": int(syllabus_id) if syllabus_id else None,
         "knowledge_levels": {},
         "learning_goals": [],
-    }
+    }, int(user_id), int(syllabus_id) if syllabus_id else None)
 
 
 def run_recommendation_route(
@@ -196,9 +364,9 @@ def run_recommendation_route(
             "error_code": "missing_fields",
         }
 
-    profile = build_recommendation_profile(int(user_id), syllabus_id)
-    chosen_goals = goals or profile.get("learning_goals") or []
     learning_tree = load_recommendation_learning_tree(syllabus_id)
+    profile = build_recommendation_profile(int(user_id), syllabus_id)
+    chosen_goals = _resolve_recommendation_goals(goals, profile, learning_tree)
     rag_overlay = build_rag_overlay(rag_context, learning_tree)
 
     state, starts = generate_state(profile, learning_tree)
@@ -316,7 +484,7 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
         goals=payload.get("goals"),
         L_max=int(payload.get("L_max") or 6),
         T_max=int(payload.get("T_max") or 100),
-        K=int(payload.get("K") or 20),
+        K=int(payload.get("K") or payload.get("max_candidates") or 20),
         beam_width=int(payload.get("beam_width") or 6),
         rag_context=payload.get("rag_context") if isinstance(payload.get("rag_context"), dict) else None,
     )
