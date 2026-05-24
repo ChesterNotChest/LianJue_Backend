@@ -1,9 +1,12 @@
 import json
 
+import pytest
+
 from app import create_app
 from repositories.syllabus_repo import create_syllabus, set_syllabus_path
 
 
+@pytest.mark.mysql
 def test_personal_recommendation_api_with_syllabus(tmp_path):
     app = create_app()
     app.testing = True

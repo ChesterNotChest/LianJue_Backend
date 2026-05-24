@@ -133,6 +133,7 @@ def db_generative_case(repo_json_factory):
             db.session.commit()
 
 
+@pytest.mark.mysql
 def test_generative_api_db_integration_full_chain(monkeypatch, tmp_path, db_generative_case):
     app, user, syllabus, relation = db_generative_case
     client = app.test_client()
