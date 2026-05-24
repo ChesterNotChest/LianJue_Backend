@@ -2,6 +2,7 @@
 config.json
 
 .codex_tmp
+.tmp_*
 
 # Python artifacts
 __pycache__/
@@ -52,6 +53,9 @@ material/material_json/*
 material/material_md_cache/*
 !material/material_md_cache/.gitkeep
 
+material/student_generated_resources/*
+!material/student_generated_resources/.gitkeep
+
 material/material_pdf/*
 !material/material_pdf/.gitkeep
 
@@ -62,3 +66,7 @@ profiles/*
 !profiles/.gitkeep
 
 tests/artifacts/
+tests/_artifacts/
+
+*tmp
+tmp*
