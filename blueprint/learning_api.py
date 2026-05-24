@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 from tasks import learning_task
+from tasks.personal_recommendation_task import run_recommendation_route_from_payload
 
 
 bp = Blueprint('learning_api', __name__, url_prefix='/api')
@@ -118,3 +119,24 @@ def update_personal_syllabus_api():
         'error_message': 'learning_update_personal_syllabus is deprecated; manual learning record updates are no longer supported',
         'error_code': 'deprecated'
     }), 410
+
+
+@bp.route('/personal_recommendation', methods=['POST'])
+def personal_recommendation_api():
+    """Generate personalized recommendation paths for a user.
+
+    输入（JSON）:
+      - user_id: int (required)
+      - syllabus_id: int (optional)
+      - goals: [str,...] (optional)
+      - K / max_candidates, L_max, T_max, beam_width 等可选参数
+
+    输出（JSON）:
+      - success: bool
+      - candidates: list of {path,cost,skills,scores}
+      - selected: list of selected paths
+    """
+    data = request.get_json(silent=True) or {}
+    result = run_recommendation_route_from_payload(data)
+    status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
