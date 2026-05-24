@@ -1,0 +1,466 @@
+# 资源生成开发文档
+
+本文档描述当前资源生成模块的最终实现边界。目标是说明输入输出契约、内部核心逻辑、测试构造和持久化内容，便于后续接入总 Agent、前端接口或继续扩展资源类型。
+
+## 0. 新增的常量定义
+
+路径常量位于 `constant.py`：
+
+- `BasePath.GENERATIVE_ROOT = "/generative"`
+- `BasePath.PERSONAL_SYLLABUS_ROOT = "/schedule/student_alt"`
+- `BasePath.PERSONAL_PROFILE_ROOT = "/profiles"`
+
+资源契约常量位于 `tasks/generative/contracts.py`：
+
+- `GENERATIVE_RESOURCE_TYPES = ("documents", "mindmap", "quiz", "coding_practice", "ppt")`
+- `MINDMAP_ALLOWED_DIAGRAM_PREFIXES = ("mindmap", "flowchart", "graph")`
+- `GENERATIVE_MANIFEST_VERSION = "v1"`
+- `GENERATIVE_MINDMAP_SCHEMA_VERSION = "v1"`
+- `GENERATIVE_QUIZ_SCHEMA_VERSION = "v1"`
+- `GENERATIVE_DOCUMENT_SCHEMA_VERSION = "v1"`
+- `GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION = "v1"`
+- `GENERATIVE_PPT_SCHEMA_VERSION = "v1"`
+
+资源生成 agent 内部固定常量位于 `tasks/generative/resource_generation_agent.py`：
+
+- `DEFAULT_RESOURCE_TYPES = ("documents", "mindmap", "quiz")`
+- `MODEL_TIERS = ("cheap", "standard", "strong")`
+- `GENERAL_MODEL_KEYS_BY_TIER`
+- `PPT_MODEL_KEYS_BY_TIER`
+
+当前资源模块没有新增数据库表。资源落盘、校验、索引更新和 `pptx` 导出都由文件系统完成，运行时目录统一收口到 `/generative`。
+
+## 1. 影响的文件范围
+
+核心实现：
+
+- `blueprint/generative_api.py`
+  - 资源生成 HTTP 入口。
+- `tasks/generative_task.py`
+  - 模块间统一入口和兼容包装层。
+- `tasks/generative/resource_generation_agent.py`
+  - 资源生成主逻辑。
+  - 输入归一化。
+  - 单资源生成。
+  - 多资源聚合。
+- `tasks/generative/resource_planning_agent.py`
+  - 资源编排层。
+  - 计划、检索、草稿的原子 tool 组合。
+- `tasks/generative/resource_persistence.py`
+  - 落盘、校验、manifest 更新、`pptx` 导出。
+- `tasks/generative/storage.py`
+  - 路径、目录、归一化工具。
+- `tasks/generative/contracts.py`
+  - 资源类型契约和 schema version 常量。
+- `tasks/generative/validation.py`
+  - 各资源类型的本地校验。
+- `tasks/generative/renderers.py`
+  - `ppt` 渲染和导出。
+- `tasks/generative/__init__.py`
+  - 包内统一导出。
+
+测试和文档：
+
+- `tests/test_generative_resource_agent_integration.py`
+- `tests/test_generative_task.py`
+- `tests/test_generative_api.py`
+- `tests/TEST_REPORT.md`
+- `docs/resource_generation_agent_stage.md`
+- `docs/generative_documents_contract.md`
+- `docs/generative_mindmap_contract.md`
+- `docs/generative_quiz_contract.md`
+- `docs/generative_coding_practice_contract.md`
+- `docs/generative_ppt_contract.md`
+
+## 2. 函数级收口的完整数据流
+
+### 2.1 外部调用输入契约
+
+外部调用方可以通过 API 或 task 函数触发资源生成。该层输入是业务请求输入，不是 Agent tool 直接消费的完整 state。
+
+API 入口：
+
+```text
+POST /api/generative_generate
+POST /api/generative_list
+POST /api/generative_detail
+```
+
+Task 入口：
+
+```python
+generate_resources_from_request(...)
+run_resource_generation_agent(...)
+generate_single_resource_from_request(...)
+```
+
+外部输入契约：
+
+```json
+{
+  "user_id": 20,
+  "question": "RowKey 如何避免热点？",
+  "resource_types": ["documents", "mindmap", "quiz"],
+  "syllabus_id": 29,
+  "topic": "HBase RowKey 设计",
+  "selected_weeks": [1, 2],
+  "knowledge_items": ["RowKey", "热点", "预分区"],
+  "weak_points": ["热点判断"],
+  "learning_goal": "掌握 HBase RowKey 设计",
+  "retrieval_context": {
+    "graph_name": "RAG",
+    "paragraphs": []
+  },
+  "generation_requirements": {
+    "model_tier": "cheap",
+    "slide_count_target": 8
+  }
+}
+```
+
+字段说明：
+
+- `user_id`：必填。用于资源目录隔离和落盘归属。
+- `question`：必填。当前资源生成的主问题。
+- `resource_types`：必填或默认。当前默认值为 `documents`、`mindmap`、`quiz`。
+- `syllabus_id`：可选。提供后便于和课程上下文对齐。
+- `topic`：可选。未提供时会从问题中派生。
+- `selected_weeks`：可选。用于和课程周次对齐。
+- `knowledge_items`：可选。作为资源结构化分支或要点来源。
+- `weak_points`：可选。若未提供 `knowledge_items`，会回退到这里。
+- `learning_goal`：可选。用于控制资源指向。
+- `retrieval_context`：可选。只接受字典。
+- `generation_requirements`：可选。模型层和版式约束只在这里收口。
+
+### 2.2 Agent state 输入契约
+
+`normalize_generation_request(...)` 会把外部输入整理成内部 state。真实资源生成 Agent 消费的是这个 state，而不是直接消费 API JSON。
+
+state 核心字段：
+
+```json
+{
+  "user_id": 20,
+  "syllabus_id": 29,
+  "question": "RowKey 如何避免热点？",
+  "topic": "HBase RowKey 设计",
+  "subject": "",
+  "graph_name": "",
+  "resource_types": ["documents", "mindmap", "quiz"],
+  "selected_weeks": [1, 2],
+  "knowledge_items": ["RowKey", "热点", "预分区"],
+  "weak_points": ["热点判断"],
+  "learning_goal": "掌握 HBase RowKey 设计",
+  "profile_snapshot": {},
+  "retrieval_context": {},
+  "generation_requirements": {}
+}
+```
+
+当前资源生成链路里，真正参与调度的 state 还会额外带上：
+
+- `tool_trace`
+- `planning_results`
+- 单资源生成时的 `resource_type`
+
+### 2.3 资源编排 agent 的原子 tool
+
+资源编排层的职责是把一次资源生成拆成可控的 plan、retrieval 和 draft 三段。当前原子工作已经拆清楚：
+
+- `read_generation_plan`
+- `write_generation_plan`
+- `retrieve_generation_materials`
+- `read_generation_draft`
+- `write_generation_draft`
+
+这些原子能力当前在 `tasks/generative/resource_planning_agent.py` 内部实现。后续如果改成更显式的 tool 注册形式，也应保持这五类能力不变。
+
+### 2.4 构建路径：输入事件 -> 真实资源生成 Agent -> 资源 JSON -> 持久化
+
+完整数据流：
+
+```text
+run_resource_generation_agent(payload)
+  -> normalize_generation_request
+  -> for each resource_type
+      -> invoke_resource_planning_agent
+      -> generate_resource_content
+      -> persist_generated_resource
+  -> 聚合 success / failure / tool_trace
+```
+
+对应的调用关系可以概括为：
+
+```mermaid
+flowchart LR
+  A[固定 payload] --> B[normalize_generation_request]
+  B --> C[run_resource_planning_agent]
+  C --> D[LLMResourceGenerationAgent]
+  D --> E[persist_generated_resource]
+  E --> F[manifest.json / 资源文件 / pptx]
+```
+
+模块输出契约：
+
+```json
+{
+  "success": true,
+  "request": "<normalized request>",
+  "resources": ["<one result per resource type>"],
+  "resource_count": 3,
+  "success_count": 3,
+  "failed_count": 0,
+  "tool_trace": [
+    "invoke_resource_planning_agent",
+    "persist_generated_resource"
+  ],
+  "error_message": "",
+  "error_code": ""
+}
+```
+
+单资源输出契约由持久化层统一收口，核心字段如下：
+
+- `success`
+- `resource_id`
+- `resource_type`
+- `title`
+- `topic`
+- `status`
+- `resource_dir`
+- `validation`
+- `planning_trace`
+- `tool_trace`
+
+## 3. 精确到输入输出的函数级收口
+
+### 3.1 `normalize_generation_request(payload: dict) -> dict`
+
+输入：
+
+- 外部调用方传入的原始 payload。
+- 允许兼容 `question` / `student_question`。
+- 允许兼容 `resource_types` / `resource_type`。
+
+输出：
+
+- 归一化后的请求字典。
+- 必含：`user_id`、`question`、`topic`、`resource_types`。
+- 可选保留：`syllabus_id`、`subject`、`graph_name`、`selected_weeks`、`knowledge_items`、`weak_points`、`learning_goal`、`profile_snapshot`、`retrieval_context`、`generation_requirements`。
+
+内部逻辑：
+
+- 校验 `user_id` 必须为正整数。
+- 校验 `question` 非空。
+- 统一 `resource_types`，默认回退到 `DEFAULT_RESOURCE_TYPES`。
+- 归一化 `syllabus_id`、`selected_weeks` 和字符串列表字段。
+- 如果 `knowledge_items` 为空，则回退到 `weak_points`。
+- 如果 `topic` 为空，则从 `question` 派生。
+
+### 3.2 `build_single_resource_payload(request_payload: dict, resource_type: str) -> dict`
+
+输入：
+
+- 已归一化的请求字典。
+- 单个资源类型。
+
+输出：
+
+- 带有 `resource_type` 的单资源请求字典。
+
+内部逻辑：
+
+- 统一资源类型名称。
+- `mindmap` 资源若没有 `knowledge_items`，会用 `weak_points` 或 `topic` 补齐。
+- 该函数只负责单资源请求拼装，不做生成和落盘。
+
+### 3.3 `generate_single_resource_from_request(request_payload: dict, resource_type: str, *, generation_agent=None, planning_agent=None) -> dict`
+
+输入：
+
+- 单资源请求 payload。
+- 指定的资源类型。
+- 可注入的 generation agent 和 planning agent。
+
+输出：
+
+- 单个资源的持久化结果。
+- 成功时带 `success=True`、`resource_id`、`resource_type`、`resource_dir`、`validation`、`main_files` 等字段。
+
+内部逻辑：
+
+- 调用 `normalize_generation_request(...)`。
+- 调用资源编排 agent 获取 planning bundle。
+- 通过 `LLMResourceGenerationAgent.generate_resource_content(...)` 生成结构化内容。
+- 调用 `persist_generated_resource(...)` 写盘并回填 manifest。
+- 将 planning trace 和 tool trace 透出给调用方。
+
+### 3.4 `run_resource_generation_agent(request_payload: dict, *, generation_agent=None, planning_agent=None) -> dict`
+
+输入：
+
+- 外部固定 payload。
+- 可注入的 generation agent 和 planning agent。
+
+输出：
+
+- 多资源聚合结果。
+- 包含 `request`、`resources`、`resource_count`、`success_count`、`failed_count`、`tool_trace`、`error_message`、`error_code`。
+
+内部逻辑：
+
+- 先归一化请求。
+- 按 `resource_types` 逐个调用 planning agent。
+- 按资源类型调用 `generate_resource_content(...)`。
+- 通过持久化层生成最终文件和 manifest entry。
+- 单个资源失败不会阻止其他资源继续生成。
+
+### 3.5 `generate_resources_from_request(request_payload: dict, generation_agent=None, planning_agent=None) -> dict`
+
+输入：
+
+- 外部请求 payload。
+
+输出：
+
+- 等同于 `run_resource_generation_agent(...)` 的聚合结果。
+
+内部逻辑：
+
+- 作为兼容包装层，直接委托给 `run_resource_generation_agent(...)`。
+- 该函数主要用于旧调用方和测试代码。
+
+### 3.6 `LLMResourceGenerationAgent.generate_resource_content(request_payload: dict, resource_type: str, planning_bundle: dict) -> dict`
+
+输入：
+
+- 单资源请求。
+- 资源类型。
+- 规划 bundle。
+
+输出：
+
+- 对应资源的 typed JSON。
+
+内部逻辑：
+
+- `documents`、`mindmap`、`quiz`、`coding_practice`、`ppt` 各自走独立生成函数。
+- 每类资源都会先调用 `_call_json(...)`，再做结构化归一化。
+- 生成结果只负责内容，不负责文件写入。
+
+## 4. 当前完成度
+
+已完成：
+
+- 最小生成 API。
+- 结果 list/detail API。
+- 资源生成 agent 主入口。
+- 资源编排 agent 主入口。
+- 统一文件持久化 tool。
+- 固定 payload 的全流程测试。
+- 旧 `generative_task` 回归测试保持通过。
+
+当前全链路已验证资源类型：
+
+- `documents`
+- `mindmap`
+- `quiz`
+- `coding_practice`
+- `ppt`
+
+其中 `ppt` 当前会同时产出：
+
+- `ppt.json`
+- `ppt.md`
+- `ppt.pptx`
+
+当前 `pptx` 渲染不再是单一标题加纯 bullet 列表，而是会根据 slide 内容自动选择封面、双栏、步骤、总结和表格化内容布局。
+
+## 5. 测试
+
+当前测试文件：
+
+- `tests/test_resource_planning_agent_integration.py`
+- `tests/test_generative_api.py`
+- `tests/test_generative_resource_agent_integration.py`
+- `tests/test_generative_task.py`
+
+测试意义：
+
+- `test_resource_planning_agent_integration.py`
+  - 验证资源编排 agent 自己层级的集成行为。
+  - 验证 plan / retrieval / draft 的单轮与多轮行为。
+
+- `test_generative_api.py`
+  - 验证 HTTP API 能触发整条生成链。
+  - 验证 generate / list / detail 三个口。
+
+- `test_generative_resource_agent_integration.py`
+  - 验证固定 payload 下的资源生成全流程。
+  - 验证资源编排 agent 的原子 tool 顺序。
+  - 验证部分失败时的聚合收口。
+
+- `test_generative_task.py`
+  - 验证各资源类型的文件写入、校验和 manifest 逻辑。
+
+当前已验证结果（按仓库内最近回归记录）：
+
+- `tests/test_generative_task.py`：`25 passed, 1 skipped`
+- `tests/test_generative_api.py`：`2 passed`
+- `tests/test_generative_resource_agent_integration.py`：`9 passed, 3 skipped`
+- 已通过真实 `curl` 请求验证 `ppt` 资源可生成 `ppt.pptx`
+
+测试的文件落盘方式：
+
+- 资源生成链测试会真实生成文件。
+- 但都写入 `pytest` 提供的临时目录 `tmp_path`。
+- 不写入项目正式 `generative/` 目录。
+- 测试结束后这些临时文件不会作为正式结果保留。
+
+这些测试不依赖数据库持久化，也不会因为数据库开启而把生成结果写回数据库。它们主要验证的是 agent / tool / file system 这条链。
+
+补充：
+
+- 真实 `curl` 验证时会经过真实 Flask API、真实 search、真实 LLM 和真实 `python-pptx` 导出。
+- 该链路需要可用的 MySQL、AbutionGraph、模型 API 网络以及 `lianjue` 环境。
+
+## 6. 固定 payload 收口
+
+当前资源生成总输入以固定 payload 为准，核心字段是：
+
+- `user_id`
+- `question`
+- `resource_types`
+
+可选增强字段：
+
+- `syllabus_id`
+- `topic`
+- `selected_weeks`
+- `knowledge_items`
+- `weak_points`
+- `learning_goal`
+- `retrieval_context`
+- `generation_requirements`
+
+这一层的原则是：
+
+- 总 Agent 只传请求。
+- 资源生成 agent 自己决定如何调用资源编排 agent。
+- 资源编排 agent 只负责计划、检索和草稿，不负责最终持久化。
+- 持久化层只负责文件写入和校验，不反向介入生成策略。
+
+## 7. 后续建议
+
+当前资源生成模块已经完成阶段性收口。后续如果继续演进，建议按以下顺序推进：
+
+1. 把资源编排 agent 的 tool 调用形式继续显式化。
+2. 再决定是否接审核 agent。
+3. 再补真实 LLM / 真实 search 集成测试。
+4. 最后再接总 Agent。
+
+不建议当前阶段做的事：
+
+- 让总 Agent 介入资源内部编排。
+- 一次性接入路径 agent、审核 agent、前端新页面。
+- 把资源生成链重新塞回旧学生端实验逻辑。

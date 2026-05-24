@@ -79,6 +79,7 @@ def ensure_generative_workspace(user_id: int) -> dict:
         "mindmap_dir": user_root / "mindmap",
         "quiz_dir": user_root / "quiz",
         "coding_practice_dir": user_root / "coding_practice",
+        "ppt_dir": user_root / "ppt",
     }
     for path_value in directories.values():
         path_value.mkdir(parents=True, exist_ok=True)
@@ -103,6 +104,7 @@ def ensure_generative_workspace(user_id: int) -> dict:
         "mindmap_dir": repo_relative_path(directories["mindmap_dir"]),
         "quiz_dir": repo_relative_path(directories["quiz_dir"]),
         "coding_practice_dir": repo_relative_path(directories["coding_practice_dir"]),
+        "ppt_dir": repo_relative_path(directories["ppt_dir"]),
         "manifest_path": repo_relative_path(manifest_path),
     }
 
