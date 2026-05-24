@@ -172,3 +172,14 @@ def test_generative_api_full_chain_generate_list_and_detail(monkeypatch, tmp_pat
     assert ppt_detail_payload["material"]["main_files"]["pptx_path"].endswith(".pptx")
     assert (tmp_path / ppt_detail_payload["material"]["main_files"]["pptx_path"]).exists()
     assert ppt_detail_payload["material"]["render"]["markdown"]
+
+
+def test_resolve_repo_path_rejects_parent_traversal(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_api, "_get_backend_root", lambda: tmp_path)
+
+    outside_file = tmp_path.parent / "outside.json"
+    outside_file.write_text('{"leak": true}', encoding="utf-8")
+
+    assert generative_api._resolve_repo_path("../outside.json") is None
+    assert generative_api._resolve_repo_path(str(outside_file)) is None
+    assert generative_api._read_resource_json("../outside.json") is None

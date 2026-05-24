@@ -42,10 +42,17 @@ def _entry_matches(entry: dict, syllabus_id=None, resource_type=None) -> bool:
 def _resolve_repo_path(path_value):
     if not isinstance(path_value, str) or not path_value.strip():
         return None
-    path_obj = Path(path_value)
-    if path_obj.is_absolute():
-        return path_obj
-    return _get_backend_root() / path_obj
+    backend_root = _get_backend_root().resolve()
+    path_obj = Path(path_value.strip())
+    try:
+        resolved = path_obj.resolve() if path_obj.is_absolute() else (backend_root / path_obj).resolve()
+    except Exception:
+        return None
+    try:
+        resolved.relative_to(backend_root)
+    except ValueError:
+        return None
+    return resolved
 
 
 def _read_text_file(path_value):
