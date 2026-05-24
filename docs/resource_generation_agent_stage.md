@@ -10,7 +10,7 @@
 
 当前对外入口：
 
-`HTTP API -> 资源生成 agent -> 资源编排 agent -> 文件读写 tool`
+`HTTP API -> tasks/generative_task.py -> 资源生成 agent -> 资源编排 agent -> 文件读写 tool`
 
 职责边界：
 
@@ -24,16 +24,18 @@
 核心文件：
 
 - `LianJue_Backend/blueprint/generative_api.py`
-- `LianJue_Backend/tasks/resource_generation_agent_task.py`
-- `LianJue_Backend/tasks/resource_planning_agent_task.py`
 - `LianJue_Backend/tasks/generative_task.py`
+- `LianJue_Backend/tasks/generative/resource_generation_agent.py`
+- `LianJue_Backend/tasks/generative/resource_planning_agent.py`
+- `LianJue_Backend/tasks/generative/resource_persistence.py`
 
 当前实现与代码一致：
 
 - `POST /api/generative_generate` 是最小生成入口
 - `POST /api/generative_list` / `POST /api/generative_detail` 是结果读取入口
-- `run_resource_generation_agent(...)` 是资源生成主入口
-- `run_resource_planning_agent(...)` 是资源编排入口
+- `tasks/generative_task.py` 是模块间统一入口
+- `run_resource_generation_agent(...)` 是资源生成主入口，由 `generative_task` 暴露
+- `run_resource_planning_agent(...)` 是内部资源编排入口，由 `generative_task` 暴露给测试和少量兼容调用
 - `persist_generated_resource(...)` 是统一文件持久化入口
 
 资源生成 agent 当前会先归一化固定 payload，再按 `resource_types` 逐个生成资源。每个资源生成时：
@@ -55,11 +57,11 @@
 - `read_generation_draft`
 - `write_generation_draft`
 
-这几个原子工作目前在 `resource_planning_agent_task.py` 内部实现，后续如果改成更显式的 tool 注册形式，也应保持这五类能力不变。
+这几个原子工作目前在 `tasks/generative/resource_planning_agent.py` 内部实现，后续如果改成更显式的 tool 注册形式，也应保持这五类能力不变。
 
 ## 4. 文件读写 tool 收口
 
-`generative_task.py` 当前已承担纯 tool 角色，负责：
+`tasks/generative_task.py` 当前是模块间统一入口；确定性的文件读写能力由 `tasks/generative/resource_persistence.py` 负责：
 
 - 持久化 `documents`
 - 持久化 `mindmap`
@@ -110,7 +112,7 @@
 
 - `LianJue_Backend/tests/test_resource_planning_agent_integration.py`
 - `LianJue_Backend/tests/test_generative_api.py`
-- `LianJue_Backend/tests/test_resource_generation_agent_task.py`
+- `LianJue_Backend/tests/test_generative_resource_agent_integration.py`
 - `LianJue_Backend/tests/test_generative_task.py`
 
 测试意义：
@@ -123,7 +125,7 @@
   验证 HTTP API 能触发整条生成链
   验证 generate / list / detail 三个口
 
-- `test_resource_generation_agent_task.py`
+- `test_generative_resource_agent_integration.py`
   验证固定 payload 下的资源生成全流程
   验证资源编排 agent 的原子 tool 顺序
   验证部分失败时的聚合收口
@@ -135,13 +137,13 @@
 
 - `tests/test_generative_task.py`：`25 passed, 1 skipped`
 - `tests/test_generative_api.py`：`2 passed`
-- `tests/test_resource_generation_agent_task.py`：`9 passed, 3 skipped`
+- `tests/test_generative_resource_agent_integration.py`：`9 passed, 3 skipped`
 - 已通过真实 `curl` 请求验证 `ppt` 资源可生成 `ppt.pptx`
 
 2026-05-23 的本地回归结果：
 
 - `tests/test_generative_task.py`：`25 passed, 1 skipped`
-- `tests/test_resource_generation_agent_task.py`：`9 passed, 3 skipped`
+- `tests/test_generative_resource_agent_integration.py`：`9 passed, 3 skipped`
 - `tests/test_generative_api.py`：`2 passed`
 
 当前测试的文件落盘方式：

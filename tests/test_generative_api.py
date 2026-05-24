@@ -1,8 +1,7 @@
 from flask import Flask
 
 from blueprint import generative_api
-from tasks import resource_generation_agent_task as rgat
-from tasks import resource_planning_agent_task as rpat
+from tasks import generative_task as gt
 from tasks.generative import storage as generative_storage
 
 
@@ -78,25 +77,27 @@ class FakeResourceGenerationAgent:
         if resource_type == "ppt":
             return {
                 "schema_version": "v1",
-                "title": f"{topic} 课件",
+                "title": f"{topic} 复习课件",
                 "topic": topic,
                 "summary": "面向学生问题的结构化极简课件。",
                 "theme": "academic-clean",
-                "slide_style": "teaching-outline",
+                "slide_style": "study-review",
                 "slides": [
                     {
                         "slide_index": 1,
                         "title": "问题背景",
-                        "bullets": [request_payload["question"], "理解热点形成机制"],
-                        "speaker_notes": "先交代问题，再切入概念。",
-                        "visual_hint": "标题 + 双要点",
+                        "body": "先交代学生问题，再切入热点形成机制和 RowKey 设计。",
+                        "bullets": [request_payload["question"], "理解热点形成机制", "定位当前复习目标"],
+                        "speaker_notes": "",
+                        "visual_hint": "标题区 + 主题区 + 学习目标区",
                     },
                     {
                         "slide_index": 2,
                         "title": "解决方案",
-                        "bullets": ["优化 RowKey", "预分区缓解热点"],
-                        "speaker_notes": "收束到两条关键方案。",
-                        "visual_hint": "左右分栏",
+                        "body": "解决方案要围绕键分布和 Region 压力展开，避免只记名称。",
+                        "bullets": ["优化 RowKey", "预分区缓解热点", "观察 Region 负载是否均衡"],
+                        "speaker_notes": "注意区分 RowKey 打散和预分区边界。",
+                        "visual_hint": "标题区 + 导语区 + 要点区",
                     },
                 ],
             }
@@ -125,11 +126,11 @@ def test_generative_api_full_chain_generate_list_and_detail(monkeypatch, tmp_pat
 
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
     monkeypatch.setattr(generative_api, "_get_backend_root", lambda: tmp_path)
-    monkeypatch.setattr(rgat, "LLMResourceGenerationAgent", FakeResourceGenerationAgent)
+    monkeypatch.setattr(gt, "LLMResourceGenerationAgent", FakeResourceGenerationAgent)
     monkeypatch.setattr(
-        rpat,
+        gt,
         "get_resource_planning_agent",
-        lambda: rpat.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"]),
+        lambda: gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"]),
     )
 
     generate_response = client.post("/api/generative_generate", json=dict(FIXED_PAYLOAD))

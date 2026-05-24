@@ -7,8 +7,7 @@ from extensions import db
 from schemas.syllabus import Syllabus
 from schemas.user import User
 from schemas.user_syllabus import UserSyllabus
-from tasks import resource_generation_agent_task as rgat
-from tasks import resource_planning_agent_task as rpat
+from tasks import generative_task as gt
 from blueprint import generative_api
 from tasks.generative import storage as generative_storage
 
@@ -140,11 +139,11 @@ def test_generative_api_db_integration_full_chain(monkeypatch, tmp_path, db_gene
 
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
     monkeypatch.setattr(generative_api, "_get_backend_root", lambda: tmp_path)
-    monkeypatch.setattr(rgat, "LLMResourceGenerationAgent", FakeResourceGenerationAgent)
+    monkeypatch.setattr(gt, "LLMResourceGenerationAgent", FakeResourceGenerationAgent)
     monkeypatch.setattr(
-        rpat,
+        gt,
         "get_resource_planning_agent",
-        lambda: rpat.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"]),
+        lambda: gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"]),
     )
 
     payload = {

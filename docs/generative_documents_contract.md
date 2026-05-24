@@ -137,8 +137,18 @@ generative/
   "topic": "HBase RowKey",
   "summary": "面向课程学习的知识点说明。",
   "sections": [
-    {"heading": "概念", "body": "RowKey 是..."},
-    {"heading": "设计原则", "body": "应避免热点并保持可区分性。"}
+    {
+      "heading": "核心概念",
+      "body": "RowKey 是...",
+      "key_points": ["决定数据排序", "影响 Region 分布"],
+      "pitfalls": ["不要只按单调时间戳设计 RowKey"]
+    },
+    {
+      "heading": "设计原则",
+      "body": "应避免热点并保持可区分性。",
+      "examples": ["散列前缀 + 时间戳"],
+      "checklist": ["能解释热点成因", "能说出至少一种打散策略"]
+    }
   ],
   "extension_reading": [
     {"title": "HBase Schema Design", "reason": "扩展理解 RowKey 与表设计关系"}
@@ -155,6 +165,15 @@ generative/
 - 每个 section 至少包含：
   - `heading`
   - `body`
+- document 允许比 PPT 更复杂，但复杂度应体现在学习结构上，而不是堆砌无层次长段落
+- 推荐章节覆盖：`学习目标`、`问题背景`、`核心概念`、`机制原理`、`方法步骤`、`例子/案例`、`常见误区`、`自测清单`、`复习总结`
+- 每个 section 可选包含以下字符串列表字段：
+  - `key_points`
+  - `examples`
+  - `pitfalls`
+  - `checklist`
+  - `evidence`
+- section heading 应清晰且不重复，避免连续使用 `知识点说明`
 - `extension_reading` 可选，为列表时每项推荐包含：
   - `title`
   - `reason`
@@ -186,8 +205,9 @@ generative/
 6. 逐节校验：
    - `heading`
    - `body`
-7. `extension_reading` 若存在则校验其类型，缺失字段仅记 warning
-8. 返回 `valid/errors/warnings/section_count`
+7. `key_points/examples/pitfalls/checklist/evidence` 若存在，推荐为字符串列表；类型错误记 warning
+8. `extension_reading` 若存在则校验其类型，缺失字段仅记 warning
+9. 返回 `valid/errors/warnings/section_count`
 
 #### `render_document_markdown(document: dict) -> str`
 

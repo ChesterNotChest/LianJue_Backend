@@ -35,13 +35,7 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py 
 ### 1.c 集成测试 2 - 资源生成
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_resource_generation_agent_task.py -m "llm and search"
-```
-
-### 1.c.1 集成测试 2a - 真实 PPT 生成链路
-
-```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_resource_generation_agent_task.py::test_resource_generation_agent_full_chain_with_real_search_and_real_llm_ppt -rs
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_generative_resource_agent_integration.py -m "llm and search" -rs
 ```
 
 ### 1.d 单元测试包 1 - 用户画像
@@ -79,22 +73,6 @@ python -m pytest -q tests/test_create_syllabus_draft.py tests/test_build_syllabu
 ```bash
 python -m pytest -q tests/test_job_checker_startup_graph_sync.py
 ```
-
-### 1.j 2026-05-23 PPT 回归
-
-本轮为了验证 `python-pptx` 导出的真实 PPT 链路，实际使用了 `lianjue` 环境内解释器直接运行：
-
-```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/anaconda3/envs/lianjue/bin/python -m pytest -p no:debugging -q tests/test_generative_task.py
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/anaconda3/envs/lianjue/bin/python -m pytest -p no:debugging -q tests/test_resource_generation_agent_task.py
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 /opt/anaconda3/envs/lianjue/bin/python -m pytest -p no:debugging -q tests/test_generative_api.py
-```
-
-结果：
-
-- `tests/test_generative_task.py`：`25 passed, 1 skipped`
-- `tests/test_resource_generation_agent_task.py`：`9 passed, 3 skipped`
-- `tests/test_generative_api.py`：`2 passed`
 
 ## 2 用例描述
 
@@ -192,12 +170,15 @@ markers =
 
 ### 2.c 集成测试 2 - 资源生成
 
-目标：验证 `generative_task` 的真实资源生成链路，且该链路必须包含真实 Agent + search。
+目标：验证 agent-x 资源生成链路的真实 Agent 调度能力。该链路必须包含资源生成 Agent、资源编排 Agent 和 search/RAG 检索，并最终落到生成资源持久化工具。
 
 集成边界：
 
-- `generative_task` 是本链路的 Agent 调度入口。
-- `search_tool` 必须由资源生成 Agent 根据 payload 自行调用，测试不允许外部预先指定检索 query。
+- `generative_task` 是本链路唯一模块间入口，接收总 Agent 传入的资源生成 payload。
+- `tasks.generative.resource_generation_agent` 是资源生成 Agent 内部实现，负责调用编排 Agent 并生成 typed resource JSON。
+- `tasks.generative.resource_planning_agent` 是资源编排 Agent 内部实现，负责读取/生成 plan、检索材料、整理 draft，作为资源生成 Agent 的工具层依赖。
+- `search_tool` 必须由资源编排 Agent 根据 payload 自行调用，测试不允许外部预先指定检索 query。
+- `tasks.generative.resource_persistence` 负责确定性的校验、渲染、落盘和 manifest 写入。
 - `generative.validation`、`generative.renderers`、`generative.storage` 是生成链路内部实现模块，本集成测试只检查最终生成、校验、渲染和落盘结果。
 - `material_task` 不在本集成测试中验证；它只负责读取 manifest 并包装成前端可渲染 detail，属于单元测试包 2。
 
@@ -207,62 +188,37 @@ markers =
 - 假大纲：`syllabus_id=71`
 - 学科：`大数据概论`
 - 图名：`RAG`
-- 资源类型：`documents`、`mindmap`、`quiz`、`ppt`
+- 资源类型：`documents`、`mindmap`、`quiz`、`coding_practice`、`ppt`
 - 主题：`HBase RowKey 热点规避`
 - 学习目标：`掌握大数据概论中的 HBase RowKey 设计与热点规避`
 - 个性化薄弱点：`RowKey 热点`、`预分区策略`
 - 检索 query：由资源生成 Agent 根据 payload 中的学科、主题、学习目标和薄弱点自行构造。
 
-测试输入 payload 列表：
+真实 LLM/Search 主验收使用一个 payload 一次生成全部资源类型：`documents`、`mindmap`、`quiz`、`coding_practice`、`ppt`。这样可以验证总 Agent 交给 `generative_task` 的一次资源生成请求，能完整走通 planning、search、LLM 生成、校验、渲染和落盘。测试 payload：
 
 ```json
-[
-  {
-    "user_id": 61,
-    "syllabus_id": 71,
-    "resource_type": "documents", // 教学文档
-    "subject": "大数据概论",
-    "topic": "HBase RowKey 热点规避",
-    "graph_name": "RAG",
-    "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
-    "weak_points": ["RowKey 热点", "预分区策略"]
-  },
-  {
-    "user_id": 61,
-    "syllabus_id": 71,
-    "resource_type": "mindmap", // 思维导图
-    "subject": "大数据概论",
-    "topic": "HBase RowKey 热点规避",
-    "graph_name": "RAG",
-    "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
-    "weak_points": ["RowKey 热点", "预分区策略"],
-    "knowledge_items": ["RowKey 热点", "预分区策略"]
-  },
-  {
-    "user_id": 61,
-    "syllabus_id": 71,
-    "resource_type": "quiz", // 试题
-    "subject": "大数据概论",
-    "topic": "HBase RowKey 热点规避",
-    "graph_name": "RAG",
-    "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
-    "weak_points": ["RowKey 热点", "预分区策略"]
-  },
-  {
-    "user_id": 61,
-    "syllabus_id": 71,
-    "resource_type": "ppt", // 课件
-    "subject": "大数据概论",
-    "topic": "HBase RowKey 热点规避",
-    "graph_name": "RAG",
-    "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
-    "weak_points": ["RowKey 热点", "预分区策略"],
-    "knowledge_items": ["RowKey 热点", "预分区策略"]
+{
+  "user_id": 61,
+  "syllabus_id": 71,
+  "subject": "大数据概论",
+  "question": "我最近在学 HBase，RowKey 热点和预分区策略总是搞不懂，想要一些针对性的学习资源。",
+  "topic": "HBase RowKey 热点规避",
+  "graph_name": "RAG",
+  "resource_types": ["documents", "mindmap", "quiz", "coding_practice", "ppt"],
+  "learning_goal": "掌握大数据概论中的 HBase RowKey 设计与热点规避",
+  "weak_points": ["RowKey 热点", "预分区策略"],
+  "knowledge_items": ["RowKey 热点", "预分区策略"],
+  "generation_requirements": {
+    "model_tier": "cheap",
+    "ppt_model_tier": "standard",
+    "slide_count_target": 8,
+    "theme": "academic-rich",
+    "style": "study-review"
   }
-]
+}
 ```
 
-该 payload 列表模拟总 Agent 已经根据用户画像、教学大纲和当前学习意图完成调度决策，并把多个资源生成任务交给 `generative_task`。资源生成 Agent 不接收外部指定的检索 query，而是从每个 payload 自行组织 query 并调用公共 `search_tool`。`coding_practice` 当前仍是 dispatcher 识别但未实现的类型，不放入真实 Agent + search 集成测试。
+该 payload 模拟总 Agent 已经根据用户画像、教学大纲和当前学习意图完成调度决策，并把一组资源生成任务交给 `generative_task`。资源生成 Agent 不接收外部指定的检索 query；检索由资源编排 Agent 根据 question、topic、knowledge_items、weak_points 和 resource_type 自行组织 query 并调用公共 `search_tool`。
 
 测试输出按成功和失败分开看：
 
@@ -271,7 +227,9 @@ markers =
   "success_results": [
     {"resource_type": "documents", "status": "ready", "validation": {"valid": true}},
     {"resource_type": "mindmap", "status": "ready", "validation": {"valid": true}},
-    {"resource_type": "quiz", "status": "ready", "validation": {"valid": true}}
+    {"resource_type": "quiz", "status": "ready", "validation": {"valid": true}},
+    {"resource_type": "coding_practice", "status": "ready", "validation": {"valid": true}},
+    {"resource_type": "ppt", "status": "ready", "validation": {"valid": true}}
   ],
   "failed_results": [
     {
@@ -286,10 +244,41 @@ markers =
 
 正常通过时 `failed_results` 必须为空；如果真实 LLM 生成了字段别名或不合规结构，失败清单会直接暴露对应资源类型和 validation errors。
 
+Documents 验收项：
+
+- 必须生成 `document.json` 和 `document.md`。
+- 文档允许比 PPT 更完整、更复杂，但复杂度应体现在学习结构上，例如学习目标、问题背景、核心概念、机制原理、方法步骤、例子/案例、常见误区、自测清单和复习总结。
+- section heading 必须清晰且尽量不重复，不能整篇连续使用 `知识点说明`。
+- section 可选渲染 `key_points`、`examples`、`pitfalls`、`checklist`、`evidence` 等结构化块，方便前端或人工审查阅读层级。
+
+PPT 严格验收项：
+
+- 必须生成 `ppt.json`、`ppt.md`、`ppt.pptx`。
+- `ppt.json.slides` 必须不少于 6 页；默认目标为 8 页。
+- 第 1 页必须是标题页/封面页，`slide_role` 必须为 `cover`；标题页只放课件标题、主题、学习目标和阅读导向，不讲具体知识点。
+- 每页必须有非空 `title`、`body`、`bullets`、`visual_hint`；`body` 是页面导语/核心判断，建议 35-80 个中文字符，最多 1-2 句。
+- 每页 `bullets` 必须为 3-5 条结构化要点，每条尽量具体；`speaker_notes` 可为空，只在必要时补充易错点或注意事项，不能承载正文重点。
+- PPT 面向学生自学和复习，不是课堂报告；`visual_hint` 只描述已有占位元素，不主动要求表格、复杂图表、时间线、流程箭头、复杂卡片等新增元素。复杂元素和长文本不可以共存。
+- 用 `python-pptx` 回读 `.pptx`，页数必须等于 `ppt.json.slides` 数量。
+- `.pptx` 文本必须命中 `HBase`、`RowKey`、`热点`、`预分区` 中至少一个关键词，前几页标题必须能在实际 PPT 文本里找到，并且正文关键词必须实际进入 PPTX 页面文本。
+- 测试会把真实生成链路的 storage root 指向 `tests/artifacts/resources_generative_real_search_real_llm_workspace/`；内部继续保留真实 storage 结构，例如 `generative/user_19/<resource_type>/<resource_id>/...`。
+- 测试同时写出 `resources_generative_real_search_real_llm_all_resources_result.json` 和 `resources_generative_real_search_real_llm_all_resources_ppt.md`；mindmap 在安装 `mmdc` 时会额外产出 SVG 渲染检查结果。
+
 链路：
 
 ```text
-payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval_context 回填 payload -> LLM adapter 生成资源 -> generative_task 校验、渲染、落盘、写 manifest -> ppt 额外导出 `.pptx`
+payload[]
+  -> generative_task
+  -> tasks.generative.resource_generation_agent
+  -> tasks.generative.resource_planning_agent
+      -> read_generation_plan
+      -> retrieve_generation_materials
+      -> read/write_generation_draft
+      -> search_tool 查询 RAG 图
+  -> LLMResourceGenerationAgent 生成 typed resource JSON
+  -> tasks.generative.resource_persistence
+      -> validation / renderers / storage
+      -> 写 manifest，ppt 额外导出 `.pptx`
 ```
 
 
@@ -423,7 +412,7 @@ monkeypatch.setattr(gt, "_get_backend_root", lambda: tmp_path)
 
 因此测试生成的 JSON / Markdown / Mermaid 文件会写到 pytest 的临时目录，而不是仓库里的 `generative/` 目录。这样做是为了避免测试污染真实项目数据。
 
-对于 `ppt` 资源，测试还会在临时目录写出真实的 `ppt.pptx` 文件，并用 `python-pptx` 回读页数和标题；标题断言已经改成按 slide 文本查找，不再依赖固定 shape 索引，因此可以承受封面、流程卡片、表格等样式扩展。
+对于 `ppt` 资源，测试还会在临时目录写出真实的 `ppt.pptx` 文件，并用 `python-pptx` 回读页数和标题；标题断言按 slide 文本查找，不依赖固定 shape 索引。当前 PPT 契约收敛为学生复习材料，只填充标题区、导语区、要点区等已有占位，不再要求流程卡片、表格等复杂版式。
 
 如果需要检查测试产物，可以在测试里临时打印：
 

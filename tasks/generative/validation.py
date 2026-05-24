@@ -170,6 +170,9 @@ def validate_document_payload(document: dict) -> dict:
             errors.append(f"section #{index} missing heading")
         if not str(section.get("body") or "").strip():
             errors.append(f"section #{index} missing body")
+        for field_name in ("key_points", "examples", "pitfalls", "checklist", "evidence"):
+            if field_name in section and not isinstance(section.get(field_name), list):
+                warnings.append(f"section #{index} {field_name} should be a list when provided")
 
     extension_reading = document.get("extension_reading")
     if extension_reading is not None and not isinstance(extension_reading, list):
@@ -350,6 +353,8 @@ def validate_ppt_payload(ppt: dict) -> dict:
             continue
         if not str(slide.get("title") or "").strip():
             errors.append(f"slide #{index} missing title")
+        if not str(slide.get("body") or "").strip():
+            errors.append(f"slide #{index} missing body")
         bullets = slide.get("bullets")
         if not isinstance(bullets, list) or not bullets:
             errors.append(f"slide #{index} bullets must be a non-empty list")
@@ -357,10 +362,6 @@ def validate_ppt_payload(ppt: dict) -> dict:
         for bullet_index, bullet in enumerate(bullets, start=1):
             if not str(bullet or "").strip():
                 errors.append(f"slide #{index} bullet #{bullet_index} is empty")
-        speaker_notes = slide.get("speaker_notes")
-        if speaker_notes is not None and not str(speaker_notes).strip():
-            warnings.append(f"slide #{index} has empty speaker_notes")
-
     return {
         "valid": len(errors) == 0,
         "errors": errors,

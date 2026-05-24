@@ -23,6 +23,22 @@ def render_document_markdown(document: dict) -> str:
         if heading:
             lines.extend([f"## {heading}", ""])
         lines.extend([body or "N/A", ""])
+        structured_blocks = [
+            ("Key Points", section.get("key_points")),
+            ("Examples", section.get("examples")),
+            ("Common Pitfalls", section.get("pitfalls")),
+            ("Self Check", section.get("checklist")),
+            ("Evidence", section.get("evidence")),
+        ]
+        for block_title, raw_items in structured_blocks:
+            items = raw_items if isinstance(raw_items, list) else []
+            normalized_items = [str(item or "").strip() for item in items if str(item or "").strip()]
+            if not normalized_items:
+                continue
+            lines.extend([f"### {block_title}", ""])
+            for item in normalized_items:
+                lines.append(f"- {item}")
+            lines.append("")
 
     if extension_reading:
         lines.extend(["## Extension Reading", ""])
@@ -168,11 +184,14 @@ def render_ppt_markdown(ppt: dict) -> str:
         if not isinstance(slide, dict):
             continue
         slide_title = str(slide.get("title") or f"Slide {index}").strip() or f"Slide {index}"
+        body = str(slide.get("body") or "").strip()
         bullets = slide.get("bullets") if isinstance(slide.get("bullets"), list) else []
         speaker_notes = str(slide.get("speaker_notes") or "").strip()
         visual_hint = str(slide.get("visual_hint") or "").strip()
 
         lines.extend([f"## Slide {index}: {slide_title}", ""])
+        if body:
+            lines.extend([body, ""])
         for bullet in bullets:
             bullet_text = str(bullet or "").strip()
             if bullet_text:
@@ -257,6 +276,22 @@ def _normalize_bullet_items(bullets):
         parts = [part.strip(" -•\t") for part in re.split(r"[\r\n]+", raw_text) if part.strip()]
         items.extend(part for part in parts if part)
     return items
+
+
+def _normalize_body_paragraphs(value):
+    if isinstance(value, list):
+        candidates = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return []
+        candidates = re.split(r"[\r\n]+", text)
+    paragraphs = []
+    for item in candidates:
+        text = " ".join(str(item or "").split())
+        if text:
+            paragraphs.append(text)
+    return paragraphs[:3]
 
 
 def _strip_step_prefix(text: str) -> str:
@@ -344,21 +379,11 @@ def _build_process_steps(items):
 
 
 def _infer_slide_role(slide_payload: dict, index: int, total_slides: int) -> str:
-    role = str(slide_payload.get("slide_role") or slide_payload.get("role") or "").strip().lower()
-    if role and role != "content":
-        return role
     title = str(slide_payload.get("title") or "").strip().lower()
-    hint = str(slide_payload.get("visual_hint") or "").strip().lower()
     if index == 1 or "封面" in title:
         return "cover"
-    if "q&a" in title or "答疑" in title or index == total_slides:
-        return "qa"
     if "总结" in title or "回顾" in title:
         return "summary"
-    if any(keyword in title for keyword in ("对比", "区别", "差异")) or "对比" in hint:
-        return "comparison"
-    if any(keyword in title for keyword in ("流程", "步骤", "策略", "机制")) or any(keyword in hint for keyword in ("流程", "时间线")):
-        return "process"
     return "content"
 
 
@@ -486,17 +511,12 @@ def render_pptx_file(ppt: dict, output_path: Path) -> None:
         divider.line.fill.background()
 
         bullets = _normalize_bullet_items(slide_payload.get("bullets"))
+        body_paragraphs = _normalize_body_paragraphs(slide_payload.get("body"))
         left_bullets = bullets
         right_bullets = []
         table_rows = []
         table_remainder = []
-        process_steps = _build_process_steps(bullets) if role == "process" else []
-        if role == "comparison" and len(bullets) >= 4:
-            middle = (len(bullets) + 1) // 2
-            left_bullets = bullets[:middle]
-            right_bullets = bullets[middle:]
-        elif role in {"content", "summary"}:
-            table_rows, table_remainder = _extract_table_rows(bullets)
+        process_steps = []
 
         if role == "cover":
             cover_panel = slide.shapes.add_shape(1, Inches(0.95), Inches(1.62), Inches(11.4), Inches(3.9))
@@ -534,149 +554,27 @@ def render_pptx_file(ppt: dict, output_path: Path) -> None:
             content_panel.fill.fore_color.rgb = palette["callout_background"]
             content_panel.line.color.rgb = palette["divider"]
 
-            if role == "process" and process_steps:
-                for step_index, step in enumerate(process_steps[:4]):
-                    top = 1.78 + step_index * 1.02
-                    card = slide.shapes.add_shape(1, Inches(1.18), Inches(top), Inches(10.95), Inches(0.82))
-                    _set_shape_fill(card, palette["background"])
-                    card.line.color.rgb = palette["divider"]
-
-                    number_chip = slide.shapes.add_shape(1, Inches(1.38), Inches(top + 0.14), Inches(0.5), Inches(0.5))
-                    _set_shape_fill(number_chip, accent_color)
-                    number_chip.line.fill.background()
-
-                    number_box = slide.shapes.add_textbox(Inches(1.51), Inches(top + 0.22), Inches(0.18), Inches(0.14))
-                    number_frame = number_box.text_frame
-                    number_frame.clear()
-                    number_paragraph = number_frame.paragraphs[0]
-                    number_paragraph.text = str(step["number"])
-                    _style_paragraph(number_paragraph, _pt(8), palette["cover_text"], bold=True, align=PP_ALIGN.CENTER)
-
-                    headline_box = slide.shapes.add_textbox(Inches(2.04), Inches(top + 0.08), Inches(9.45), Inches(0.26))
-                    headline_frame = headline_box.text_frame
-                    headline_frame.clear()
-                    headline_frame.word_wrap = True
-                    headline_paragraph = headline_frame.paragraphs[0]
-                    headline_paragraph.text = _clip_text(step["headline"], 58)
-                    _style_paragraph(headline_paragraph, _pt(13), palette["title"], bold=True, align=PP_ALIGN.LEFT)
-
-                    detail_box = slide.shapes.add_textbox(Inches(2.04), Inches(top + 0.38), Inches(9.35), Inches(0.2))
-                    detail_frame = detail_box.text_frame
-                    detail_frame.clear()
-                    detail_frame.word_wrap = True
-                    detail_paragraph = detail_frame.paragraphs[0]
-                    detail_paragraph.text = _clip_text("；".join(step["details"]) if step["details"] else "聚焦这一阶段的关键动作与产出。", 92)
-                    _style_paragraph(detail_paragraph, _pt(8), palette["muted"], align=PP_ALIGN.LEFT)
-            elif table_rows:
-                table_shape = slide.shapes.add_table(
-                    len(table_rows) + 1,
-                    2,
-                    Inches(1.18),
-                    Inches(1.78),
-                    Inches(10.95),
-                    Inches(4.0),
-                )
-                table = table_shape.table
-                table.columns[0].width = Inches(2.65)
-                table.columns[1].width = Inches(8.3)
-                for column_index, heading in enumerate(("维度", "说明")):
-                    cell = table.cell(0, column_index)
-                    cell.text = heading
-                    cell.fill.solid()
-                    cell.fill.fore_color.rgb = palette["background"]
-                    _style_paragraph(
-                        cell.text_frame.paragraphs[0],
-                        _pt(10),
-                        accent_color if column_index == 0 else palette["title"],
-                        bold=True,
-                        align=PP_ALIGN.CENTER,
-                    )
-                for row_index, (label, detail) in enumerate(table_rows[:5], start=1):
-                    left_cell = table.cell(row_index, 0)
-                    left_cell.text = _clip_text(label, 18)
-                    left_cell.fill.solid()
-                    left_cell.fill.fore_color.rgb = palette["background"]
-                    _style_paragraph(left_cell.text_frame.paragraphs[0], _pt(10), accent_color, bold=True, align=PP_ALIGN.LEFT)
-
-                    right_cell = table.cell(row_index, 1)
-                    right_cell.text = _clip_text(detail, 98)
-                    right_cell.fill.solid()
-                    right_cell.fill.fore_color.rgb = palette["callout_background"]
-                    _style_paragraph(right_cell.text_frame.paragraphs[0], _pt(9), palette["body"], align=PP_ALIGN.LEFT)
-
-                if table_remainder:
-                    note_box = slide.shapes.add_textbox(Inches(1.22), Inches(6.0), Inches(8.8), Inches(0.2))
-                    note_frame = note_box.text_frame
-                    note_frame.clear()
-                    note_paragraph = note_frame.paragraphs[0]
-                    note_paragraph.text = f"补充：{_clip_text(table_remainder[0], 90)}"
-                    _style_paragraph(note_paragraph, _pt(8), palette["muted"], align=PP_ALIGN.LEFT)
-            elif role == "comparison" and right_bullets:
-                left_card = slide.shapes.add_shape(1, Inches(1.18), Inches(1.78), Inches(5.0), Inches(4.3))
-                left_card.fill.solid()
-                left_card.fill.fore_color.rgb = palette["background"]
-                left_card.line.color.rgb = palette["divider"]
-                right_card = slide.shapes.add_shape(1, Inches(6.92), Inches(1.78), Inches(4.95), Inches(4.3))
-                right_card.fill.solid()
-                right_card.fill.fore_color.rgb = palette["background"]
-                right_card.line.color.rgb = palette["divider"]
-                _render_bullet_list(
-                    slide,
-                    left_bullets,
-                    left=1.42,
-                    top=2.0,
-                    width=4.5,
-                    height=3.9,
-                    role_name="comparison",
-                    color=palette["body"],
-                    detail_color=palette["muted"],
-                )
-                _render_bullet_list(
-                    slide,
-                    right_bullets,
-                    left=7.16,
-                    top=2.0,
-                    width=4.45,
-                    height=3.9,
-                    role_name="comparison",
-                    color=accent_color,
-                    detail_color=palette["muted"],
-                )
-            elif role == "qa":
-                qa_panel = slide.shapes.add_shape(1, Inches(2.1), Inches(2.0), Inches(9.1), Inches(2.5))
-                qa_panel.fill.solid()
-                qa_panel.fill.fore_color.rgb = palette["background"]
-                qa_panel.line.color.rgb = palette["divider"]
-                qa_title = slide.shapes.add_textbox(Inches(2.45), Inches(2.34), Inches(8.35), Inches(0.45))
-                qa_frame = qa_title.text_frame
-                qa_frame.clear()
-                qa_paragraph = qa_frame.paragraphs[0]
-                qa_paragraph.text = "Questions, Discussion, Reflection"
-                _style_paragraph(qa_paragraph, _pt(15), accent_color, bold=True, align=PP_ALIGN.CENTER)
-                if bullets:
-                    _render_bullet_list(
-                        slide,
-                        bullets,
-                        left=3.05,
-                        top=3.1,
-                        width=7.05,
-                        height=0.95,
-                        role_name="qa",
-                        color=palette["body"],
-                        detail_color=palette["muted"],
-                    )
-            else:
-                _render_bullet_list(
-                    slide,
-                    bullets,
-                    left=1.18,
-                    top=1.82,
-                    width=10.9,
-                    height=4.5,
-                    role_name=role,
-                    color=palette["body"],
-                    detail_color=palette["muted"],
-                )
+            if body_paragraphs:
+                body_box = slide.shapes.add_textbox(Inches(1.18), Inches(1.78), Inches(10.9), Inches(1.0))
+                body_frame = body_box.text_frame
+                body_frame.clear()
+                body_frame.word_wrap = True
+                body_frame.margin_left = 0
+                body_frame.margin_right = 0
+                body_paragraph = body_frame.paragraphs[0]
+                body_paragraph.text = _clip_text(body_paragraphs[0], 120)
+                _style_paragraph(body_paragraph, _pt(10), palette["body"], align=PP_ALIGN.LEFT)
+            _render_bullet_list(
+                slide,
+                bullets,
+                left=1.18,
+                top=3.0 if body_paragraphs else 1.82,
+                width=10.9,
+                height=3.35 if body_paragraphs else 4.5,
+                role_name=role,
+                color=palette["body"],
+                detail_color=palette["muted"],
+            )
 
         footer_line = slide.shapes.add_shape(1, Inches(0.92), Inches(6.86), Inches(11.5), Inches(0.02))
         footer_line.fill.solid()

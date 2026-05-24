@@ -145,7 +145,7 @@ generative_resource
     "audience_level": "introductory",
     "slide_count_limit": 8,
     "theme": "academic-clean",
-    "style": "teaching-outline"
+    "style": "study-review"
   }
 }
 ```
@@ -165,25 +165,27 @@ generative_resource
 ```json
 {
   "schema_version": "v1",
-  "title": "Spark Shuffle 教学课件",
+  "title": "Spark Shuffle 复习课件",
   "topic": "Spark Shuffle",
-  "summary": "用于课堂讲解的结构化课件大纲。",
+  "summary": "用于学生自学和复习的结构化课件大纲。",
   "theme": "academic-clean",
-  "slide_style": "teaching-outline",
+  "slide_style": "study-review",
   "slides": [
     {
       "slide_index": 1,
-      "title": "课程目标",
-      "bullets": ["理解核心概念", "掌握关键步骤"],
-      "speaker_notes": "先说明本节课要解决的问题。",
-      "visual_hint": "简洁标题页 + 目标列表"
+      "title": "学习目标",
+      "body": "本页先明确复习目标，把后续内容和学生当前问题对齐。",
+      "bullets": ["理解核心概念", "掌握关键步骤", "识别常见易错点"],
+      "speaker_notes": "",
+      "visual_hint": "标题区 + 主题区 + 学习目标区"
     },
     {
       "slide_index": 2,
       "title": "关键知识点",
-      "bullets": ["概念定义", "应用场景", "注意事项"],
-      "speaker_notes": "结合实例展开讲解。",
-      "visual_hint": "左右分栏信息结构"
+      "body": "本页给出核心判断，再用要点拆开概念、场景和注意事项。",
+      "bullets": ["概念定义要能用自己的话复述", "应用场景要能对应真实问题", "注意事项聚焦容易混淆的边界"],
+      "speaker_notes": "注意区分概念定义和使用条件。",
+      "visual_hint": "标题区 + 导语区 + 要点区"
     }
   ]
 }
@@ -197,9 +199,13 @@ generative_resource
 - `slides` 必须是非空列表
 - 每页至少包含：
   - `title`
+  - `body`
   - `bullets`
-- `bullets` 必须为非空列表
-- `speaker_notes` 和 `visual_hint` 可选
+- `body` 是页面导语或核心判断，建议 35-80 个中文字符，最多 1-2 句；不写成长报告段落
+- `bullets` 必须为 3-5 条结构化要点，每条尽量具体
+- `speaker_notes` 可选，只在必要时补充易错点或注意事项，不能承载正文重点
+- `visual_hint` 必须只描述页面已有占位元素，例如 `标题区 + 导语区 + 要点区`
+- 不主动要求表格、复杂图表、时间线、流程箭头、复杂卡片等新增视觉元素；复杂元素和长文本不可以共存
 
 ### 3.3 Tool 侧核心函数
 
@@ -226,9 +232,10 @@ generative_resource
 4. 校验 `slides` 为非空列表
 5. 逐页校验：
    - `title`
+   - `body`
    - `bullets`
-6. 校验 `bullets` 中不允许空字符串项
-7. `speaker_notes` 允许为空，但可记 warning
+6. 校验 `bullets` 中不允许空字符串项，推荐数量为 3-5 条
+7. `speaker_notes` 允许为空
 8. 返回 `valid/errors/warnings/slide_count`
 
 #### `render_ppt_markdown(ppt: dict) -> str`
@@ -245,8 +252,9 @@ generative_resource
 4. 渲染 `slide_style`
 5. 渲染摘要
 6. 逐页渲染 slide 标题
-7. 渲染 bullet 列表
-8. 若存在 `visual_hint` 或 `speaker_notes`，则一并输出
+7. 渲染 `body`
+8. 渲染 bullet 列表
+9. 若存在 `visual_hint` 或 `speaker_notes`，则一并输出
 
 #### `render_pptx_file(ppt: dict, output_path: Path) -> None`
 
@@ -257,10 +265,10 @@ generative_resource
 内部逻辑：
 
 1. 使用 `python-pptx` 创建 Presentation
-2. 为每个 slide 生成与内容匹配的结构化版式
-3. 把 `speaker_notes` 写入 notes
+2. 为每个 slide 填充已有占位元素：标题区、导语区、要点区、提示区
+3. 如存在 `speaker_notes`，写入 notes
 4. 把 `visual_hint` 作为页脚辅助信息
-5. 对常规内容自动做主点/子点整理，对 `术语:解释` 形式内容可转成两列表格，对流程页可转成步骤卡片
+5. 默认不生成表格、复杂图表、时间线、流程箭头或复杂卡片
 6. 保存到 `ppt.pptx`
 
 #### `generate_ppt(payload: dict, agent_adapter: Any) -> dict`
@@ -365,7 +373,7 @@ generative_resource
       "metadata": {
         "slide_count": 2,
         "theme": "academic-clean",
-        "slide_style": "teaching-outline"
+        "slide_style": "study-review"
       },
       "created_at": 1740000000,
       "updated_at": 1740000000
@@ -397,11 +405,11 @@ generative_resource
    - 标题
    - Slide 标题
    - bullet 列表
-   - `Speaker Notes`
+   - 可选 `Speaker Notes`
    - `Visual Hint`
 4. 非法 PPT 结构会被标记为 `invalid`
 5. `slides` 为空时校验失败
-6. slide 缺少 `title` 或 `bullets` 时校验失败
+6. slide 缺少 `title`、`body` 或 `bullets` 时校验失败
 7. `generate_resource()` 能正确分发到 `ppt`
 8. manifest 中 `metadata.slide_count` 和 `validation.slide_count` 正确
 9. `.pptx` 能被 `python-pptx` 重新打开，并读到正确的页数

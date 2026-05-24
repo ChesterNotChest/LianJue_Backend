@@ -96,8 +96,18 @@ class FakeDocumentAgent:
             "topic": payload["topic"],
             "summary": "面向课程学习的知识点说明。",
             "sections": [
-                {"heading": "概念", "body": "RowKey 是 HBase 中用于唯一定位行的数据。"},
-                {"heading": "设计原则", "body": "应避免热点并保持可区分性。"},
+                {
+                    "heading": "核心概念",
+                    "body": "RowKey 是 HBase 中用于唯一定位行的数据，也是 Region 划分和访问路由的重要依据。",
+                    "key_points": ["RowKey 决定数据排序", "RowKey 影响 Region 分布"],
+                    "pitfalls": ["不要只按时间戳单调递增设计 RowKey"],
+                },
+                {
+                    "heading": "设计原则",
+                    "body": "应避免热点并保持可区分性，同时兼顾查询模式、键长度和业务可读性。",
+                    "examples": ["设备ID散列前缀 + 时间戳可以缓解单点写入集中"],
+                    "checklist": ["能解释热点成因", "能说出至少一种打散策略", "能判断预分区是否适用"],
+                },
             ],
             "extension_reading": [
                 {"title": "HBase Schema Design", "reason": "扩展理解 RowKey 与表设计关系"}
@@ -183,25 +193,27 @@ class FakePptAgent:
     def generate_ppt(self, payload):
         return {
             "schema_version": gt.GENERATIVE_PPT_SCHEMA_VERSION,
-            "title": f"{payload['topic']} 教学课件",
+            "title": f"{payload['topic']} 复习课件",
             "topic": payload["topic"],
-            "summary": "用于课堂讲解的结构化课件大纲。",
+            "summary": "用于学生自学和复习的结构化课件大纲。",
             "theme": "academic-clean",
-            "slide_style": "teaching-outline",
+            "slide_style": "study-review",
             "slides": [
                 {
                     "slide_index": 1,
                     "title": "课程目标",
-                    "bullets": ["理解核心概念", "掌握关键步骤"],
-                    "speaker_notes": "先说明本节课要解决的问题。",
-                    "visual_hint": "简洁标题页 + 目标列表",
+                    "body": "学生先明确本资源要解决的问题，再把目标拆成概念理解和步骤掌握。",
+                    "bullets": ["理解核心概念", "掌握关键步骤", "识别常见易错点"],
+                    "speaker_notes": "",
+                    "visual_hint": "标题区 + 主题区 + 学习目标区",
                 },
                 {
                     "slide_index": 2,
                     "title": "关键知识点",
-                    "bullets": ["概念定义", "应用场景", "注意事项"],
-                    "speaker_notes": "结合实例展开讲解。",
-                    "visual_hint": "左右分栏信息结构",
+                    "body": "本页给出关键知识点的核心判断，再用要点拆开概念、场景和注意事项。",
+                    "bullets": ["概念定义要能复述", "应用场景要对应真实问题", "注意事项聚焦易错边界"],
+                    "speaker_notes": "注意区分概念定义和使用条件。",
+                    "visual_hint": "标题区 + 导语区 + 要点区",
                 },
             ],
         }
@@ -213,37 +225,40 @@ class RichLayoutPptAgent:
             "schema_version": gt.GENERATIVE_PPT_SCHEMA_VERSION,
             "title": f"{payload['topic']} 进阶课件",
             "topic": payload["topic"],
-            "summary": "覆盖封面、流程页和表格化内容页。",
+            "summary": "即使输入提示包含复杂版式，也应按简单站位元素渲染。",
             "theme": "academic-clean",
-            "slide_style": "teaching-outline",
+            "slide_style": "study-review",
             "slides": [
                 {
                     "slide_index": 1,
                     "title": "课程导入",
+                    "body": "复习时先统一目标和场景，确认后续流程页和策略页分别解决什么问题。",
                     "bullets": ["统一目标", "明确场景"],
-                    "speaker_notes": "先说明今天的分析范围。",
-                    "visual_hint": "封面页",
+                    "speaker_notes": "",
+                    "visual_hint": "标题区 + 主题区 + 学习目标区",
                 },
                 {
                     "slide_index": 2,
                     "title": "实施步骤",
+                    "body": "本页把热点识别、RowKey 设计和效果验证拆成连续步骤，学生可以按顺序检查自己是否掌握。",
                     "bullets": [
                         "第1步：识别热点；定位高频前缀",
                         "第2步：设计 RowKey；加入散列或盐值",
                         "第3步：验证效果；观察 Region 分布",
                     ],
-                    "speaker_notes": "按阶段讲清输入、动作和结果。",
+                    "speaker_notes": "注意不要把步骤顺序和适用条件混在一起。",
                     "visual_hint": "流程图",
                 },
                 {
                     "slide_index": 3,
                     "title": "策略对照",
+                    "body": "本页把不同策略放在同一张表中比较，帮助学生复习时区分成因、适用条件和设计取舍。",
                     "bullets": [
                         "热点成因：单调递增前缀导致写入集中",
                         "预分区策略：提前拆分 Region，降低单点压力",
                         "盐值方案：打散写入键空间，均衡落点",
                     ],
-                    "speaker_notes": "把策略放在同一页方便横向比较。",
+                    "speaker_notes": "注意区分策略适用条件，不要只比较名称。",
                     "visual_hint": "表格对照",
                 },
             ],
@@ -385,7 +400,11 @@ def test_generate_structured_document_persists_bundle_and_manifest(monkeypatch, 
     assert saved_json["schema_version"] == gt.GENERATIVE_DOCUMENT_SCHEMA_VERSION
     assert len(saved_json["sections"]) == 2
     assert saved_md.startswith("# HBase RowKey 讲解文档")
-    assert "## 概念" in saved_md
+    assert "## 核心概念" in saved_md
+    assert "### Key Points" in saved_md
+    assert "### Common Pitfalls" in saved_md
+    assert "### Examples" in saved_md
+    assert "### Self Check" in saved_md
     assert "## Extension Reading" in saved_md
 
     manifest = json.loads((tmp_path / "generative" / "user_11" / "manifest.json").read_text(encoding="utf-8"))
@@ -587,6 +606,87 @@ def test_generate_coding_practice_marks_invalid_when_validation_fails(monkeypatc
     assert any("instruction" in error or "syntax error" in error for error in entry["validation"]["errors"])
 
 
+def test_generate_coding_practice_normalizes_llm_schema_drift(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    class DriftedCodingPracticeAgent:
+        def generate_coding_practice(self, payload):
+            return {
+                "schema_version": gt.GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
+                "title": payload["topic"],
+                "topic": payload["topic"],
+                "language": "Java",
+                "summary": "LLM returned a Java-style practice with loose fields.",
+                "learning_objectives": ["理解 RowKey hash salt"],
+                "steps": ["Read the example", "Run the Java program"],
+                "code_files": [
+                    {
+                        "name": "Main",
+                        "code": (
+                            "public class Main {\n"
+                            "  public static void main(String[] args) {\n"
+                            "    System.out.println(\"RowKey\");\n"
+                            "  }\n"
+                            "}\n"
+                        ),
+                    }
+                ],
+                "run_guide": {},
+            }
+
+    result = gt.generate_coding_practice(
+        {"user_id": 151, "topic": "RowKey hotspot mitigation", "language": "java"},
+        DriftedCodingPracticeAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "ready"
+    assert result["validation"]["valid"] is True
+
+    saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
+    assert saved_json["language"] == "java"
+    assert saved_json["steps"][0]["instruction"] == "Read the example"
+    assert saved_json["code_files"][0]["path"] == "code/Main.java"
+    assert result["entry_file_path"].endswith("code/Main.java")
+
+
+def test_generate_coding_practice_repoints_missing_entry_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    class MismatchedEntryFileAgent:
+        def generate_coding_practice(self, payload):
+            return {
+                "schema_version": gt.GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
+                "title": payload["topic"],
+                "topic": payload["topic"],
+                "language": "python",
+                "summary": "LLM returned an entry file that does not match code_files.",
+                "learning_objectives": ["Check generated entry file"],
+                "steps": [{"title": "Run", "instruction": "Run the generated example."}],
+                "code_files": [
+                    {
+                        "path": "code/rowkey_demo.py",
+                        "purpose": "entry",
+                        "content": "print('RowKey')\n",
+                    }
+                ],
+                "run_guide": {"entry_file": "code/main.py", "command": "python code/main.py"},
+            }
+
+    result = gt.generate_coding_practice(
+        {"user_id": 152, "topic": "RowKey entry file mismatch", "language": "python"},
+        MismatchedEntryFileAgent(),
+    )
+
+    assert result["success"] is True
+    assert result["status"] == "ready"
+    assert result["entry_file_path"].endswith("code/rowkey_demo.py")
+    assert (tmp_path / result["entry_file_path"]).exists()
+
+    saved_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
+    assert saved_json["run_guide"]["entry_file"] == "code/rowkey_demo.py"
+
+
 def test_generate_resource_dispatches_to_coding_practice(monkeypatch, tmp_path):
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
@@ -634,10 +734,10 @@ def test_generate_ppt_persists_bundle_and_manifest(monkeypatch, tmp_path):
     assert saved_pptx.exists()
     assert len(presentation.slides) == 2
     assert "课程目标" in _slide_texts(presentation.slides[0])
-    assert saved_md.startswith("# MapReduce 基础 教学课件")
+    assert saved_md.startswith("# MapReduce 基础 复习课件")
     assert "## Slide 1: 课程目标" in saved_md
     assert "Speaker Notes:" in saved_md
-    assert "Visual Hint: 简洁标题页 + 目标列表" in saved_md
+    assert "Visual Hint: 标题区 + 主题区 + 学习目标区" in saved_md
 
     manifest = json.loads((tmp_path / "generative" / "user_17" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["resource_count"] == 1
@@ -648,10 +748,10 @@ def test_generate_ppt_persists_bundle_and_manifest(monkeypatch, tmp_path):
     assert entry["main_files"]["pptx_path"] == result["pptx_path"]
     assert entry["validation"]["slide_count"] == 2
     assert entry["metadata"]["theme"] == "academic-clean"
-    assert entry["metadata"]["slide_style"] == "teaching-outline"
+    assert entry["metadata"]["slide_style"] == "study-review"
 
 
-def test_generate_ppt_supports_process_and_table_like_layouts(monkeypatch, tmp_path):
+def test_generate_ppt_keeps_complex_hints_in_simple_placeholders(monkeypatch, tmp_path):
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
     result = gt.generate_ppt(
@@ -670,7 +770,8 @@ def test_generate_ppt_supports_process_and_table_like_layouts(monkeypatch, tmp_p
     assert len(presentation.slides) == 3
     assert "课程导入" in _slide_texts(presentation.slides[0])
     assert "实施步骤" in _slide_texts(presentation.slides[1])
-    assert any("1" in text for text in _slide_texts(presentation.slides[1]))
+    assert "热点识别" in "\n".join(_slide_texts(presentation.slides[1]))
+    assert "策略对照" in _slide_texts(presentation.slides[2])
 
 
 def test_generate_ppt_marks_invalid_when_schema_validation_fails(monkeypatch, tmp_path):

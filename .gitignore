@@ -62,4 +62,8 @@ history/*
 profiles/*
 !profiles/.gitkeep
 
+tests/artifacts/
 tests/_artifacts/
+
+*tmp
+tmp*

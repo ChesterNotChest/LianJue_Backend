@@ -3,7 +3,6 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, request
 
-from tasks import resource_generation_agent_task as rgat
 from tasks import generative_task
 from tasks.generative.storage import _get_backend_root
 
@@ -88,7 +87,7 @@ def generative_generate_api():
         ), 400
 
     try:
-        result = rgat.run_resource_generation_agent(data)
+        result = generative_task.run_resource_generation_agent(data)
         return jsonify(
             {
                 "success": bool(result.get("success")),

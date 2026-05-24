@@ -3,7 +3,7 @@ import os
 import pytest
 
 from tests.artifact_utils import write_test_artifact
-from tasks import resource_planning_agent_task as rpat
+from tasks import generative_task as gt
 
 
 FIXED_PAYLOAD = {
@@ -48,9 +48,9 @@ def _build_real_search_payload():
 
 
 def test_resource_planning_agent_builds_plan_retrieval_and_draft_in_one_run():
-    planner = rpat.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
+    planner = gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
 
-    result = rpat.run_resource_planning_agent(
+    result = gt.run_resource_planning_agent(
         dict(FIXED_PAYLOAD),
         "documents",
         planning_agent=planner,
@@ -73,14 +73,14 @@ def test_resource_planning_agent_builds_plan_retrieval_and_draft_in_one_run():
 
 
 def test_resource_planning_agent_reuses_existing_plan_and_draft_on_second_run():
-    planner = rpat.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
+    planner = gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
 
-    first = rpat.run_resource_planning_agent(
+    first = gt.run_resource_planning_agent(
         dict(FIXED_PAYLOAD),
         "ppt",
         planning_agent=planner,
     )
-    second = rpat.run_resource_planning_agent(
+    second = gt.run_resource_planning_agent(
         dict(FIXED_PAYLOAD),
         "ppt",
         planning_agent=planner,
@@ -101,9 +101,9 @@ def test_resource_planning_agent_reuses_existing_plan_and_draft_on_second_run():
 def test_resource_planning_agent_with_real_search_tool_builds_grounded_draft():
     search_tool = _require_real_search_tool()
     payload = _build_real_search_payload()
-    planner = rpat.ResourcePlanningAgent(search_fn=search_tool)
+    planner = gt.ResourcePlanningAgent(search_fn=search_tool)
 
-    result = rpat.run_resource_planning_agent(
+    result = gt.run_resource_planning_agent(
         payload,
         "documents",
         planning_agent=planner,
