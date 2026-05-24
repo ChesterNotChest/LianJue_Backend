@@ -206,8 +206,10 @@ def build_write_operations(results: list[dict]) -> list[dict]:
     operations = []
     for result in results or []:
         status = result.get("status")
+        change_log_entry = result.get("change_log_entry")
         if status in ("rejected", "needs_review", "skipped"):
-            operations.append({"type": "append_change_log", "entry": result.get("change_log_entry") or result})
+            if isinstance(change_log_entry, dict) and change_log_entry.get("client_change_id"):
+                operations.append({"type": "append_change_log", "entry": change_log_entry})
             continue
         node = result.get("node")
         if isinstance(node, dict):
@@ -215,8 +217,20 @@ def build_write_operations(results: list[dict]) -> list[dict]:
         parent_node_id = result.get("attached_parent_id")
         if parent_node_id and isinstance(node, dict):
             operations.append({"type": "upsert_edge", "source": parent_node_id, "target": node.get("node_id"), "edge_type": "parent_of"})
-        operations.append({"type": "append_change_log", "entry": result.get("change_log_entry") or result})
+        if isinstance(change_log_entry, dict) and change_log_entry.get("client_change_id"):
+            operations.append({"type": "append_change_log", "entry": change_log_entry})
     return operations
+
+
+def _build_change_log_entry(client_change_id: str, status: str, change: dict, now_ts: int, *, result: dict | None = None, reason: str = "") -> dict:
+    return {
+        "client_change_id": client_change_id,
+        "status": status,
+        "request": dict(change or {}),
+        "result": dict(result or {}),
+        "reason": str(reason or ""),
+        "created_at": now_ts,
+    }
 
 
 def apply_learning_tree_changes(input_payload: dict) -> dict:
@@ -225,33 +239,57 @@ def apply_learning_tree_changes(input_payload: dict) -> dict:
     existing_change_logs = input_payload.get("existing_change_logs") if isinstance(input_payload.get("existing_change_logs"), list) else []
     now_ts = int(input_payload.get("now_ts") or 0)
     results = []
+    seen_client_change_ids = {
+        str(item.get("client_change_id") or "")
+        for item in existing_change_logs
+        if isinstance(item, dict) and str(item.get("client_change_id") or "")
+    }
     for change in changes:
         if not isinstance(change, dict):
             continue
         client_change_id = str(change.get("client_change_id") or "")
-        if client_change_id and any(str(item.get("client_change_id") or "") == client_change_id for item in existing_change_logs if isinstance(item, dict)):
-            results.append({"client_change_id": client_change_id, "status": "skipped", "reason": "duplicate client_change_id"})
+        if client_change_id and client_change_id in seen_client_change_ids:
+            results.append({
+                "client_change_id": client_change_id,
+                "status": "skipped",
+                "reason": "duplicate client_change_id",
+                "change_log_entry": _build_change_log_entry(client_change_id, "skipped", change, now_ts, reason="duplicate client_change_id"),
+            })
             continue
+        if client_change_id:
+            seen_client_change_ids.add(client_change_id)
         confidence = float(change.get("confidence") or 0.0)
         if confidence < STUDY_GRAPH_LOW_CONFIDENCE_THRESHOLD:
             results.append({
                 "client_change_id": client_change_id,
                 "status": "needs_review",
                 "reason": "low confidence",
-                "change_log_entry": {"client_change_id": client_change_id, "status": "needs_review", "request": change, "result": {}, "created_at": now_ts},
+                "change_log_entry": _build_change_log_entry(client_change_id, "needs_review", change, now_ts, reason="low confidence"),
             })
             continue
         op = str(change.get("op") or "").strip()
         if op == "upsert_knowledge_node":
             target_resolution = resolve_target_node(tree, change)
             if target_resolution["action"] == "reject":
-                results.append({"client_change_id": client_change_id, "status": "rejected", "reason": target_resolution["reason"], "change_log_entry": {"client_change_id": client_change_id, "status": "rejected", "request": change, "result": {}, "created_at": now_ts}})
+                results.append({
+                    "client_change_id": client_change_id,
+                    "status": "rejected",
+                    "reason": target_resolution["reason"],
+                    "change_log_entry": _build_change_log_entry(client_change_id, "rejected", change, now_ts, reason=target_resolution["reason"]),
+                })
                 continue
             if target_resolution["action"] == "needs_review":
-                results.append({"client_change_id": client_change_id, "status": "needs_review", "reason": target_resolution["reason"], "change_log_entry": {"client_change_id": client_change_id, "status": "needs_review", "request": change, "result": {}, "created_at": now_ts}})
+                results.append({
+                    "client_change_id": client_change_id,
+                    "status": "needs_review",
+                    "reason": target_resolution["reason"],
+                    "change_log_entry": _build_change_log_entry(client_change_id, "needs_review", change, now_ts, reason=target_resolution["reason"]),
+                })
                 continue
             parent_resolution = resolve_parent_node(tree, change, target_resolution)
-            mastery_update = compute_mastery_update({}, change.get("mastery"), confidence)
+            existing_node = target_resolution.get("existing_node") if isinstance(target_resolution.get("existing_node"), dict) else {}
+            current_mastery = existing_node.get("mastery") if target_resolution["action"] != "create" else {}
+            mastery_update = compute_mastery_update(current_mastery, change.get("mastery"), confidence)
             display_update = compute_display_update(mastery_update["after"])
             node = {
                 "node_id": target_resolution["node_id"],
@@ -265,27 +303,46 @@ def apply_learning_tree_changes(input_payload: dict) -> dict:
                 "mastery": mastery_update["after"],
                 "display": display_update,
                 "source": input_payload.get("source") or {},
-                "first_seen_at": now_ts,
                 "last_updated_at": now_ts,
             }
+            if target_resolution["action"] == "create":
+                node["first_seen_at"] = now_ts
+            elif existing_node.get("first_seen_at") not in (None, ""):
+                node["first_seen_at"] = existing_node.get("first_seen_at")
+            status = "accepted" if target_resolution["action"] == "create" else "merged"
             results.append({
                 "client_change_id": client_change_id,
-                "status": "accepted" if target_resolution["action"] == "create" else "merged",
+                "status": status,
                 "created_node_id": node["node_id"] if target_resolution["action"] == "create" else None,
                 "updated_node_id": node["node_id"] if target_resolution["action"] != "create" else None,
                 "attached_parent_id": parent_resolution.get("parent_node_id"),
                 "node": node,
-                "change_log_entry": {"client_change_id": client_change_id, "status": "accepted" if target_resolution["action"] == "create" else "merged", "request": change, "result": node, "created_at": now_ts},
+                "change_log_entry": _build_change_log_entry(client_change_id, status, change, now_ts, result=node, reason=target_resolution["reason"]),
                 "reason": target_resolution["reason"],
             })
             continue
         if op == "update_mastery":
-            results.append({"client_change_id": client_change_id, "status": "rejected", "reason": "update_mastery not yet implemented"})
+            results.append({
+                "client_change_id": client_change_id,
+                "status": "rejected",
+                "reason": "update_mastery not yet implemented",
+                "change_log_entry": _build_change_log_entry(client_change_id, "rejected", change, now_ts, reason="update_mastery not yet implemented"),
+            })
             continue
         if op == "attach_parent":
-            results.append({"client_change_id": client_change_id, "status": "rejected", "reason": "attach_parent not yet implemented"})
+            results.append({
+                "client_change_id": client_change_id,
+                "status": "rejected",
+                "reason": "attach_parent not yet implemented",
+                "change_log_entry": _build_change_log_entry(client_change_id, "rejected", change, now_ts, reason="attach_parent not yet implemented"),
+            })
             continue
-        results.append({"client_change_id": client_change_id, "status": "rejected", "reason": f"unsupported op: {op}"})
+        results.append({
+            "client_change_id": client_change_id,
+            "status": "rejected",
+            "reason": f"unsupported op: {op}",
+            "change_log_entry": _build_change_log_entry(client_change_id, "rejected", change, now_ts, reason=f"unsupported op: {op}"),
+        })
     write_operations = build_write_operations(results)
     return {
         "tree_id": tree.get("tree_id"),

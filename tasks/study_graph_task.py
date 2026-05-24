@@ -50,6 +50,22 @@ def _load_tree_snapshot(user_id: int, syllabus_id: int, title: str | None, now_t
     return tree
 
 
+def _load_existing_change_logs(tree_id: str, changes: list[dict]) -> list[dict]:
+    existing_logs: list[dict] = []
+    seen_client_change_ids: set[str] = set()
+    for change in changes or []:
+        if not isinstance(change, dict):
+            continue
+        client_change_id = str(change.get("client_change_id") or "").strip()
+        if not client_change_id or client_change_id in seen_client_change_ids:
+            continue
+        seen_client_change_ids.add(client_change_id)
+        existing = get_change_log(tree_id, client_change_id)
+        if isinstance(existing, dict):
+            existing_logs.append(existing)
+    return existing_logs
+
+
 def get_student_learning_tree_context(user_id: int, syllabus_id: int, query: str, max_candidates: int = STUDY_GRAPH_MAX_CONTEXT_CANDIDATES) -> dict:
     now_ts = int(time())
     tree = _load_tree_snapshot(user_id, syllabus_id, title=None, now_ts=now_ts)
@@ -300,6 +316,7 @@ def submit_learning_tree_changes(
         }
     tree = _load_tree_snapshot(user_id, syllabus_id, title=_default_title(validation["payload"]), now_ts=now_ts, subject_title=validation["payload"].get("subject_title"))
     normalized_changes = normalize_change_candidates(changes)
+    existing_change_logs = _load_existing_change_logs(tree["tree_id"], normalized_changes)
     apply_result = apply_learning_tree_changes(
         {
             "user_id": int(user_id),
@@ -307,7 +324,7 @@ def submit_learning_tree_changes(
             "tree": tree,
             "changes": normalized_changes,
             "source": source or {},
-            "existing_change_logs": [],
+            "existing_change_logs": existing_change_logs,
             "now_ts": now_ts,
         }
     )
@@ -316,7 +333,9 @@ def submit_learning_tree_changes(
             upsert_node(tree["tree_id"], result["node"])
         if result.get("attached_parent_id") and result.get("node"):
             upsert_edge(tree["tree_id"], result["attached_parent_id"], result["node"]["node_id"], "parent_of", now_ts)
-        append_change_log(tree["tree_id"], result.get("change_log_entry") or {})
+        change_log_entry = result.get("change_log_entry")
+        if isinstance(change_log_entry, dict) and change_log_entry.get("client_change_id"):
+            append_change_log(tree["tree_id"], change_log_entry)
     saved_tree = get_tree(user_id, syllabus_id) or tree
     summary = recompute_tree_summary(saved_tree, now_ts)
     update_summary(tree["tree_id"], summary, now_ts)

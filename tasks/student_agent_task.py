@@ -18,6 +18,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
 from tasks.search_tool import search_tool
+from tasks.study_graph.normalizer import normalize_knowledge_title
 from tasks.study_graph_task import (
     build_study_graph_changes_from_student_payload,
     get_learning_tree_features,
@@ -41,6 +42,119 @@ class StudentAgentResult(BaseModel):
     tool_trace: list[str] = Field(default_factory=list)
     error_message: str = ""
     error_code: str = ""
+
+
+def _normalize_rag_context_items(payload: Dict[str, Any], runtime_rag_context: Any) -> list[dict]:
+    merged: list[dict] = []
+    seen_keys: set[tuple[str, str]] = set()
+
+    def append_item(title: Any, summary: Any) -> None:
+        title_text = str(title or "").strip()
+        summary_text = str(summary or "").strip()
+        if not title_text and not summary_text:
+            return
+        if not title_text:
+            title_text = str(payload.get("learning_goal") or payload.get("question") or summary_text[:48]).strip()
+        if not summary_text:
+            summary_text = title_text
+        dedupe_key = (normalize_knowledge_title(title_text), summary_text)
+        if dedupe_key in seen_keys:
+            return
+        seen_keys.add(dedupe_key)
+        merged.append({"title": title_text, "summary": summary_text})
+
+    for item in payload.get("rag_context") or []:
+        if isinstance(item, dict):
+            append_item(item.get("title"), item.get("summary") or item.get("content"))
+        else:
+            append_item(payload.get("learning_goal") or payload.get("question"), item)
+
+    if isinstance(runtime_rag_context, dict):
+        for item in runtime_rag_context.get("results") or []:
+            if isinstance(item, dict):
+                append_item(item.get("title") or payload.get("learning_goal") or payload.get("question"), item.get("summary") or item.get("content"))
+            else:
+                append_item(payload.get("learning_goal") or payload.get("question"), item)
+        for item in runtime_rag_context.get("paragraphs") or []:
+            append_item(payload.get("learning_goal") or payload.get("question"), item)
+
+    return merged
+
+
+def _extract_parent_candidate_child_titles(payload: Dict[str, Any]) -> list[str]:
+    child_titles: list[str] = []
+
+    def append_unique(value: Any) -> None:
+        text = str(value or "").strip()
+        if text and text not in child_titles:
+            child_titles.append(text)
+
+    for item in payload.get("detected_topics") or []:
+        if isinstance(item, dict):
+            append_unique(item.get("title"))
+    for item in payload.get("events") or []:
+        if not isinstance(item, dict):
+            continue
+        append_unique(item.get("topic"))
+        meta_points = item.get("meta", {}).get("knowledge_points") if isinstance(item.get("meta"), dict) else []
+        if isinstance(meta_points, list):
+            for point in meta_points:
+                append_unique(point)
+    return child_titles
+
+
+def _merge_parent_candidates(payload: Dict[str, Any], runtime_tree_context: Any) -> list[dict]:
+    merged: list[dict] = []
+    seen_pairs: set[tuple[str, str]] = set()
+
+    def append_candidate(parent_title: Any, child_title: Any, *, existing_node_id: Any = None, score: Any = None, matched_by: Any = None) -> None:
+        parent_text = str(parent_title or "").strip()
+        child_text = str(child_title or "").strip()
+        if not parent_text or not child_text:
+            return
+        pair_key = (normalize_knowledge_title(parent_text), normalize_knowledge_title(child_text))
+        if not pair_key[0] or not pair_key[1] or pair_key in seen_pairs or pair_key[0] == pair_key[1]:
+            return
+        seen_pairs.add(pair_key)
+        candidate = {"title": parent_text, "child_title": child_text}
+        if existing_node_id not in (None, ""):
+            candidate["existing_node_id"] = existing_node_id
+        if score not in (None, ""):
+            candidate["score"] = score
+        if matched_by not in (None, ""):
+            candidate["matched_by"] = matched_by
+        merged.append(candidate)
+
+    for item in payload.get("parent_candidates") or []:
+        if isinstance(item, dict):
+            append_candidate(
+                item.get("title"),
+                item.get("child_title"),
+                existing_node_id=item.get("existing_node_id"),
+                score=item.get("score"),
+                matched_by=item.get("matched_by"),
+            )
+
+    ranked_candidates = runtime_tree_context.get("ranked_candidates") if isinstance(runtime_tree_context, dict) else []
+    child_titles = _extract_parent_candidate_child_titles(payload)
+    for child_title in child_titles:
+        child_norm = normalize_knowledge_title(child_title)
+        if any(normalize_knowledge_title(item.get("child_title") or "") == child_norm for item in merged):
+            continue
+        for candidate in ranked_candidates or []:
+            if not isinstance(candidate, dict):
+                continue
+            append_candidate(
+                candidate.get("title"),
+                child_title,
+                existing_node_id=candidate.get("node_id"),
+                score=candidate.get("score"),
+                matched_by=candidate.get("matched_by"),
+            )
+            if any(normalize_knowledge_title(item.get("child_title") or "") == child_norm for item in merged):
+                break
+
+    return merged
 
 
 def get_student_learning_graph(user_id: int, syllabus_id: int, include_debug: bool = False) -> dict:
@@ -145,10 +259,9 @@ def get_student_agent() -> Agent:
         payload = ctx.deps.state.get("derived_payload") or dict(ctx.deps.payload)
         enriched_payload = dict(payload)
         rag_context = ctx.deps.state.get("rag_context") or {}
-        if isinstance(rag_context, dict):
-            enriched_payload.setdefault("rag_context", rag_context.get("paragraphs") or rag_context.get("results") or [])
         tree_context = ctx.deps.state.get("tree_context") or {}
-        enriched_payload.setdefault("parent_candidates", tree_context.get("ranked_candidates") or [])
+        enriched_payload["rag_context"] = _normalize_rag_context_items(payload, rag_context)
+        enriched_payload["parent_candidates"] = _merge_parent_candidates(payload, tree_context)
         changes = build_study_graph_changes_from_student_payload(enriched_payload)
         ctx.deps.state["changes"] = changes
         return {"tool": "build_study_graph_changes", "change_count": len(changes)}

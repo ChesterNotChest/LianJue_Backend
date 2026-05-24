@@ -120,3 +120,80 @@ def test_student_payload_round_trip_builds_changes_and_tree(monkeypatch):
     assert {"HBase RowKey 设计", "RowKey 热点"}.issubset(set(graph["features"]["learned_topics"]))
     assert graph["debug"]
 
+
+def test_submit_learning_tree_changes_skips_duplicate_client_change_id(monkeypatch):
+    artifact_root = _reset_artifact_root("unit_payload_duplicates")
+    monkeypatch.setattr(study_graph_storage, "study_graph_root", lambda: artifact_root)
+
+    payload = {
+        **_base_payload(),
+        "question": "HBase RowKey 设计包含哪些核心原则？",
+        "rag_context": [{"title": "HBase RowKey 设计", "summary": "RowKey 设计需要结合查询模式、热点规避和预分区。"}],
+        "detected_topics": [{"title": "HBase RowKey 设计", "confidence": 0.86, "signal": "learned"}],
+        "events": [{"kind": "answer", "topic": "HBase RowKey 设计", "is_correct": True}],
+        "timestamp": 1760000000,
+    }
+    changes = build_study_graph_changes_from_student_payload(payload)
+    assert len(changes) == 1
+
+    first_submit = submit_learning_tree_changes(
+        payload["user_id"],
+        payload["syllabus_id"],
+        changes,
+        source=payload["source"],
+        timestamp=payload["timestamp"],
+        subject_title=payload["subject_title"],
+    )
+    second_submit = submit_learning_tree_changes(
+        payload["user_id"],
+        payload["syllabus_id"],
+        changes,
+        source=payload["source"],
+        timestamp=payload["timestamp"] + 60,
+        subject_title=payload["subject_title"],
+    )
+
+    assert first_submit["success"] is True
+    assert second_submit["success"] is True
+    assert [item["status"] for item in second_submit["results"]] == ["skipped"]
+
+    change_log_path = artifact_root / f"user_{payload['user_id']}" / f"syllabus_{payload['syllabus_id']}" / "change_log.jsonl"
+    log_lines = [line for line in change_log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(log_lines) == 1
+
+
+def test_submit_learning_tree_changes_merge_preserves_first_seen_and_accumulates_mastery(monkeypatch):
+    artifact_root = _reset_artifact_root("unit_payload_merge_timestamps")
+    monkeypatch.setattr(study_graph_storage, "study_graph_root", lambda: artifact_root)
+
+    initial_changes = [
+        {
+            "op": "upsert_knowledge_node",
+            "client_change_id": "manual:rowkey-hotspot:001",
+            "knowledge": {"title": "RowKey 热点", "summary": "第一次学习触达"},
+            "mastery": {"signal": "learned"},
+            "confidence": 1.0,
+        }
+    ]
+    merged_changes = [
+        {
+            "op": "upsert_knowledge_node",
+            "client_change_id": "manual:rowkey-hotspot:002",
+            "knowledge": {"title": "RowKey 热点", "summary": "第二次练习触达"},
+            "mastery": {"signal": "practiced"},
+            "confidence": 1.0,
+        }
+    ]
+
+    first_submit = submit_learning_tree_changes(900008, 900020, initial_changes, source={"kind": "manual"}, timestamp=1760000000, subject_title="大数据概论")
+    second_submit = submit_learning_tree_changes(900008, 900020, merged_changes, source={"kind": "manual"}, timestamp=1760000600, subject_title="大数据概论")
+
+    assert first_submit["results"][0]["status"] == "accepted"
+    assert second_submit["results"][0]["status"] == "merged"
+
+    tree = get_student_learning_tree(900008, 900020)
+    node = next(item for item in tree["tree"]["nodes"] if item["title"] == "RowKey 热点")
+
+    assert node["first_seen_at"] == 1760000000
+    assert node["last_updated_at"] == 1760000600
+    assert node["mastery"]["score"] > first_submit["results"][0]["node"]["mastery"]["score"]

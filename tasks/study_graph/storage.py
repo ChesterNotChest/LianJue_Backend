@@ -133,7 +133,7 @@ def upsert_node(tree_id: str, node: dict) -> dict:
     _, user_id, syllabus_id = tree_id.split(":", 2)
     manifest = load_tree_manifest(int(user_id), int(syllabus_id))
     nodes = manifest.setdefault("nodes", [])
-    now_ts = int(time())
+    wall_clock_ts = int(time())
     normalized_title = node.get("normalized_title")
     node_id = node.get("node_id")
     existing = None
@@ -150,8 +150,16 @@ def upsert_node(tree_id: str, node: dict) -> dict:
     payload = dict(existing or {})
     payload.update(node)
     payload.setdefault("tree_id", tree_id)
-    payload.setdefault("first_seen_at", now_ts)
-    payload["last_updated_at"] = now_ts
+    first_seen_at = payload.get("first_seen_at")
+    try:
+        payload["first_seen_at"] = int(first_seen_at)
+    except Exception:
+        payload["first_seen_at"] = wall_clock_ts
+    last_updated_at = node.get("last_updated_at", payload.get("last_updated_at"))
+    try:
+        payload["last_updated_at"] = int(last_updated_at)
+    except Exception:
+        payload["last_updated_at"] = wall_clock_ts
     if existing is None:
         nodes.append(payload)
     else:
@@ -197,14 +205,18 @@ def append_change_log(tree_id: str, entry: dict) -> dict:
     change_log_path = _change_log_path(int(user_id), int(syllabus_id))
     change_log_path.parent.mkdir(parents=True, exist_ok=True)
     change_log_path.touch(exist_ok=True)
-    existing = get_change_log(tree_id, str(entry.get("client_change_id") or ""))
+    payload = dict(entry)
+    client_change_id = str(payload.get("client_change_id") or "").strip()
+    payload.setdefault("tree_id", tree_id)
+    payload.setdefault("created_at", int(time()))
+    if not client_change_id:
+        payload["ignored"] = True
+        return payload
+    existing = get_change_log(tree_id, client_change_id)
     if existing is not None:
         result = dict(existing)
         result["duplicate"] = True
         return result
-    payload = dict(entry)
-    payload.setdefault("tree_id", tree_id)
-    payload.setdefault("created_at", int(time()))
     _atomic_append_jsonl(change_log_path, payload)
     return payload
 
