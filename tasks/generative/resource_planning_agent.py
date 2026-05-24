@@ -1,4 +1,4 @@
-"""Resource planning agent task.
+"""Resource planning Agent internals.
 
 Atomic tool responsibilities in this stage:
 
