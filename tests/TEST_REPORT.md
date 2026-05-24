@@ -74,6 +74,34 @@ python -m pytest -q tests/test_create_syllabus_draft.py tests/test_build_syllabu
 python -m pytest -q tests/test_job_checker_startup_graph_sync.py
 ```
 
+### 1.j 单元测试包 7 - 个人推荐路径
+
+```bash
+python -m pytest -q tests/test_personal_recommendation_task.py tests/test_personal_recommendation_api.py tests/test_personal_recommendation_agent_choice.py -m "not llm"
+```
+
+### 1.k 集成测试 3 - 个人推荐路径 Agent
+
+```bash
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
+```
+
+可选真实 RAG 评估：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
+```
+
+可选环境变量：
+
+```text
+PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME=RAG
+PERSONAL_RECOMMENDATION_RAG_QUERY=<query>
+PERSONAL_RECOMMENDATION_RAG_TOP_K=5
+PERSONAL_RECOMMENDATION_ROUTE_K=10
+PERSONAL_RECOMMENDATION_BEAM_WIDTH=8
+```
+
 ## 2 用例描述
 
 ### 2.a 全量默认单元回归
@@ -377,6 +405,71 @@ payload[] -> Agent 构造检索 query -> search_tool 查询 RAG 图 -> retrieval
 - 从不同结构的远端响应中提取 graph 名称。
 - 只初始化远端缺失的 graph。
 - 远端 graph 列表读取失败时不会误初始化。
+
+### 2.j 单元测试包 7 - 个人推荐路径
+
+目标：验证 `personal_recommendation_task` 的推荐路径编排入口、`tasks.personal_recommendation.agent_tools` / `agent_runtime` 的非 LLM 工具边界和 `/api/personal_recommendation` 包装层，确保 agent-x 迁移后的推荐链路与其他 task 入口一致。
+
+覆盖文件：
+
+- `test_personal_recommendation_task.py`
+- `test_personal_recommendation_api.py`
+- `test_personal_recommendation_agent_choice.py` 中的非 `llm` 用例
+
+覆盖范围：
+
+- `run_recommendation_route()` 作为统一 task 入口，串联 profile、learning tree、候选生成、硬剪枝、软剪枝、评分和选择。
+- 缺少 `user_id` 时返回结构化错误。
+- `InMemoryGraphAdapter` 能支撑推荐候选生成并读取图节点。
+- `/api/personal_recommendation` 只做 API 参数包装，实际推荐链路交给 `personal_recommendation_task`。
+- API 可基于 syllabus JSON 构造学习树并返回 `candidates` / `selected`。
+- Agent 工具边界验证 RAG/多路检索归 `tasks.personal_recommendation.agent_tools`，剪枝、评分和路径选择归 `personal_recommendation_task`。
+- mock RAG 闭环验证 `rag_context -> run_recommendation_route -> graph/candidates/selected/best_path` 可形成前端可渲染的推荐图。
+- 闭环测试断言 `best_path` 来自候选路径，且路径节点、路径边都存在于返回的 `graph.nodes` / `graph.edges` 中。
+
+这些测试不调用真实 LLM，也不连接真实知识库；它们验证推荐 agent-x 已具备与其他 agent 一致的 task 入口、API 包装边界和 Agent 工具分层。
+
+测试产物：
+
+```text
+tests/artifacts/personal_recommendation/mock_rag_route_graph_closure/route_result.json
+```
+
+该产物保留 mock RAG 输入、工具返回、推荐摘要和完整 `recommendation` 结果，可直接检查前端推荐图的数据质量。
+
+### 2.k 集成测试 3 - 个人推荐路径 Agent
+
+目标：验证 `personal_recommendation_task.run_personal_recommendation_agent` 背后的真实 LLM 工具选择能力。该测试模拟总 Agent 传入的推荐 payload，mock RAG/多路检索结果，并使用固定 profile/tree fixture 跑真实推荐算法链路，重点验证路径推荐 Agent 会自行调度工具并完成推荐闭环。
+
+覆盖文件：
+
+- `test_personal_recommendation_agent_choice.py`
+
+覆盖范围：
+
+- 真实模型驱动路径推荐 Agent 触发工具调用。
+- Agent 按预期调用：
+  - `load_request_context`
+  - `search_recommendation_context`
+  - `run_recommendation_route`
+- `search_recommendation_context` 是 Agent 工具层能力，测试中用 mock 结果替代真实 KnowLion 检索。
+- `run_recommendation_route` 是剪枝、评分和路径选择工具，测试中使用固定 profile/tree fixture 跑真实推荐算法。
+- 输出包含 `graph`、`rag_overlay`、`candidates`、`selected` 和 `best_path`。
+
+该测试默认不进入 CI。只有设置 `RUN_LLM_TESTS=1` 时才运行。默认 LLM 用例使用 mock RAG，保证 Agent 工具选择测试稳定。
+
+可选真实 RAG 用例 `test_personal_recommendation_agent_real_rag_optional` 需要额外设置 `RUN_REAL_RAG_TESTS=1`，用于人工评估真实知识库检索质量。该用例仍使用固定 profile/tree fixture，避免真实 RAG 质量评估和推荐算法输入波动混在一起。
+
+测试层面默认图名为 `RAG`，与资源生成 Agent 的真实检索集成测试保持一致；`PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME` 只用于临时覆盖。
+
+测试产物：
+
+```text
+tests/artifacts/personal_recommendation/agent_choice/agent_choice_result.json
+tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_rag_result.json
+```
+
+该产物保留总 Agent 模拟 payload、真实 LLM 工具调用顺序、每个工具返回、推荐摘要和最终 `PersonalRecommendationResult`。
 
 ## 3 生成文件说明
 

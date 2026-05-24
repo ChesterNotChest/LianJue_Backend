@@ -1,6 +1,6 @@
 """Demo script: call `/api/personal_recommendation` via Flask test client,
-pick the first syllabus in DB if not provided, save response to tests/personal_reco_response.json
-and append a short entry to tests/PTTEST_REPORT.md for quick inspection.
+pick the first syllabus in DB if not provided, and save response to
+tests/personal_reco_response.json for quick inspection.
 """
 import json
 import os
@@ -32,15 +32,6 @@ def main():
         data = {'status_code': resp.status_code, 'text': resp.get_data(as_text=True)}
     out_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     print(f'Wrote response to {out_file}')
-
-    # append short report
-    rpt = out_dir / 'PTTEST_REPORT.md'
-    entry = f"\n- Demo personal_recommendation: syllabus_id={payload['syllabus_id']}, status={resp.status_code}\n"
-    try:
-        with open(rpt, 'a', encoding='utf-8') as f:
-            f.write(entry)
-    except Exception:
-        pass
 
 
 if __name__ == '__main__':

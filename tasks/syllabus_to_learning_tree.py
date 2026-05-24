@@ -1,5 +1,5 @@
-"""Helpers to convert a syllabus JSON into the `learning_tree` shape
-expected by `prototype_recommendation`.
+﻿"""Helpers to convert a syllabus JSON into the `learning_tree` shape
+expected by the recommendation route.
 
 This implements a best-effort mapping supporting several common syllabus shapes.
 """
@@ -97,3 +97,5 @@ def syllabus_json_to_learning_tree(syllabus_json: Any) -> Dict[str, Dict]:
             return result
 
     return {}
+
+

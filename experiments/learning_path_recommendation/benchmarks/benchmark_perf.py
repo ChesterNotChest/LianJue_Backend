@@ -7,28 +7,18 @@ import statistics
 import os
 import sys
 
-# ensure prototype_recommendation parent is importable when running from repo root
+# Ensure repository root is importable when running this file directly.
 THIS_DIR = os.path.dirname(__file__)
-PROJ_ROOT = os.path.abspath(os.path.join(THIS_DIR, '..'))
+PROJ_ROOT = os.path.abspath(os.path.join(THIS_DIR, '..', '..', '..'))
 if PROJ_ROOT not in sys.path:
     sys.path.insert(0, PROJ_ROOT)
 
-try:
-    # prefer local direct imports when running from repo root
-    from candidate_generator import generate
-    import candidate_generator as cg
-    from perception import generate_state
-    from evaluator import score, normalize_scores, scalar_scores
-    from selector_ib_grpo import ib_grpo_select
-    from sample_data import user_profile, goals
-except Exception:
-    # fallback to package-style imports
-    from prototype_recommendation.candidate_generator import generate
-    from prototype_recommendation import candidate_generator as cg
-    from prototype_recommendation.perception import generate_state
-    from prototype_recommendation.evaluator import score, normalize_scores, scalar_scores
-    from prototype_recommendation.selector_ib_grpo import ib_grpo_select
-    from prototype_recommendation.sample_data import user_profile, goals
+from tasks.personal_recommendation import candidate_generator as cg
+from tasks.personal_recommendation.candidate_generator import generate
+from tasks.personal_recommendation.evaluator import score
+from tasks.personal_recommendation.perception import generate_state
+from tasks.personal_recommendation.sample_data import goals, user_profile
+from tasks.personal_recommendation.selector_ib_grpo import ib_grpo_select
 
 
 def make_synthetic_tree(n_nodes=200, max_prereq=3, seed=42):
@@ -58,7 +48,14 @@ def make_synthetic_tree(n_nodes=200, max_prereq=3, seed=42):
     return tree
 
 
-def bench(tree, user_profile, goals, configs, runs=5, out_dir='prototype_recommendation/benchmarks/results'):
+def bench(
+    tree,
+    user_profile,
+    goals,
+    configs,
+    runs=5,
+    out_dir='experiments/learning_path_recommendation/benchmarks/results',
+):
     os.makedirs(out_dir, exist_ok=True)
     all_results = []
     for cfg in configs:
@@ -129,7 +126,7 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument('--nodes', type=int, default=200)
     p.add_argument('--runs', type=int, default=3)
-    p.add_argument('--out', type=str, default='prototype_recommendation/benchmarks/results')
+    p.add_argument('--out', type=str, default='experiments/learning_path_recommendation/benchmarks/results')
     return p.parse_args()
 
 
