@@ -72,7 +72,8 @@ tasks/personal_recommendation/
   pruning.py
   sample_data.py
   selector_ib_grpo.py
-tasks/syllabus_to_learning_tree.py
+  service.py
+  syllabus_adapter.py
 ```
 
 API 接入：
@@ -134,6 +135,13 @@ POST /api/personal_recommendation
   -> run_recommendation_route
   -> return recommendation result
 ```
+
+入口边界：
+
+- `tasks/personal_recommendation_task.py` 是路径推荐的唯一跨模块 task 门户。
+- `tasks/personal_recommendation/` 只放包内实现，外部 API 或其他 Agent 不应直接依赖包内函数。
+- 原 `tasks/syllabus_to_learning_tree.py` 已迁入 `tasks/personal_recommendation/syllabus_adapter.py`，不再保留外层转发文件。
+- 公共检索工具位于 `tasks/common/search_tool.py`；推荐 Agent 通过 `tasks.personal_recommendation.agent_tools` 调用它。
 
 输入 payload：
 

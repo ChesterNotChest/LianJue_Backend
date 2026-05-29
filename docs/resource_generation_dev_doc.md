@@ -36,8 +36,12 @@
 
 - `blueprint/generative_api.py`
   - 资源生成 HTTP 入口。
+  - 资源 list/detail HTTP 入口。
+- `blueprint/syllabus_material_api.py`
+  - 旧 `syllabus_material_*` URL 的兼容层。生成资源详情和列表已改为委托 `generative_task`；旧 `material_id` 草稿、更新、发布、状态、详情业务返回 `410 deprecated`。
 - `tasks/generative_task.py`
   - 模块间统一入口和兼容包装层。
+  - 生成资源 manifest 列表、分组和 detail 包装入口。
 - `tasks/generative/resource_generation_agent.py`
   - 资源生成主逻辑。
   - 输入归一化。
@@ -57,7 +61,7 @@
 - `tasks/generative/renderers.py`
   - `ppt` 渲染和导出。
 - `tasks/generative/__init__.py`
-  - 包内统一导出。
+  - 仅作为包说明，不作为外部业务入口。
 
 测试和文档：
 
@@ -84,6 +88,8 @@ API 入口：
 POST /api/generative_generate
 POST /api/generative_list
 POST /api/generative_detail
+POST /api/syllabus_material_list      # legacy URL, generated-resource list only when user_id is provided
+POST /api/syllabus_material_detail    # legacy URL, generated-resource detail only when user_id/resource_id is provided
 ```
 
 Task 入口：
@@ -92,7 +98,17 @@ Task 入口：
 generate_resources_from_request(...)
 run_resource_generation_agent(...)
 generate_single_resource_from_request(...)
+list_generated_resources(...)
+list_generated_resources_by_type(...)
+get_generated_resource_detail(...)
 ```
+
+入口边界：
+
+- `tasks/generative_task.py` 是资源生成和生成资源展示包装的唯一跨模块 task 门户。
+- `tasks/generative/` 只放包内实现，外部 API 或其他 Agent 不应直接依赖包内函数。
+- `tasks/material_task.py` 已废弃并删除；原先读取 manifest 并包装前端 detail 的能力迁入 `generative_task`。
+- 旧教师产出习题 / material draft / material publish 业务已经停止维护，对应旧 URL 返回 `410 deprecated`。
 
 外部输入契约：
 
