@@ -173,7 +173,7 @@ def _build_personal_syllabus_update_suggestions(profile: dict, feature_bundle: d
 				'week_index': week_index,
 				'suggested_competance': suggested,
 				'confidence': confidence,
-				'reason': f"鐢诲儚璁＄畻鍙戠幇绗?{week_index} 鍛ㄥ涔犵姸鎬佸亸鍚?{suggested}",
+				'reason': f"画像计算发现第 {week_index} 周学习状态偏向 {suggested}",
 				'evidence': ['personal_syllabus', 'learning_profile'],
 				'source': ProfilePersonalSyllabusSuggestionSource.PROFILE_AGENT.value,
 			})

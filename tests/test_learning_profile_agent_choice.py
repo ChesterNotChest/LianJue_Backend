@@ -52,39 +52,39 @@ def _trace_agent_tools(monkeypatch):
         return traced
 
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_load_existing_profile_context",
-        wrap("load_existing_profile_context", profile_tools._tool_load_existing_profile_context),
+        wrap("load_existing_profile_context", profile_runtime._tool_load_existing_profile_context),
     )
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_load_history_context",
-        wrap("load_history_context", profile_tools._tool_load_history_context),
+        wrap("load_history_context", profile_runtime._tool_load_history_context),
     )
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_load_personal_syllabus_context",
-        wrap("load_personal_syllabus_context", profile_tools._tool_load_personal_syllabus_context),
+        wrap("load_personal_syllabus_context", profile_runtime._tool_load_personal_syllabus_context),
     )
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_normalize_events",
-        wrap("normalize_events", profile_tools._tool_normalize_events),
+        wrap("normalize_events", profile_runtime._tool_normalize_events),
     )
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_compute_features",
-        wrap("compute_features", profile_tools._tool_compute_features),
+        wrap("compute_features", profile_runtime._tool_compute_features),
     )
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_assemble_profile",
-        wrap("assemble_profile", profile_tools._tool_assemble_profile),
+        wrap("assemble_profile", profile_runtime._tool_assemble_profile),
     )
     monkeypatch.setattr(
-        profile_tools,
+        profile_runtime,
         "_tool_save_or_update_profile",
-        wrap("save_or_update_profile", profile_tools._tool_save_or_update_profile),
+        wrap("save_or_update_profile", profile_runtime._tool_save_or_update_profile),
     )
     profile_runtime.get_learning_profile_agent.cache_clear()
     return trace
