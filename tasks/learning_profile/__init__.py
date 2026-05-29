@@ -1,32 +1,8 @@
-"""Learning profile agent package.
+"""学习画像内部包。
 
-This package holds the small, stable contracts used by
-``tasks.learning_profile_task``. The task module still owns the public tool
-entry points while the package gives those contracts a home that can grow
-without turning the task file into the whole subsystem.
+跨模块业务入口请使用 ``tasks.learning_profile_task``。
+本包只承载学习画像模块的内部实现，具体分层按文件名进入：
+models、storage、personal_syllabus、agent_tools、agent_runtime、service。
 """
 
-from .models import LearningProfileDeps, LearningProfileResult
-from .storage import (
-	load_json_file,
-	build_personal_profile_path,
-	get_persisted_learning_profile,
-	load_existing_profile,
-	merge_profile_update,
-	profile_has_required_identity,
-	profile_root_dir,
-	save_personal_profile,
-)
-
-__all__ = [
-	"LearningProfileDeps",
-	"LearningProfileResult",
-	"build_personal_profile_path",
-	"get_persisted_learning_profile",
-	"load_existing_profile",
-	"load_json_file",
-	"merge_profile_update",
-	"profile_has_required_identity",
-	"profile_root_dir",
-	"save_personal_profile",
-]
+__all__: list[str] = []

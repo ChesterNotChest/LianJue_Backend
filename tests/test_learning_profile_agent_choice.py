@@ -10,6 +10,10 @@ from schemas.syllabus import Syllabus
 from schemas.user import User
 from schemas.user_syllabus import UserSyllabus
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import agent_runtime as profile_runtime
+from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import service as profile_service
+from config import OPENAI_COMPAT_MODEL_CONFIGS
 
 
 WORKING_SYLLABUS_PATH = "tests/fixtures/大数据概论_20260322235507.json"
@@ -27,12 +31,12 @@ EXPECTED_TOOL_ORDER = [
 
 
 def _normalize_model_for_dashscope():
-    text_config = lpt.OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
+    text_config = OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
     api_base = str(text_config.get("api_base") or text_config.get("base_url") or "")
     model_name = str(text_config.get("model_name") or "")
     if "dashscope.aliyuncs.com" in api_base and model_name.startswith("openai/"):
         text_config["model_name"] = model_name.removeprefix("openai/")
-        lpt.get_learning_profile_agent.cache_clear()
+        profile_runtime.get_learning_profile_agent.cache_clear()
 
 
 def _trace_agent_tools(monkeypatch):
@@ -48,41 +52,41 @@ def _trace_agent_tools(monkeypatch):
         return traced
 
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_load_existing_profile_context",
-        wrap("load_existing_profile_context", lpt._tool_load_existing_profile_context),
+        wrap("load_existing_profile_context", profile_tools._tool_load_existing_profile_context),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_load_history_context",
-        wrap("load_history_context", lpt._tool_load_history_context),
+        wrap("load_history_context", profile_tools._tool_load_history_context),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_load_personal_syllabus_context",
-        wrap("load_personal_syllabus_context", lpt._tool_load_personal_syllabus_context),
+        wrap("load_personal_syllabus_context", profile_tools._tool_load_personal_syllabus_context),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_normalize_events",
-        wrap("normalize_events", lpt._tool_normalize_events),
+        wrap("normalize_events", profile_tools._tool_normalize_events),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_compute_features",
-        wrap("compute_features", lpt._tool_compute_features),
+        wrap("compute_features", profile_tools._tool_compute_features),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_assemble_profile",
-        wrap("assemble_profile", lpt._tool_assemble_profile),
+        wrap("assemble_profile", profile_tools._tool_assemble_profile),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_tools,
         "_tool_save_or_update_profile",
-        wrap("save_or_update_profile", lpt._tool_save_or_update_profile),
+        wrap("save_or_update_profile", profile_tools._tool_save_or_update_profile),
     )
-    lpt.get_learning_profile_agent.cache_clear()
+    profile_runtime.get_learning_profile_agent.cache_clear()
     return trace
 
 
@@ -131,7 +135,7 @@ def test_learning_profile_agent_selects_expected_tools(monkeypatch, db_learning_
 
     _normalize_model_for_dashscope()
     user, syllabus, relation = db_learning_profile_case
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda *args, **kwargs: [])
 
     trace = _trace_agent_tools(monkeypatch)
     payload = {
@@ -193,7 +197,7 @@ def test_learning_profile_agent_selects_expected_tools(monkeypatch, db_learning_
     try:
         profile = lpt.build_learning_profile(**payload)
     finally:
-        lpt.get_learning_profile_agent.cache_clear()
+        profile_runtime.get_learning_profile_agent.cache_clear()
 
     output = {
         "profile": profile,

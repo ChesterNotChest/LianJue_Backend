@@ -1257,7 +1257,7 @@ def test_real_rag_generative_agent_creates_personalized_resource(monkeypatch, tm
     if os.getenv("RUN_LLM_TESTS") != "1" or os.getenv("RUN_SEARCH_TESTS") != "1":
         pytest.skip("Set RUN_LLM_TESTS=1 and RUN_SEARCH_TESTS=1 to run the real RAG generative chain.")
 
-    from tasks.search_tool import search_tool
+    from tasks.common.search_tool import search_tool
     from utils.llm_utils import get_model_instance
 
     graph_name = os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"

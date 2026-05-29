@@ -1,5 +1,8 @@
-from tasks.study_graph.contracts import *
-from tasks.study_graph.features import *
-from tasks.study_graph.normalizer import *
-from tasks.study_graph.storage import *
-from tasks.study_graph.tree_builder import *
+"""学习进度图谱内部包。
+
+跨模块业务入口请使用 ``tasks.study_graph_task``。
+本包只承载图谱模块的内部实现，具体分层按文件名进入：
+contracts、normalizer、storage、tree_builder、features、service、student_agent。
+"""
+
+__all__: list[str] = []

@@ -8,6 +8,7 @@ import pytest
 from tasks import personal_recommendation_task as prt
 from tasks.personal_recommendation import agent_runtime as prar
 from tasks.personal_recommendation import agent_tools as prat
+from tasks.personal_recommendation import service as prs
 from tasks.personal_recommendation.sample_data import goals as sample_goals
 from tasks.personal_recommendation.sample_data import learning_tree, user_profile
 
@@ -116,8 +117,8 @@ def test_personal_recommendation_agent_selects_expected_tools(monkeypatch):
             "error": "",
         },
     )
-    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: user_profile)
-    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prs, "build_recommendation_profile", lambda user_id, syllabus_id=None: user_profile)
+    monkeypatch.setattr(prs, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
 
     payload = {
         "user_id": 12345,
@@ -181,8 +182,8 @@ def test_personal_recommendation_agent_real_rag_optional(monkeypatch):
     artifact_root = _reset_artifact_root("agent_choice_real_rag")
     trace, tool_outputs = _trace_agent_tools(monkeypatch)
 
-    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: user_profile)
-    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prs, "build_recommendation_profile", lambda user_id, syllabus_id=None: user_profile)
+    monkeypatch.setattr(prs, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
 
     payload = {
         "user_id": 12345,

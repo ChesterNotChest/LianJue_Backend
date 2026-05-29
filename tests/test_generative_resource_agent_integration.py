@@ -220,7 +220,7 @@ def _require_real_search_tool():
     if os.getenv("RUN_SEARCH_TESTS") != "1":
         pytest.skip("Set RUN_SEARCH_TESTS=1 to run real search-backed generation tests.")
     try:
-        from tasks.search_tool import search_tool
+        from tasks.common.search_tool import search_tool
     except ModuleNotFoundError as exc:
         pytest.skip(f"Real search dependency is unavailable: {exc}")
 

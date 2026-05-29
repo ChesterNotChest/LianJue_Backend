@@ -1,6 +1,8 @@
+import importlib
+
 import pytest
 
-from tasks import search_tool as st
+st = importlib.import_module("tasks.common.search_tool")
 
 
 class FakeRetriever:

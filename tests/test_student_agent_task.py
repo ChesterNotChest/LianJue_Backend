@@ -1,4 +1,4 @@
-from tasks import student_agent_task as sat
+from tasks.study_graph import student_agent as sat
 
 
 def test_merge_parent_candidates_uses_tree_context_for_missing_child_mapping():

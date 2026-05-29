@@ -10,7 +10,7 @@ from extensions import db
 from schemas.syllabus import Syllabus
 from schemas.user import User
 from schemas.user_syllabus import UserSyllabus
-from tasks import student_agent_task as sat
+from tasks.study_graph import student_agent as sat
 from tasks.study_graph import storage as study_graph_storage
 
 

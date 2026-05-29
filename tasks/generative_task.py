@@ -1,9 +1,11 @@
-"""Public task facade for generative resources.
+"""生成资源模块门户。
 
-All cross-module calls for resource generation should enter here. The internal
-implementation lives under ``tasks.generative``.
+跨模块调用和 API 层调用都应从这里进入；具体的规划 Agent、生成 Agent、
+资源持久化、校验和存储工具下沉在 ``tasks.generative`` 包内。
 """
 
+################
+# 稳定契约：资源类型、schema 版本、manifest 版本等跨模块常量。
 from tasks.generative.contracts import (
     GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
     GENERATIVE_DOCUMENT_SCHEMA_VERSION,
@@ -14,6 +16,9 @@ from tasks.generative.contracts import (
     GENERATIVE_RESOURCE_TYPES,
     MINDMAP_ALLOWED_DIAGRAM_PREFIXES,
 )
+
+################
+# 持久化入口：生成资源文件、落盘 manifest，并提供具体资源类型的保存函数。
 from tasks.generative.resource_persistence import (
     generate_coding_practice,
     generate_mindmap,
@@ -28,17 +33,26 @@ from tasks.generative.resource_persistence import (
     persist_quiz_resource,
     persist_structured_document_resource,
 )
+
+################
+# 生成 Agent 实现：门面保留可 monkeypatch 的兼容 wrapper，真实逻辑在包内。
 from tasks.generative import resource_generation_agent as _generation_impl
 from tasks.generative.resource_generation_agent import (
     LLMResourceGenerationAgent as _BaseLLMResourceGenerationAgent,
     build_single_resource_payload,
     normalize_generation_request,
 )
+
+################
+# 规划 Agent：为资源生成整理计划、检索材料、生成资源草稿。
 from tasks.generative.resource_planning_agent import (
     ResourcePlanningAgent,
     get_resource_planning_agent,
     run_resource_planning_agent,
 )
+
+################
+# 存储工具：workspace、manifest、resource id、JSON/text 文件读写。
 from tasks.generative.storage import (
     _get_backend_root,
     _get_generative_root,
@@ -56,6 +70,9 @@ from tasks.generative.storage import (
     write_json,
     write_text,
 )
+
+################
+# 校验工具：资源 payload 校验与 Mermaid 文本校验。
 from tasks.generative.validation import (
     strip_mermaid_fence,
     validate_coding_practice_payload,
