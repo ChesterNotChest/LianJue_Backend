@@ -4,6 +4,10 @@
 资源持久化、校验和存储工具下沉在 ``tasks.generative`` 包内。
 """
 
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 ################
 # 稳定契约：资源类型、schema 版本、manifest 版本等跨模块常量。
 from tasks.generative.contracts import (
@@ -134,6 +138,143 @@ def generate_resources_from_request(
     )
 
 
+def _resource_summary_from_entry(entry: dict) -> dict:
+    return {
+        "resource_id": entry.get("resource_id"),
+        "resource_type": entry.get("resource_type"),
+        "title": entry.get("title"),
+        "topic": entry.get("topic"),
+        "syllabus_id": entry.get("syllabus_id"),
+        "status": entry.get("status"),
+        "resource_dir": entry.get("resource_dir"),
+        "main_files": entry.get("main_files") if isinstance(entry.get("main_files"), dict) else {},
+        "validation": entry.get("validation") if isinstance(entry.get("validation"), dict) else {},
+        "metadata": entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {},
+        "created_at": entry.get("created_at"),
+        "updated_at": entry.get("updated_at"),
+    }
+
+
+def _entry_matches(entry: dict, syllabus_id: Optional[int], resource_type: Optional[str]) -> bool:
+    if syllabus_id is not None:
+        try:
+            if int(entry.get("syllabus_id")) != int(syllabus_id):
+                return False
+        except (TypeError, ValueError):
+            return False
+    if resource_type and str(entry.get("resource_type") or "") != str(resource_type):
+        return False
+    return True
+
+
+def _resolve_repo_path(path_value: Any) -> Optional[Path]:
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+    backend_root = _get_backend_root().resolve()
+    path_obj = Path(path_value.strip())
+    try:
+        resolved = path_obj.resolve() if path_obj.is_absolute() else (backend_root / path_obj).resolve()
+    except Exception:
+        return None
+    try:
+        resolved.relative_to(backend_root)
+    except ValueError:
+        return None
+    return resolved
+
+
+def _read_text_file(path_value: Any) -> Optional[str]:
+    resolved = _resolve_repo_path(path_value)
+    if resolved is None or not resolved.exists():
+        return None
+    try:
+        return resolved.read_text(encoding="utf-8")
+    except Exception:
+        return None
+
+
+def _read_resource_json(path_value: Any) -> Optional[dict]:
+    resolved = _resolve_repo_path(path_value)
+    if resolved is None or not resolved.exists():
+        return None
+    try:
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def list_generated_resources(
+    user_id: int,
+    syllabus_id: Optional[int] = None,
+    resource_type: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> List[dict]:
+    manifest = load_manifest(int(user_id))
+    entries = [
+        _resource_summary_from_entry(entry)
+        for entry in manifest.get("resources", [])
+        if isinstance(entry, dict) and _entry_matches(entry, syllabus_id, resource_type)
+    ]
+    entries.sort(key=lambda item: int(item.get("created_at") or 0), reverse=True)
+    if limit is not None:
+        try:
+            entries = entries[: max(0, int(limit))]
+        except (TypeError, ValueError):
+            entries = []
+    return entries
+
+
+def list_generated_resources_by_type(
+    user_id: int,
+    syllabus_id: Optional[int] = None,
+    limit_per_type: Optional[int] = None,
+) -> Dict[str, List[dict]]:
+    resources = list_generated_resources(user_id=user_id, syllabus_id=syllabus_id)
+    grouped: Dict[str, List[dict]] = {}
+    for item in resources:
+        key = str(item.get("resource_type") or "unknown")
+        grouped.setdefault(key, []).append(item)
+    if limit_per_type is not None:
+        try:
+            limit_value = max(0, int(limit_per_type))
+        except (TypeError, ValueError):
+            limit_value = 0
+        grouped = {key: value[:limit_value] for key, value in grouped.items()}
+    return grouped
+
+
+def get_generated_resource_detail(user_id: int, resource_id: str) -> Optional[dict]:
+    if not resource_id:
+        return None
+    manifest = load_manifest(int(user_id))
+    entry = None
+    for item in manifest.get("resources", []):
+        if isinstance(item, dict) and str(item.get("resource_id") or "") == str(resource_id):
+            entry = item
+            break
+    if not entry:
+        return None
+
+    summary = _resource_summary_from_entry(entry)
+    main_files = summary["main_files"]
+    content = _read_resource_json(main_files.get("json_path"))
+    if content is None:
+        return None
+
+    render = {}
+    if main_files.get("md_path"):
+        render["markdown"] = _read_text_file(main_files.get("md_path"))
+    if main_files.get("mermaid_path"):
+        render["mermaid"] = _read_text_file(main_files.get("mermaid_path"))
+
+    return {
+        **summary,
+        "content": content,
+        "render": render,
+    }
+
+
 # Backward-compatible aliases used by existing tests and callers.
 _new_resource_id = new_resource_id
 _normalize_positive_int = normalize_positive_int
@@ -180,9 +321,12 @@ __all__ = [
     "generate_resources_from_request",
     "generate_single_resource_from_request",
     "generate_structured_document",
+    "get_generated_resource_detail",
     "get_generative_user_root",
     "get_resource_planning_agent",
     "load_manifest",
+    "list_generated_resources",
+    "list_generated_resources_by_type",
     "new_resource_id",
     "normalize_positive_int",
     "normalize_generation_request",

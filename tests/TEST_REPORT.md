@@ -9,7 +9,7 @@
 - `learning_profile_task` 集成测试必须包含真实 Agent。
 - `study_graph_task` 集成测试必须包含真实 Student Agent。
 - `alignment`、`profile_builder`、`storage`、`validation`、`renderers` 等包内低层模块不单独作为集成测试入口；它们通过 task 工具链被间接覆盖，细节由单元测试验证。
-- `material_task` 是生成结果的展示包装层，不属于真实 Agent 集成链路；它放在资源生成单元测试包中验证。
+- `generative_task` 同时承担资源生成入口和生成结果展示包装入口；manifest 列表/详情包装放在资源生成单元测试包中验证。
 - 单元测试只验证各工具自身，不调用真实 Agent，不调用真实搜索。
 
 ## 1 快速上手
@@ -221,7 +221,7 @@ markers =
 - `search_tool` 必须由资源编排 Agent 根据 payload 自行调用，测试不允许外部预先指定检索 query。
 - `tasks.generative.resource_persistence` 负责确定性的校验、渲染、落盘和 manifest 写入。
 - `generative.validation`、`generative.renderers`、`generative.storage` 是生成链路内部实现模块，本集成测试只检查最终生成、校验、渲染和落盘结果。
-- `material_task` 不在本集成测试中验证；它只负责读取 manifest 并包装成前端可渲染 detail，属于单元测试包 3。
+- `generative_task` 的 manifest 列表/详情包装不在本集成测试中重点验证；它只负责读取 manifest 并包装成前端可渲染 detail，属于单元测试包 3。
 
 默认场景：
 
@@ -464,8 +464,8 @@ payload[]
 - invalid Mermaid / quiz / document payload 标记为 `invalid`。
 - invalid ppt payload 标记为 `invalid`。
 - 同一用户连续生成四类资源时，manifest 能累计记录所有资源。
-- `material_task` 能按 `created_at` 列出最新生成资源，并按资源类型分组。
-- `material_task` 能基于 manifest 读取生成资源 detail，返回可直接渲染的 `content` 和 `render`。
+- `generative_task` 能按 `created_at` 列出最新生成资源，并按资源类型分组。
+- `generative_task` 能基于 manifest 读取生成资源 detail，返回可直接渲染的 `content` 和 `render`。
 - 生成资源 manifest 中的 repo-relative 路径固定按后端根目录解析，不依赖服务启动时的当前工作目录。
 - 旧 draft / publish / legacy gen API 口岸返回 deprecated 语义；detail/list API 走新的 generated resource 包装链路。
 

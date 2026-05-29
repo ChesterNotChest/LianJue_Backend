@@ -18,7 +18,7 @@ def test_learning_init_personal_syllabus_uses_profile_facade(monkeypatch):
         calls.append((user_id, syllabus_id))
         return "schedule/student_alt/user_3/12_personal.json"
 
-    monkeypatch.setattr(learning_api.learning_task, "init_personal_syllabus", fake_init)
+    monkeypatch.setattr(learning_api, "_init_personal_syllabus_for_display", fake_init)
 
     client = _make_app().test_client()
     response = client.post(
@@ -46,7 +46,7 @@ def test_learning_personal_syllabus_detail_stays_display_only(monkeypatch):
             "period": [{"week_index": "1", "competance": "none"}],
         }
 
-    monkeypatch.setattr(learning_api.learning_task, "get_personal_syllabus_detail_info", fake_detail)
+    monkeypatch.setattr(learning_api, "_get_personal_syllabus_detail_for_display", fake_detail)
 
     client = _make_app().test_client()
     response = client.post(

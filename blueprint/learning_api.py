@@ -1,10 +1,68 @@
 from flask import Blueprint, jsonify, request
 
-from tasks import learning_task
+from repositories.user_syllabus_repo import get_user_syllabus
+from tasks import learning_profile_task
 from tasks.personal_recommendation_task import run_recommendation_route_from_payload
 
 
 bp = Blueprint('learning_api', __name__, url_prefix='/api')
+
+
+def _coerce_positive_ids(user_id, syllabus_id):
+    try:
+        normalized_user_id = int(user_id)
+        normalized_syllabus_id = int(syllabus_id)
+    except Exception:
+        return None
+    if normalized_user_id <= 0 or normalized_syllabus_id <= 0:
+        return None
+    return normalized_user_id, normalized_syllabus_id
+
+
+def _get_personal_syllabus_path(user_id: int, syllabus_id: int):
+    try:
+        relation = get_user_syllabus(user_id, syllabus_id)
+    except Exception:
+        return None
+    path = getattr(relation, "personal_syllabus_path", None) if relation else None
+    return path if isinstance(path, str) and path.strip() else None
+
+
+def _init_personal_syllabus_for_display(user_id: int, syllabus_id: int):
+    normalized = _coerce_positive_ids(user_id, syllabus_id)
+    if normalized is None:
+        return False
+    user_id, syllabus_id = normalized
+
+    existing = learning_profile_task.read_profile_personal_syllabus(user_id, syllabus_id, hydrate=False)
+    if isinstance(existing, dict):
+        return _get_personal_syllabus_path(user_id, syllabus_id) or False
+
+    created = learning_profile_task.init_profile_personal_syllabus(user_id, syllabus_id)
+    if not isinstance(created, dict):
+        return False
+    return created.get("personal_syllabus_path") or False
+
+
+def _get_personal_syllabus_detail_for_display(user_id: int, syllabus_id: int):
+    normalized = _coerce_positive_ids(user_id, syllabus_id)
+    if normalized is None:
+        return None
+    user_id, syllabus_id = normalized
+
+    personal = learning_profile_task.read_profile_personal_syllabus(user_id, syllabus_id, hydrate=True)
+    if isinstance(personal, dict):
+        return personal
+
+    created = learning_profile_task.init_profile_personal_syllabus(user_id, syllabus_id)
+    if not isinstance(created, dict):
+        return None
+
+    personal = learning_profile_task.read_profile_personal_syllabus(user_id, syllabus_id, hydrate=True)
+    if isinstance(personal, dict):
+        return personal
+    fallback = created.get("personal_syllabus")
+    return fallback if isinstance(fallback, dict) else None
 
 
 @bp.route('/learning_init_personal_syllabus', methods=['POST'])
@@ -22,7 +80,7 @@ def init_personal_syllabus_api():
         }), 400
 
     try:
-        personal_path = learning_task.init_personal_syllabus(int(user_id), int(syllabus_id))
+        personal_path = _init_personal_syllabus_for_display(int(user_id), int(syllabus_id))
         if not personal_path:
             return jsonify({
                 'success': False,
@@ -65,7 +123,7 @@ def get_personal_syllabus_detail_info_api():
         }), 400
 
     try:
-        syllabus = learning_task.get_personal_syllabus_detail_info(int(user_id), int(syllabus_id))
+        syllabus = _get_personal_syllabus_detail_for_display(int(user_id), int(syllabus_id))
         if syllabus is None:
             return jsonify({
                 'success': False,
