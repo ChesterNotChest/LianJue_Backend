@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import time
+import zipfile
 
 import pytest
 
@@ -238,6 +239,29 @@ def _progress(stage, detail=""):
     print(message, flush=True)
 
 
+RESOURCE_AGENT_TOOL_ORDER = [
+    "read_generation_request",
+    "read_generation_plan",
+    "retrieve_generation_materials",
+    "write_generation_draft",
+    "generate_resource_payload",
+    "persist_generated_resource",
+]
+
+
+def _assert_tool_order_subsequence(trace, expected):
+    positions = []
+    start = 0
+    for tool_name in expected:
+        try:
+            index = trace.index(tool_name, start)
+        except ValueError:
+            raise AssertionError(f"{tool_name} not found in trace after index {start}: {trace}") from None
+        positions.append(index)
+        start = index + 1
+    return positions
+
+
 def _require_real_search_tool():
     if os.getenv("RUN_SEARCH_TESTS") != "1":
         pytest.skip("Set RUN_SEARCH_TESTS=1 to run real search-backed generation tests.")
@@ -288,6 +312,8 @@ def _assert_real_ppt_resource(tmp_path, resource, expected_min_slides=6):
     assert resource["validation"]["valid"] is True
     assert pptx_path.exists()
     assert pptx_path.stat().st_size > 0
+    with zipfile.ZipFile(pptx_path) as archive:
+        assert not any(name.startswith("ppt/notesSlides/") for name in archive.namelist())
     assert isinstance(ppt_json.get("slides"), list)
     assert len(ppt_json["slides"]) >= expected_min_slides
     assert len(presentation.slides) == len(ppt_json["slides"])
@@ -483,6 +509,76 @@ def test_resource_generation_agent_tools_persist_from_mock_generation(monkeypatc
         "write_generation_draft",
     ]
     assert state["planning_bundle"]["learning_brief"]["topic"] == normalized["topic"]
+
+
+def test_resource_agent_persist_tool_is_idempotent_after_output_retry(monkeypatch, tmp_path):
+    from tasks.generative.resource_agent_tools import (
+        tool_generate_resource_payload,
+        tool_persist_generated_resource,
+        tool_read_generation_plan,
+        tool_read_generation_request,
+        tool_retrieve_generation_materials,
+        tool_write_generation_draft,
+    )
+
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    planner = gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
+    normalized = gt.normalize_generation_request(dict(FIXED_PAYLOAD))
+    state = {
+        "request": gt.build_single_resource_payload(normalized, "documents"),
+        "resource_type": "documents",
+        "planning_agent": planner,
+        "generation_tool": FakeResourceGenerationAgent(),
+        "tool_trace": [],
+    }
+
+    tool_read_generation_request(state)
+    tool_read_generation_plan(state)
+    tool_retrieve_generation_materials(state)
+    tool_write_generation_draft(state)
+    tool_generate_resource_payload(state)
+    first = tool_persist_generated_resource(state)
+    second = tool_persist_generated_resource(state)
+
+    manifest = json.loads((tmp_path / "generative" / "user_19" / "manifest.json").read_text(encoding="utf-8"))
+    assert first["success"] is True
+    assert second["success"] is True
+    assert second["idempotent"] is True
+    assert first["resource"]["resource_id"] == second["resource"]["resource_id"]
+    assert manifest["resource_count"] == 1
+
+
+def test_coding_practice_persistence_aligns_entry_file_and_command(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+    payload = gt.build_single_resource_payload(gt.normalize_generation_request(dict(FIXED_PAYLOAD)), "coding_practice")
+    generated = {
+        "schema_version": "v1",
+        "title": "RowKey practice",
+        "topic": payload["topic"],
+        "language": "python",
+        "summary": "practice",
+        "learning_objectives": ["understand RowKey hotspot"],
+        "steps": [{"title": "Run", "instruction": "Run exercise.py"}],
+        "code_files": [
+            {"path": "code/utils.py", "purpose": "support", "content": "def helper():\n    return 'helper'\n"},
+            {"path": "code/exercise.py", "purpose": "entry", "content": "print('rowkey hotspot practice')\n"},
+        ],
+        "run_guide": {
+            "entry_file": "code/utils.py",
+            "command": "python exercise.py",
+            "expected_output": "rowkey hotspot practice",
+        },
+    }
+
+    result = gt.persist_generated_resource(payload, generated)
+    practice_json = json.loads((tmp_path / result["json_path"]).read_text(encoding="utf-8"))
+
+    assert result["success"] is True
+    assert result["validation"]["valid"] is True
+    assert practice_json["run_guide"]["entry_file"] == "code/exercise.py"
+    assert practice_json["run_guide"]["command"] == "python code/exercise.py"
+    assert result["entry_file_path"].endswith("code/exercise.py")
 
 
 def test_resource_agent_compacts_generation_context(monkeypatch, tmp_path):
@@ -797,18 +893,12 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     assert result["failed_count"] == 0
     assert [item["resource_type"] for item in result["resources"]] == expected_types
     assert len(search_recorder.calls) == len(expected_types)
-    assert result["tool_trace"] == [
-        item
-        for _ in expected_types
-        for item in [
-            "read_generation_request",
-            "read_generation_plan",
-            "retrieve_generation_materials",
-            "write_generation_draft",
-            "generate_resource_payload",
-            "persist_generated_resource",
-        ]
-    ]
+    global_trace = result["tool_trace"]
+    assert all(global_trace.count(tool_name) >= len(expected_types) for tool_name in RESOURCE_AGENT_TOOL_ORDER)
+    trace_start = 0
+    for _ in expected_types:
+        positions = _assert_tool_order_subsequence(global_trace[trace_start:], RESOURCE_AGENT_TOOL_ORDER)
+        trace_start += positions[-1] + 1
 
     manifest = json.loads((artifact_backend / "generative" / f"user_{payload['user_id']}" / "manifest.json").read_text(encoding="utf-8"))
     _progress("validate manifest", f"resource_count={manifest.get('resource_count')}")
@@ -833,6 +923,7 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
         assert resource["success"] is True
         assert resource["status"] == "ready"
         assert resource["validation"]["valid"] is True
+        _assert_tool_order_subsequence(resource["tool_trace"], RESOURCE_AGENT_TOOL_ORDER)
         assert resource["planning_trace"] == [
             "read_generation_plan",
             "retrieve_generation_materials",

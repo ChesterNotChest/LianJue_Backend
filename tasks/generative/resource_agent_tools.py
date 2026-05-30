@@ -317,6 +317,17 @@ def tool_generate_resource_payload(state: Dict[str, Any]) -> Dict[str, Any]:
 
 def tool_persist_generated_resource(state: Dict[str, Any]) -> Dict[str, Any]:
     _append_trace(state, "persist_generated_resource")
+    existing_resource = state.get("persisted_resource")
+    if isinstance(existing_resource, dict) and existing_resource.get("success") is True:
+        return {
+            "tool": "persist_generated_resource",
+            "success": bool(existing_resource.get("success")),
+            "resource_type": existing_resource.get("resource_type") or state.get("resource_type") or "",
+            "resource": existing_resource,
+            "idempotent": True,
+            "error_code": existing_resource.get("error_code") or "",
+            "error_message": existing_resource.get("error_message") or "",
+        }
     request = state.get("request") if isinstance(state.get("request"), dict) else {}
     resource_type = _safe_text(state.get("resource_type") or request.get("resource_type"))
     generated_content = state.get("generated_content")

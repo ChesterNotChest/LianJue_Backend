@@ -459,6 +459,24 @@ def _normalize_practice_code_files(raw_code_files: Any, *, language: str, topic:
     return normalized or [_default_practice_code_file(language, topic)]
 
 
+def _select_practice_entry_file(code_files: list[dict], *, language: str) -> str:
+    extension = ".java" if language == "java" else ".py"
+    for item in code_files:
+        if not isinstance(item, dict):
+            continue
+        path = _safe_text(item.get("path")).replace("\\", "/")
+        purpose = _safe_text(item.get("purpose")).lower()
+        if purpose == "entry" and path.endswith(extension):
+            return path
+    for item in code_files:
+        if not isinstance(item, dict):
+            continue
+        path = _safe_text(item.get("path")).replace("\\", "/")
+        if path.endswith(extension):
+            return path
+    return _safe_text((code_files[0] or {}).get("path")) if code_files else ("code/Main.java" if language == "java" else "code/main.py")
+
+
 def _normalize_practice_run_guide(
     raw_run_guide: Any,
     *,
@@ -468,12 +486,17 @@ def _normalize_practice_run_guide(
     valid_paths: set[str],
 ) -> dict:
     run_guide = dict(raw_run_guide) if isinstance(raw_run_guide, dict) else {}
-    default_command = "javac code/Main.java && java -cp code Main" if language == "java" else "python code/main.py"
+    default_command = f"javac {entry_file} && java -cp code Main" if language == "java" else f"python {entry_file}"
     requested_entry_file = _safe_text(run_guide.get("entry_file"))
-    normalized_entry_file = requested_entry_file if requested_entry_file in valid_paths else entry_file
+    normalized_entry_file = requested_entry_file if requested_entry_file == entry_file and requested_entry_file in valid_paths else entry_file
+    command = _safe_text(run_guide.get("command")) or default_command
+    if language == "python" and normalized_entry_file.endswith(".py") and normalized_entry_file not in command:
+        command = f"python {normalized_entry_file}"
+    if language == "java" and normalized_entry_file.endswith(".java") and normalized_entry_file not in command:
+        command = f"javac {normalized_entry_file} && java -cp code Main"
     return {
         "entry_file": normalized_entry_file,
-        "command": _safe_text(run_guide.get("command")) or default_command,
+        "command": command,
         "expected_output": _safe_text(run_guide.get("expected_output")) or topic,
     }
 
@@ -494,12 +517,13 @@ def persist_coding_practice_resource(payload: dict, generated: dict) -> dict:
     title = str(generated.get("title") or f"{topic} 实操案例").strip() or f"{topic} 实操案例"
     language = _normalize_practice_language(generated.get("language") or payload.get("language"))
     code_files = _normalize_practice_code_files(generated.get("code_files"), language=language, topic=topic)
+    entry_file = _select_practice_entry_file(code_files, language=language)
     steps = _normalize_practice_steps(generated.get("steps"), question=str(payload.get("question") or ""))
     run_guide = _normalize_practice_run_guide(
         generated.get("run_guide"),
         language=language,
         topic=topic,
-        entry_file=code_files[0]["path"],
+        entry_file=entry_file,
         valid_paths={str(item.get("path") or "") for item in code_files if isinstance(item, dict)},
     )
     practice_json = {
