@@ -33,7 +33,7 @@ syllabus JSON
 
 `syllabus_json_to_learning_tree(syllabus_json: Any) -> dict`
 
-输入：
+输入 1：章节/小节结构
 
 ```json
 {
@@ -49,7 +49,26 @@ syllabus JSON
 }
 ```
 
-输出：
+输入 2：教学周/课次 `period` 结构
+
+```json
+{
+  "title": "大数据概论",
+  "day_one": "2026-03-02",
+  "graph_name": "RAG",
+  "period": [
+    {
+      "week_index": "6",
+      "content": "HBase：高可靠、高性能、面向列、可伸缩的分布式数据库",
+      "enhanced_content": "HBase 运行在 HDFS 之上，适合海量稀疏数据存储，并涉及 RowKey 设计、Region 划分和热点规避。",
+      "importance": "medium",
+      "day_one": ""
+    }
+  ]
+}
+```
+
+输出示例：
 
 ```json
 {
@@ -70,9 +89,35 @@ syllabus JSON
 }
 ```
 
+`period` 输出示例：
+
+```json
+{
+  "hbase_distributed_database": {
+    "title": "HBase 分布式数据库",
+    "prerequisites": ["distributed_storage_management"],
+    "outcomes": ["HBase 分布式数据库", "hbase_distributed_database", "hbase_basic"],
+    "difficulty": 2,
+    "learning_time_est": 1,
+    "node_source": "syllabus_period",
+    "week_index": "6",
+    "day_one": "",
+    "importance": "medium",
+    "description": "HBase 运行在 HDFS 之上，适合海量稀疏数据存储，并涉及 RowKey 设计、Region 划分和热点规避。"
+  }
+}
+```
+
 ### 关键逻辑
 
 - 识别 `chapters -> sections -> topics/subtopics` 这类嵌套结构。
+- 识别 `period` 这类教学周/课次结构，但不能把 `week_6` 作为主学习节点。
+- `period` 节点身份必须优先来自内容语义：从 `content`、`enhanced_content`、冒号前主题、关键词短语中抽取 `title` 和稳定 `node_id`。
+- `week_index`、`day_one`、`importance` 只作为节点元数据保留，不定义节点身份。
+- 周次顺序可以生成弱先修边，但边连接的是语义节点，例如 `distributed_storage_management -> hbase_distributed_database`，不是 `week_5 -> week_6`。
+- `importance` 可以映射为默认难度：`low=1`、`medium=2`、`high=3`；缺失时使用默认难度。
+- `enhanced_content` 可作为 `description` 或后续 RAG/解释字段保留。
+- 只有无法抽取任何语义主题时，才 fallback 到 `period_{week_index}`，并标记 `node_source="syllabus_period_fallback"`，方便后续质量检查。
 - 父子节点自动生成弱先修边：`parent -> child`。
 - 如果节点已有显式 `prerequisites`，优先保留显式先修边。
 - 对没有 `outcomes` 的目录节点，使用标题生成最小 outcome，避免算法无法匹配目标。
@@ -83,6 +128,11 @@ syllabus JSON
 - 父子边存在。
 - 显式 prerequisites 不被覆盖。
 - 展开后的树能生成长度大于 1 的候选路径。
+- `period` syllabus 能展开为语义主题节点，而不是 `week_x` 主节点。
+- `period.week_index`、`day_one`、`importance` 被保留为元数据。
+- `period` 周次顺序能生成语义节点之间的弱先修边。
+- `period` 节点 outcomes 至少包含语义标题和稳定 slug，使 RowKey/HBase 这类目标可以命中。
+- 无法抽取语义主题的 `period` 才使用 `period_{week_index}` fallback，并带 `node_source="syllabus_period_fallback"`。
 
 ## 阶段 2：引入推荐图构建器，分离“原始大纲”和“推荐用图”
 
