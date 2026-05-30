@@ -7,16 +7,15 @@ graph change candidates, submits them, and reads back the tree/features.
 from __future__ import annotations
 
 import json
-import os
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
+from tasks.common.agent_model import build_openai_compatible_model
 from tasks.common.search_tool import search_tool
 from tasks.study_graph.normalizer import normalize_knowledge_title
 from tasks.study_graph.service import (
@@ -42,6 +41,32 @@ class StudentAgentResult(BaseModel):
     tool_trace: list[str] = Field(default_factory=list)
     error_message: str = ""
     error_code: str = ""
+
+    @field_validator("tree", "features", mode="before")
+    @classmethod
+    def _empty_string_to_none_for_dict(cls, value: Any) -> Any:
+        if value == "":
+            return None
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except Exception:
+                return value
+            return parsed if isinstance(parsed, dict) else value
+        return value
+
+    @field_validator("changes", mode="before")
+    @classmethod
+    def _empty_string_to_none_for_list(cls, value: Any) -> Any:
+        if value == "":
+            return None
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except Exception:
+                return value
+            return parsed if isinstance(parsed, list) else value
+        return value
 
 
 def _normalize_rag_context_items(payload: Dict[str, Any], runtime_rag_context: Any) -> list[dict]:
@@ -176,14 +201,7 @@ def get_student_learning_graph(user_id: int, syllabus_id: int, include_debug: bo
 
 
 def _build_student_agent_model() -> OpenAIModel:
-    text_config = OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
-    model_name = str(text_config.get("model_name") or "").strip()
-    if not model_name:
-        raise RuntimeError('missing MODEL_CONFIGS["text"]["model_name"] for student agent')
-    base_url = str(text_config.get("api_base") or text_config.get("base_url") or "").strip() or None
-    api_key = str(text_config.get("api_key") or os.getenv("OPENAI_API_KEY") or "").strip() or None
-    provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-    return OpenAIModel(model_name, provider=provider)
+    return build_openai_compatible_model(agent_name="student agent")
 
 
 @lru_cache(maxsize=1)

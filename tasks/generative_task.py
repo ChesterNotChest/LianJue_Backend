@@ -46,6 +46,15 @@ from tasks.generative.resource_generation_agent import (
     build_single_resource_payload,
     normalize_generation_request,
 )
+from tasks.generative.resource_agent_contracts import (
+    RESOURCE_AGENT_SCHEMA_VERSION,
+    RESOURCE_GENERATION_TOOL_ORDER,
+    ResourceGenerationAgentResult,
+)
+from tasks.generative.resource_agent_runtime import (
+    build_resource_generation_agent,
+    run_single_resource_generation_agent as _run_single_resource_generation_agent,
+)
 
 ################
 # 规划 Agent：为资源生成整理计划、检索材料、生成资源草稿。
@@ -98,6 +107,17 @@ class LLMResourceGenerationAgent(_BaseLLMResourceGenerationAgent):
         super().__init__(model=model)
 
 
+_TaskLLMResourceGenerationAgent = LLMResourceGenerationAgent
+
+
+def _resolve_generation_agent_for_impl(generation_agent=None):
+    if generation_agent is not None:
+        return generation_agent
+    if LLMResourceGenerationAgent is not _TaskLLMResourceGenerationAgent:
+        return LLMResourceGenerationAgent()
+    return None
+
+
 def generate_single_resource_from_request(
     request_payload: dict,
     resource_type: str,
@@ -108,7 +128,7 @@ def generate_single_resource_from_request(
     return _generation_impl.generate_single_resource_from_request(
         request_payload,
         resource_type,
-        generation_agent=generation_agent or LLMResourceGenerationAgent(),
+        generation_agent=_resolve_generation_agent_for_impl(generation_agent),
         planning_agent=planning_agent or get_resource_planning_agent(),
     )
 
@@ -121,7 +141,7 @@ def run_resource_generation_agent(
 ) -> dict:
     return _generation_impl.run_resource_generation_agent(
         request_payload,
-        generation_agent=generation_agent or LLMResourceGenerationAgent(),
+        generation_agent=_resolve_generation_agent_for_impl(generation_agent),
         planning_agent=planning_agent or get_resource_planning_agent(),
     )
 
@@ -298,6 +318,9 @@ __all__ = [
     "LITELLM_MODEL_CONFIGS",
     "LLMResourceGenerationAgent",
     "MINDMAP_ALLOWED_DIAGRAM_PREFIXES",
+    "RESOURCE_AGENT_SCHEMA_VERSION",
+    "RESOURCE_GENERATION_TOOL_ORDER",
+    "ResourceGenerationAgentResult",
     "ResourcePlanningAgent",
     "_get_backend_root",
     "_get_generative_root",
@@ -311,6 +334,7 @@ __all__ = [
     "_write_json",
     "_write_text",
     "append_manifest_entry",
+    "build_resource_generation_agent",
     "build_single_resource_payload",
     "ensure_generative_workspace",
     "generate_coding_practice",
@@ -340,6 +364,7 @@ __all__ = [
     "read_json",
     "repo_relative_path",
     "run_resource_generation_agent",
+    "_run_single_resource_generation_agent",
     "run_resource_planning_agent",
     "save_manifest",
     "strip_mermaid_fence",

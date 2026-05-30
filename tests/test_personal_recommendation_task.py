@@ -63,6 +63,8 @@ def test_personal_recommendation_task_generates_candidates(monkeypatch):
     )
 
     assert result["success"] is True
+    assert result["schema_version"] == prt.RECOMMENDATION_SCHEMA_VERSION
+    assert "planning_hints" in result
     assert isinstance(result["candidates"], list)
     assert isinstance(result["graph"]["nodes"], list)
     assert isinstance(result["graph"]["edges"], list)
@@ -73,6 +75,7 @@ def test_personal_recommendation_task_generates_candidates(monkeypatch):
         assert isinstance(candidate["path"], list)
         assert isinstance(candidate["skills"], list)
         assert isinstance(candidate["path_edges"], list)
+        assert isinstance(candidate["path_depth"], int)
         assert "selected" in candidate
     if result["best_path"]:
         assert isinstance(result["best_path"]["path"], list)
@@ -255,6 +258,8 @@ def test_normalize_scores_inverts_lower_is_better_metrics():
     assert normalized[1]["D"] == 0.0
     assert normalized[0]["R"] == 1.0
     assert normalized[1]["R"] == 0.0
+    assert "G" in normalized[0]
+    assert "C" in normalized[0]
 
 
 def test_build_recommendation_profile_normalizes_learning_profile(monkeypatch):
@@ -345,3 +350,56 @@ def test_run_recommendation_route_from_payload_accepts_max_candidates_alias(monk
     prt.run_recommendation_route_from_payload({"user_id": 1, "max_candidates": 7})
 
     assert captured["K"] == 7
+
+
+def test_recommendation_depth_strategy_rejects_unknown_value(monkeypatch):
+    captured = {}
+
+    def fake_generate(start_nodes, route_goals, learning_tree, state, **kwargs):
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: user_profile)
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prt, "generate", fake_generate)
+
+    prt.run_recommendation_route_from_payload({"user_id": 1, "depth_strategy": "bad"})
+
+    assert captured["depth_strategy"] == "balanced"
+
+
+def test_study_graph_blocked_nodes_enter_constraints(monkeypatch):
+    captured = {}
+
+    def fake_generate(start_nodes, route_goals, learning_tree, state, **kwargs):
+        captured["starts"] = list(start_nodes)
+        captured["blocked"] = state.get("constraints", {}).get("blocked_nodes")
+        return []
+
+    tree = {
+        "n1": {"title": "A", "outcomes": ["a"], "prerequisites": [], "learning_time_est": 1, "difficulty": 1},
+        "n2": {"title": "B", "outcomes": ["b"], "prerequisites": [], "learning_time_est": 1, "difficulty": 1},
+    }
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: tree)
+    monkeypatch.setattr(prt, "generate", fake_generate)
+
+    prt.run_recommendation_route_from_payload(
+        {
+            "user_id": 1,
+            "study_graph_state": {"blocked_node_ids": ["n2"], "completed_node_ids": ["n1"]},
+        }
+    )
+
+    assert "n1" not in captured["starts"]
+    assert "n2" not in captured["starts"]
+    assert captured["blocked"] == ["n2"]
+
+
+def test_planning_hints_ask_for_clarification_when_no_candidates(monkeypatch):
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: {})
+
+    result = prt.run_recommendation_route(user_id=1, goals=["unknown"])
+
+    assert result["planning_hints"]["suggested_next_action"] == prt.NEXT_ACTION_ASK_GOAL_CLARIFICATION

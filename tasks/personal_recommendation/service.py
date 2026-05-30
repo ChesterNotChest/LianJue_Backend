@@ -7,14 +7,22 @@ from typing import Any, Dict, List, Optional
 from repositories.syllabus_repo import get_syllabus_by_id
 from tasks.learning_profile.storage import load_json_file
 from tasks.learning_profile_task import get_or_build_learning_profile
-from tasks.personal_recommendation.candidate_generator import generate
+from tasks.personal_recommendation.candidate_generator import DEFAULT_DEPTH_STRATEGY, SUPPORTED_DEPTH_STRATEGIES, generate
 from tasks.personal_recommendation.evaluator import score
+from tasks.personal_recommendation.graph_builder import build_recommendation_graph_tree
 from tasks.personal_recommendation.perception import generate_state
 from tasks.personal_recommendation.pruning import hard_prune, soft_prune_by_dominance
 from tasks.personal_recommendation.rag_overlay import build_rag_overlay, score_candidate_with_overlay
 from tasks.personal_recommendation.sample_data import learning_tree as sample_learning_tree
 from tasks.personal_recommendation.selector_ib_grpo import ib_grpo_select
 from tasks.personal_recommendation.syllabus_adapter import syllabus_json_to_learning_tree
+
+
+RECOMMENDATION_SCHEMA_VERSION = "personal_recommendation.v2"
+NEXT_ACTION_CONFIRM_PATH = "confirm_path"
+NEXT_ACTION_GENERATE_RESOURCES = "generate_resources"
+NEXT_ACTION_ASK_GOAL_CLARIFICATION = "ask_goal_clarification"
+
 
 def _json_safe(value: Any) -> Any:
     if isinstance(value, set):
@@ -28,16 +36,23 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _path_edges(path: List[Any]) -> List[Dict[str, str]]:
+def _path_edges(path: List[Any], learning_tree: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     edges = []
     for idx in range(len(path) - 1):
         source = str(path[idx])
         target = str(path[idx + 1])
-        edges.append({
+        edge = {
             "edge_id": f"{source}->{target}",
             "source": source,
             "target": target,
-        })
+        }
+        if isinstance(learning_tree, dict):
+            target_node = learning_tree.get(target, {})
+            edge_sources = target_node.get("edge_sources") if isinstance(target_node.get("edge_sources"), dict) else {}
+            edge_confidence = target_node.get("edge_confidence") if isinstance(target_node.get("edge_confidence"), dict) else {}
+            edge["source_type"] = edge_sources.get(source, "syllabus")
+            edge["confidence"] = edge_confidence.get(source, 1.0)
+        edges.append(edge)
     return edges
 
 
@@ -54,15 +69,22 @@ def _build_recommendation_graph(learning_tree: Dict[str, Any]) -> Dict[str, List
             "learning_time_est": node.get("learning_time_est", 1),
             "outcomes": list(node.get("outcomes") or []),
             "prerequisites": [str(item) for item in node.get("prerequisites") or []],
+            "node_source": node.get("node_source"),
+            "profile_state": node.get("profile_state"),
+            "study_graph_state": node.get("study_graph_state"),
         })
         for prerequisite in node.get("prerequisites") or []:
             source = str(prerequisite)
             target = normalized_id
+            edge_sources = node.get("edge_sources") if isinstance(node.get("edge_sources"), dict) else {}
+            edge_confidence = node.get("edge_confidence") if isinstance(node.get("edge_confidence"), dict) else {}
             edges.append({
                 "edge_id": f"{source}->{target}",
                 "source": source,
                 "target": target,
-                "type": "prerequisite",
+                "type": "prerequisite" if edge_sources.get(source, "syllabus") != "rag" else "rag_evidence",
+                "source_type": edge_sources.get(source, "syllabus"),
+                "confidence": edge_confidence.get(source, 1.0),
             })
     return {"nodes": nodes, "edges": edges}
 
@@ -109,11 +131,13 @@ def _serialize_path_item(
     rank: Optional[int] = None,
     selected: bool = False,
     rag_overlay: Optional[Dict[str, Any]] = None,
+    learning_tree: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     item = _json_safe(dict(candidate))
     path = [str(node_id) for node_id in item.get("path") or []]
     item["path"] = path
-    item["path_edges"] = _path_edges(path)
+    item["path_edges"] = _path_edges(path, learning_tree)
+    item["path_depth"] = int(item.get("path_depth") or len(path))
     item["selected"] = selected
     if rank is not None:
         item["rank"] = rank
@@ -127,6 +151,40 @@ def _serialize_path_item(
             if (rag_overlay.get("node_relevance") or {}).get(str(node_id))
         ]
     return item
+
+
+def _normalize_depth_strategy(value: Any) -> str:
+    normalized = str(value or DEFAULT_DEPTH_STRATEGY).strip()
+    return normalized if normalized in SUPPORTED_DEPTH_STRATEGIES else DEFAULT_DEPTH_STRATEGY
+
+
+def _build_planning_hints(result: Dict[str, Any]) -> Dict[str, Any]:
+    candidates = result.get("candidates") if isinstance(result.get("candidates"), list) else []
+    best_path = result.get("best_path") if isinstance(result.get("best_path"), dict) else None
+    if not candidates and not best_path:
+        return {
+            "path_depth": 0,
+            "has_rag_edges": False,
+            "has_low_confidence_edges": False,
+            "suggested_next_action": NEXT_ACTION_ASK_GOAL_CLARIFICATION,
+        }
+    path_edges = best_path.get("path_edges") if isinstance(best_path, dict) else []
+    has_rag_edges = any((edge or {}).get("source_type") == "rag" or (edge or {}).get("type") == "rag_evidence" for edge in path_edges or [])
+    has_low_confidence_edges = False
+    for edge in path_edges or []:
+        try:
+            if float((edge or {}).get("confidence", 1.0)) < 0.8:
+                has_low_confidence_edges = True
+                break
+        except Exception:
+            continue
+    path = best_path.get("path") if isinstance(best_path, dict) else []
+    return {
+        "path_depth": len(path or []),
+        "has_rag_edges": bool(has_rag_edges),
+        "has_low_confidence_edges": bool(has_low_confidence_edges),
+        "suggested_next_action": NEXT_ACTION_CONFIRM_PATH if (has_rag_edges or has_low_confidence_edges) else NEXT_ACTION_GENERATE_RESOURCES,
+    }
 
 
 def load_recommendation_learning_tree(syllabus_id: Optional[int] = None) -> Dict[str, Any]:
@@ -340,6 +398,8 @@ def run_recommendation_route(
     K: int = 20,
     beam_width: int = 6,
     rag_context: Optional[Dict[str, Any]] = None,
+    study_graph_state: Optional[Dict[str, Any]] = None,
+    depth_strategy: str = DEFAULT_DEPTH_STRATEGY,
 ) -> Dict[str, Any]:
     """Run the full recommendation pipeline and return API-ready data."""
     if not user_id:
@@ -353,19 +413,27 @@ def run_recommendation_route(
 
     learning_tree = load_recommendation_learning_tree(syllabus_id)
     profile = build_recommendation_profile(int(user_id), syllabus_id)
-    chosen_goals = _resolve_recommendation_goals(goals, profile, learning_tree)
     rag_overlay = build_rag_overlay(rag_context, learning_tree)
+    recommendation_graph_tree = build_recommendation_graph_tree(
+        learning_tree,
+        rag_overlay=rag_overlay,
+        profile=profile,
+        study_graph_state=study_graph_state if isinstance(study_graph_state, dict) else None,
+    )
+    chosen_goals = _resolve_recommendation_goals(goals, profile, recommendation_graph_tree)
+    depth_strategy = _normalize_depth_strategy(depth_strategy)
 
-    state, starts = generate_state(profile, learning_tree)
+    state, starts = generate_state(profile, recommendation_graph_tree, study_graph_state=study_graph_state)
     candidates = generate(
         starts,
         chosen_goals,
-        learning_tree,
+        recommendation_graph_tree,
         state,
         L_max=int(L_max),
         T_max=int(T_max),
         K=int(K),
         beam_width=int(beam_width),
+        depth_strategy=depth_strategy,
     )
 
     candidates = hard_prune(
@@ -373,10 +441,10 @@ def run_recommendation_route(
         state,
         blocked_nodes=state.get("constraints", {}).get("blocked_nodes"),
     )
-    raw_scores = [score(candidate, state, learning_tree) for candidate in candidates]
+    raw_scores = [score(candidate, state, recommendation_graph_tree) for candidate in candidates]
 
     candidates = soft_prune_by_dominance(candidates, raw_scores)
-    raw_scores = [score(candidate, state, learning_tree) for candidate in candidates]
+    raw_scores = [score(candidate, state, recommendation_graph_tree) for candidate in candidates]
 
     response_candidates = []
     for candidate, candidate_score in zip(candidates, raw_scores):
@@ -386,6 +454,7 @@ def run_recommendation_route(
                 candidate_score=candidate_score,
                 rank=len(response_candidates) + 1,
                 rag_overlay=rag_overlay,
+                learning_tree=recommendation_graph_tree,
             )
         )
 
@@ -430,14 +499,16 @@ def run_recommendation_route(
                 candidate_score=score_by_path.get(tuple(str(node_id) for node_id in candidate.get("path") or [])),
                 selected=True,
                 rag_overlay=rag_overlay,
+                learning_tree=recommendation_graph_tree,
             )
         for candidate in selected
     ]
     best_path = response_selected[0] if response_selected else (response_candidates[0] if response_candidates else None)
-    graph = _apply_rag_overlay_to_graph(_build_recommendation_graph(learning_tree), rag_overlay)
+    graph = _apply_rag_overlay_to_graph(_build_recommendation_graph(recommendation_graph_tree), rag_overlay)
 
-    return {
+    result = {
         "success": True,
+        "schema_version": RECOMMENDATION_SCHEMA_VERSION,
         "graph": graph,
         "rag_overlay": {
             key: value
@@ -450,6 +521,8 @@ def run_recommendation_route(
         "error_message": "",
         "error_code": "",
     }
+    result["planning_hints"] = _build_planning_hints(result)
+    return result
 
 
 def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -474,4 +547,6 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
         K=int(payload.get("K") or payload.get("max_candidates") or 20),
         beam_width=int(payload.get("beam_width") or 6),
         rag_context=payload.get("rag_context") if isinstance(payload.get("rag_context"), dict) else None,
+        study_graph_state=payload.get("study_graph_state") if isinstance(payload.get("study_graph_state"), dict) else None,
+        depth_strategy=_normalize_depth_strategy(payload.get("depth_strategy")),
     )

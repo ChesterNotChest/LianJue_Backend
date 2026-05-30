@@ -2,6 +2,7 @@
 import os
 import shutil
 import subprocess
+import time
 
 import pytest
 
@@ -216,6 +217,13 @@ class SearchRecorder:
         return result
 
 
+def _progress(stage, detail=""):
+    message = f"[generative integration] {stage}"
+    if detail:
+        message = f"{message}: {detail}"
+    print(message, flush=True)
+
+
 def _require_real_search_tool():
     if os.getenv("RUN_SEARCH_TESTS") != "1":
         pytest.skip("Set RUN_SEARCH_TESTS=1 to run real search-backed generation tests.")
@@ -414,6 +422,54 @@ def test_resource_planning_agent_runs_atomic_tools_in_order():
     ]
 
 
+def test_resource_generation_agent_tools_persist_from_mock_generation(monkeypatch, tmp_path):
+    from tasks.generative.resource_agent_tools import (
+        tool_generate_resource_payload,
+        tool_persist_generated_resource,
+        tool_read_generation_plan,
+        tool_read_generation_request,
+        tool_retrieve_generation_materials,
+        tool_write_generation_draft,
+    )
+
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    planner = gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: FIXED_PAYLOAD["retrieval_context"])
+    normalized = gt.normalize_generation_request(dict(FIXED_PAYLOAD))
+    state = {
+        "request": gt.build_single_resource_payload(normalized, "documents"),
+        "resource_type": "documents",
+        "planning_agent": planner,
+        "generation_tool": FakeResourceGenerationAgent(),
+        "tool_trace": [],
+    }
+
+    assert tool_read_generation_request(state)["success"] is True
+    assert tool_read_generation_plan(state)["success"] is True
+    tool_retrieve_generation_materials(state)
+    assert tool_write_generation_draft(state)["success"] is True
+    assert tool_generate_resource_payload(state)["success"] is True
+    persist_result = tool_persist_generated_resource(state)
+
+    assert persist_result["success"] is True
+    assert state["persisted_resource"]["resource_type"] == "documents"
+    assert state["persisted_resource"]["status"] == "ready"
+    assert state["persisted_resource"]["validation"]["valid"] is True
+    assert state["tool_trace"] == [
+        "read_generation_request",
+        "read_generation_plan",
+        "retrieve_generation_materials",
+        "write_generation_draft",
+        "generate_resource_payload",
+        "persist_generated_resource",
+    ]
+    assert state["planning_bundle"]["tool_trace"] == [
+        "read_generation_plan",
+        "retrieve_generation_materials",
+        "write_generation_draft",
+    ]
+
+
 def test_resource_generation_agent_full_chain_persists_all_requested_resources(monkeypatch, tmp_path):
     monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
 
@@ -545,7 +601,20 @@ def test_resource_generation_agent_full_chain_with_real_search_persists_grounded
     )
 
     if not search_recorder.calls:
-        pytest.skip("Real search tool was not called.")
+        artifact_json_path = write_test_artifact(
+            "resources_generative_real_search_real_llm_no_search_call_result.json",
+            {
+                "request": payload,
+                "result": result,
+                "search_call_count": 0,
+            },
+        )
+        assert artifact_json_path.exists()
+        pytest.fail(
+            "Real search tool was not called. "
+            "This usually means the resource generation agent failed before retrieve_generation_materials; "
+            "inspect resources_generative_real_search_real_llm_no_search_call_result.json."
+        )
 
     retrieval = search_recorder.calls[0]["result"]
     if not isinstance(retrieval, dict) or not retrieval.get("success") or not retrieval.get("paragraphs"):
@@ -607,22 +676,52 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     payload = _build_real_search_all_resource_payload()
     expected_types = ["documents", "mindmap", "quiz", "coding_practice", "ppt"]
     artifact_backend = prepare_artifact_backend("resources_generative_real_search_real_llm_workspace")
+    started_at = time.time()
 
     original_backend_fn = generative_storage._get_backend_root
     generative_storage._get_backend_root = lambda: artifact_backend
     try:
+        _progress("start", f"resource_types={','.join(expected_types)} graph={payload['graph_name']}")
         search_recorder = SearchRecorder(search_tool)
         planner = gt.ResourcePlanningAgent(search_fn=search_recorder)
         result = gt.run_resource_generation_agent(
             payload,
-            generation_agent=gt.LLMResourceGenerationAgent(),
             planning_agent=planner,
+        )
+        _progress(
+            "generation finished",
+            f"success={result.get('success')} resources={len(result.get('resources') or [])} "
+            f"search_calls={len(search_recorder.calls)} elapsed={time.time() - started_at:.1f}s",
         )
     finally:
         generative_storage._get_backend_root = original_backend_fn
 
+    checkpoint_path = write_test_artifact(
+        "resources_generative_real_search_real_llm_generation_checkpoint.json",
+        {
+            "request": payload,
+            "result": result,
+            "search_call_count": len(search_recorder.calls),
+            "elapsed_seconds": round(time.time() - started_at, 3),
+        },
+    )
+    _progress("checkpoint written", str(checkpoint_path))
+
     if not search_recorder.calls:
-        pytest.skip("Real search tool was not called.")
+        artifact_json_path = write_test_artifact(
+            "resources_generative_real_search_real_llm_no_search_call_result.json",
+            {
+                "request": payload,
+                "result": result,
+                "search_call_count": 0,
+            },
+        )
+        assert artifact_json_path.exists()
+        pytest.fail(
+            "Real search tool was not called. "
+            "This usually means the resource generation agent failed before retrieve_generation_materials; "
+            "inspect resources_generative_real_search_real_llm_no_search_call_result.json."
+        )
 
     retrievals = [call["result"] for call in search_recorder.calls]
     if not any(isinstance(item, dict) and item.get("success") and item.get("paragraphs") for item in retrievals):
@@ -638,10 +737,18 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     assert result["tool_trace"] == [
         item
         for _ in expected_types
-        for item in ["invoke_resource_planning_agent", "persist_generated_resource"]
+        for item in [
+            "read_generation_request",
+            "read_generation_plan",
+            "retrieve_generation_materials",
+            "write_generation_draft",
+            "generate_resource_payload",
+            "persist_generated_resource",
+        ]
     ]
 
     manifest = json.loads((artifact_backend / "generative" / f"user_{payload['user_id']}" / "manifest.json").read_text(encoding="utf-8"))
+    _progress("validate manifest", f"resource_count={manifest.get('resource_count')}")
     assert manifest["resource_count"] == len(expected_types)
     assert [entry["resource_type"] for entry in manifest["resources"]] == expected_types
 
@@ -658,18 +765,18 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     ]
     assert failed_results == []
     for resource_type in expected_types:
+        _progress("validate resource envelope", resource_type)
         resource = by_type[resource_type]
         assert resource["success"] is True
         assert resource["status"] == "ready"
         assert resource["validation"]["valid"] is True
         assert resource["planning_trace"] == [
             "read_generation_plan",
-            "write_generation_plan",
             "retrieve_generation_materials",
-            "read_generation_draft",
             "write_generation_draft",
         ]
 
+    _progress("validate documents")
     document_json = json.loads((artifact_backend / by_type["documents"]["json_path"]).read_text(encoding="utf-8"))
     document_md = (artifact_backend / by_type["documents"]["md_path"]).read_text(encoding="utf-8")
     assert document_json["sections"]
@@ -678,6 +785,7 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     assert not (headings and set(headings) == {"知识点说明"})
     assert any(keyword in document_md for keyword in ["HBase", "RowKey", "热点", "预分区"])
 
+    _progress("validate mindmap")
     mindmap_json_path = artifact_backend / by_type["mindmap"]["json_path"]
     mindmap_mermaid_path = artifact_backend / by_type["mindmap"]["mermaid_path"]
     mindmap_svg_path = mindmap_mermaid_path.with_suffix(".svg")
@@ -689,6 +797,7 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     assert by_type["mindmap"]["validation"]["diagram_type"] == "mindmap"
     assert by_type["mindmap"]["validation"]["node_count"] >= 3
     render_result = _try_render_mermaid_svg(mindmap_mermaid_path, mindmap_svg_path)
+    _progress("mindmap render check", str(render_result))
     if render_result["checked"]:
         assert render_result["success"] is True, render_result["stderr"]
         assert mindmap_svg_path.exists()
@@ -702,6 +811,7 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
         },
     )
 
+    _progress("validate quiz")
     quiz_json = json.loads((artifact_backend / by_type["quiz"]["json_path"]).read_text(encoding="utf-8"))
     quiz_md = (artifact_backend / by_type["quiz"]["md_path"]).read_text(encoding="utf-8")
     assert quiz_json["questions"]
@@ -710,6 +820,7 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     assert "Answer:" in quiz_md
     assert "Explanation:" in quiz_md
 
+    _progress("validate coding_practice")
     practice_json = json.loads((artifact_backend / by_type["coding_practice"]["json_path"]).read_text(encoding="utf-8"))
     practice_md = (artifact_backend / by_type["coding_practice"]["md_path"]).read_text(encoding="utf-8")
     entry_file_path = artifact_backend / by_type["coding_practice"]["entry_file_path"]
@@ -718,6 +829,7 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
     assert entry_file_path.exists()
     assert "Practice Steps" in practice_md
 
+    _progress("validate ppt")
     ppt_json, ppt_md = _assert_real_ppt_resource(artifact_backend, by_type["ppt"], expected_min_slides=6)
 
     artifact_json_path = write_test_artifact(
@@ -743,5 +855,6 @@ def test_resource_generation_agent_full_chain_with_real_search_and_real_llm_all_
         "resources_generative_real_search_real_llm_all_resources_ppt.md",
         ppt_md,
     )
+    _progress("done", f"elapsed={time.time() - started_at:.1f}s result={artifact_json_path}")
     assert artifact_json_path.exists()
     assert artifact_md_path.exists()

@@ -38,3 +38,54 @@ def test_map_dict_nodes_normalizes_string_and_invalid_numbers():
     assert learning_tree["n1"]["outcomes"] == ["skill_a"]
     assert learning_tree["n1"]["learning_time_est"] == 1.0
     assert learning_tree["n1"]["difficulty"] == 1.0
+
+
+def test_syllabus_adapter_expands_nested_chapters_sections_topics():
+    syllabus = {
+        "chapters": [
+            {
+                "id": "chapter_1",
+                "title": "Machine Learning",
+                "sections": [
+                    {
+                        "id": "section_1",
+                        "title": "Supervised Learning",
+                        "topics": [
+                            {"id": "topic_1", "title": "Linear Regression", "outcomes": ["linear_regression"]},
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    learning_tree = syllabus_json_to_learning_tree(syllabus)
+
+    assert set(learning_tree) == {"chapter_1", "section_1", "topic_1"}
+    assert learning_tree["section_1"]["prerequisites"] == ["chapter_1"]
+    assert learning_tree["topic_1"]["prerequisites"] == ["section_1"]
+    assert learning_tree["chapter_1"]["outcomes"] == ["Machine Learning"]
+
+
+def test_syllabus_adapter_preserves_explicit_prerequisites():
+    syllabus = {
+        "chapters": [
+            {
+                "id": "chapter_1",
+                "title": "Chapter",
+                "sections": [
+                    {"id": "section_1", "title": "Section", "prerequisites": ["external"]},
+                ],
+            }
+        ]
+    }
+
+    learning_tree = syllabus_json_to_learning_tree(syllabus)
+
+    assert learning_tree["section_1"]["prerequisites"] == ["external"]
+
+
+def test_syllabus_adapter_uses_title_as_fallback_outcome():
+    learning_tree = syllabus_json_to_learning_tree([{"id": "n1", "title": "Directory"}])
+
+    assert learning_tree["n1"]["outcomes"] == ["Directory"]

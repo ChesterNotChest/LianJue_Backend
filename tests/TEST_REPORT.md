@@ -36,7 +36,7 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py 
 ### 1.c 集成测试 2 - 资源生成
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_generative_resource_agent_integration.py -m "llm and search" -rs
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_generative_resource_agent_integration.py -m "llm and search" --capture=tee-sys -rs
 ```
 
 ### 1.d 集成测试 3 - 学习成长树
@@ -90,16 +90,16 @@ python -m pytest -q tests/test_job_checker_startup_graph_sync.py
 ### 1.j 单元测试包 7 - 个人推荐路径
 
 ```bash
-python -m pytest -q tests/test_personal_recommendation_task.py tests/test_personal_recommendation_api.py tests/test_personal_recommendation_agent_choice.py -m "not llm"
+python -m pytest -q tests/test_personal_recommendation_task.py tests/test_personal_recommendation_api.py tests/test_personal_recommendation_agent_choice.py
 ```
 
-### 1.k 集成测试 3 - 个人推荐路径 Agent
+### 1.k 集成测试 3 - 个人推荐路径 Agent 产物
 
 ```bash
 RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
 ```
 
-可选真实 RAG 评估：
+全量 LLM + RAG 功能验证：
 
 ```bash
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
@@ -586,24 +586,26 @@ tests/artifacts/personal_recommendation/mock_rag_route_graph_closure/route_resul
   - `load_request_context`
   - `search_recommendation_context`
   - `run_recommendation_route`
-- `search_recommendation_context` 是 Agent 工具层能力，测试中用 mock 结果替代真实 KnowLion 检索。
+- `test_personal_recommendation_agent_selects_expected_tools` 使用真实 LLM 和 mock RAG，验证 Agent 工具选择稳定性。
+- `test_personal_recommendation_agent_real_rag_optional` 使用真实 LLM 和真实 RAG，验证真实检索上下文能进入推荐闭环。
+- `test_personal_recommendation_mock_agent_accepts_learning_plan` 使用 mock 工具链，默认验证推荐路径可被 accept 并写入 `manifest.jsonl`。
 - `run_recommendation_route` 是剪枝、评分和路径选择工具，测试中使用固定 profile/tree fixture 跑真实推荐算法。
 - 输出包含 `graph`、`rag_overlay`、`candidates`、`selected` 和 `best_path`。
 
-该测试默认不进入 CI。只有设置 `RUN_LLM_TESTS=1` 时才运行。默认 LLM 用例使用 mock RAG，保证 Agent 工具选择测试稳定。
-
-可选真实 RAG 用例 `test_personal_recommendation_agent_real_rag_optional` 需要额外设置 `RUN_REAL_RAG_TESTS=1`，用于人工评估真实知识库检索质量。该用例仍使用固定 profile/tree fixture，避免真实 RAG 质量评估和推荐算法输入波动混在一起。
+个人推荐 Agent 默认回归只运行 mock 集成链路：流程包含工具编排、推荐生成、路径 accept 和 `manifest.jsonl` 写入，但不访问真实 LLM / RAG。真实 LLM 工具选择测试仍通过 `RUN_LLM_TESTS=1` 手动开启；真实 LLM + RAG 全量功能验证仍通过 `RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1` 手动开启。
 
 测试层面默认图名为 `RAG`，与资源生成 Agent 的真实检索集成测试保持一致；`PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME` 只用于临时覆盖。
 
 测试产物：
 
 ```text
+tests/artifacts/personal_recommendation/mock_agent_learning_plan/mock_agent_learning_plan_result.json
+tests/artifacts/personal_recommendation/mock_agent_learning_plan/learning_plan/user_12345/syllabus_20/manifest.jsonl
 tests/artifacts/personal_recommendation/agent_choice/agent_choice_result.json
 tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_rag_result.json
 ```
 
-该产物保留总 Agent 模拟 payload、真实 LLM 工具调用顺序、每个工具返回、推荐摘要和最终 `PersonalRecommendationResult`。
+该产物保留总 Agent 模拟 payload、工具调用顺序、每个工具返回、推荐摘要、最终 `PersonalRecommendationResult`，以及 mock accept 链路的学习计划 manifest。
 
 ## 3 生成文件说明
 

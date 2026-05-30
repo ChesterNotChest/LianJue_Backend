@@ -844,6 +844,30 @@ def generate_single_resource_from_request(
     planning_agent: Any = None,
 ) -> dict:
     normalized_request = normalize_generation_request(request_payload)
+    if generation_agent is None:
+        from tasks.generative.resource_agent_runtime import run_single_resource_generation_agent
+
+        planner = planning_agent or planning_task.get_resource_planning_agent()
+        agent_result = run_single_resource_generation_agent(
+            normalized_request,
+            resource_type,
+            planning_agent=planner,
+        )
+        if agent_result.resource:
+            persisted = dict(agent_result.resource)
+            planning_bundle = agent_result.planning_bundle if isinstance(agent_result.planning_bundle, dict) else {}
+            persisted["planning_trace"] = planning_bundle.get("tool_trace") or []
+            persisted["tool_trace"] = agent_result.tool_trace[:]
+            return persisted
+        failed = _build_failed_resource_result(
+            resource_type,
+            normalized_request["topic"],
+            agent_result.error_message or "resource generation agent did not persist a resource",
+            planning_trace=[],
+        )
+        failed["tool_trace"] = agent_result.tool_trace[:]
+        return failed
+
     agent = generation_agent or LLMResourceGenerationAgent()
     planner = planning_agent or planning_task.get_resource_planning_agent()
 
@@ -867,7 +891,6 @@ def run_resource_generation_agent(
     planning_agent: Any = None,
 ) -> dict:
     normalized_request = normalize_generation_request(request_payload)
-    agent = generation_agent or LLMResourceGenerationAgent()
     planner = planning_agent or planning_task.get_resource_planning_agent()
 
     state = {"request": normalized_request, "tool_trace": [], "planning_results": {}}
@@ -875,14 +898,31 @@ def run_resource_generation_agent(
     for resource_type in normalized_request["resource_types"]:
         planning_trace: List[str] = []
         try:
-            planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
-            planning_trace = planning_bundle.get("tool_trace") or []
-            generated_content = agent.generate_resource_content(
-                build_single_resource_payload(normalized_request, resource_type),
-                resource_type,
-                planning_bundle,
-            )
-            persisted = _tool_persist_generated_resource(state, resource_type, generated_content)
+            if generation_agent is None:
+                from tasks.generative.resource_agent_runtime import run_single_resource_generation_agent
+
+                agent_result = run_single_resource_generation_agent(
+                    normalized_request,
+                    resource_type,
+                    planning_agent=planner,
+                )
+                planning_bundle = agent_result.planning_bundle if isinstance(agent_result.planning_bundle, dict) else {}
+                planning_trace = planning_bundle.get("tool_trace") or []
+                if not agent_result.resource:
+                    raise RuntimeError(agent_result.error_message or "resource generation agent did not persist a resource")
+                persisted = dict(agent_result.resource)
+                persisted["tool_trace"] = agent_result.tool_trace[:]
+                state["tool_trace"].extend(agent_result.tool_trace)
+            else:
+                planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
+                planning_trace = planning_bundle.get("tool_trace") or []
+                generated_content = generation_agent.generate_resource_content(
+                    build_single_resource_payload(normalized_request, resource_type),
+                    resource_type,
+                    planning_bundle,
+                )
+                persisted = _tool_persist_generated_resource(state, resource_type, generated_content)
+                persisted["tool_trace"] = state["tool_trace"][:]
             persisted["planning_trace"] = planning_trace
             resources.append(persisted)
         except Exception as exc:

@@ -1,13 +1,12 @@
 import json
-import os
 from functools import lru_cache
 from typing import Any, Dict
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
+from tasks.common.agent_model import build_openai_compatible_model
 from tasks.personal_recommendation.agent_contracts import (
     PersonalRecommendationDeps,
     PersonalRecommendationResult,
@@ -28,14 +27,7 @@ PERSONAL_RECOMMENDATION_TOOL_ORDER = [
 
 
 def build_personal_recommendation_model() -> OpenAIModel:
-    text_config = OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
-    model_name = safe_text(text_config.get("model_name") or text_config.get("name"))
-    if not model_name:
-        raise RuntimeError('missing MODEL_CONFIGS["text"]["model_name"] for personal recommendation agent')
-    base_url = safe_text(text_config.get("api_base") or text_config.get("base_url")) or None
-    api_key = safe_text(text_config.get("api_key")) or os.getenv("OPENAI_API_KEY")
-    provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-    return OpenAIModel(model_name, provider=provider)
+    return build_openai_compatible_model(agent_name="personal recommendation agent")
 
 
 @lru_cache(maxsize=1)

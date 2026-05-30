@@ -3,6 +3,17 @@ from .graph_adapter import InMemoryGraphAdapter, GraphAdapter
 from .evaluator import score as eval_score, normalize_scores as eval_normalize, scalar_scores as eval_scalar
 
 
+DEPTH_STRATEGY_SHORTEST = "shortest"
+DEPTH_STRATEGY_BALANCED = "balanced"
+DEPTH_STRATEGY_DEEP_PREREQUISITE = "deep_prerequisite"
+DEFAULT_DEPTH_STRATEGY = DEPTH_STRATEGY_BALANCED
+SUPPORTED_DEPTH_STRATEGIES = {
+    DEPTH_STRATEGY_SHORTEST,
+    DEPTH_STRATEGY_BALANCED,
+    DEPTH_STRATEGY_DEEP_PREREQUISITE,
+}
+
+
 def h_estimate(node, goals, learning_tree, knowledge):
     # heuristic: number of goal outcomes not covered by this node's subtree
     node_outcomes = set(learning_tree.get(node, {}).get('outcomes', []))
@@ -10,8 +21,22 @@ def h_estimate(node, goals, learning_tree, knowledge):
     return remained
 
 
+def _normalize_depth_strategy(value):
+    normalized = str(value or DEFAULT_DEPTH_STRATEGY).strip()
+    return normalized if normalized in SUPPORTED_DEPTH_STRATEGIES else DEFAULT_DEPTH_STRATEGY
+
+
+def _path_edge_sources(path, adapter):
+    sources = []
+    for idx in range(len(path) - 1):
+        metadata = adapter.get_edge_metadata(path[idx], path[idx + 1])
+        sources.append(str(metadata.get("source") or "syllabus"))
+    return sources
+
+
 def generate(start_nodes, goals, learning_tree, S, L_max=6, T_max=100, K=20,
-             beam_width=6, expand_mode='forward', heuristic_weight=1.0, graph_adapter: GraphAdapter = None):
+             beam_width=6, expand_mode='forward', heuristic_weight=1.0, graph_adapter: GraphAdapter = None,
+             depth_strategy=DEFAULT_DEPTH_STRATEGY):
     """
     混合 Beam + 启发式搜索的候选生成。
     参数说明:
@@ -22,6 +47,11 @@ def generate(start_nodes, goals, learning_tree, S, L_max=6, T_max=100, K=20,
     """
     # normalize adapter: if none provided, use in-memory adapter backed by learning_tree
     adapter = graph_adapter if graph_adapter is not None else InMemoryGraphAdapter(learning_tree)
+    depth_strategy = _normalize_depth_strategy(depth_strategy)
+    if depth_strategy == DEPTH_STRATEGY_SHORTEST:
+        heuristic_weight = max(float(heuristic_weight), 1.4)
+    elif depth_strategy == DEPTH_STRATEGY_DEEP_PREREQUISITE:
+        heuristic_weight = min(float(heuristic_weight), 0.7)
 
     def expand_fn(node):
         return adapter.get_neighbors(node, direction='forward') if expand_mode == 'forward' else adapter.get_prerequisites(node)
@@ -54,10 +84,17 @@ def generate(start_nodes, goals, learning_tree, S, L_max=6, T_max=100, K=20,
             for n in path:
                 covered.update(outcomes_fn(n) or [])
             if any(goal in covered for goal in goals):
-                results.append({'path': path, 'cost': g, 'skills': covered})
+                results.append({
+                    'path': path,
+                    'cost': g,
+                    'skills': covered,
+                    'path_depth': len(path),
+                    'path_edge_sources': _path_edge_sources(path, adapter),
+                })
                 if len(results) >= K:
                     break
-                continue
+                if depth_strategy != DEPTH_STRATEGY_DEEP_PREREQUISITE:
+                    continue
             if len(path) >= L_max or g >= T_max:
                 continue
             for nbr in expand_fn(last):
@@ -107,6 +144,12 @@ def generate(start_nodes, goals, learning_tree, S, L_max=6, T_max=100, K=20,
             covered = set()
             for n in path:
                 covered.update(outcomes_fn(n) or [])
-            results.append({'path': path, 'cost': g, 'skills': covered})
+            results.append({
+                'path': path,
+                'cost': g,
+                'skills': covered,
+                'path_depth': len(path),
+                'path_edge_sources': _path_edge_sources(path, adapter),
+            })
 
     return results
