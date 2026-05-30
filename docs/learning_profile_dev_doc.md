@@ -49,6 +49,9 @@
 - `tasks/learning_profile/models.py`
   - `LearningProfileDeps`
   - `LearningProfileResult`
+- `tasks/common/agent_model.py`
+  - 统一构造 OpenAI-compatible pydantic-ai 模型。
+  - 处理 DashScope Qwen/QwQ/DeepSeek thinking 与 tool calling 的兼容参数。
 - `tasks/learning_profile/__init__.py`
   - 仅作为包说明，不作为外部业务入口。
 - `repositories/user_syllabus_repo.py`

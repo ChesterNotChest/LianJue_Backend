@@ -58,6 +58,9 @@
 - `tasks/study_graph/features.py`
   - 树摘要重算。
   - Agent 可消费 features 生成。
+- `tasks/common/agent_model.py`
+  - 统一构造 OpenAI-compatible pydantic-ai 模型。
+  - 处理 DashScope Qwen/QwQ/DeepSeek thinking 与 tool calling 的兼容参数。
 
 测试与文档：
 
@@ -228,11 +231,17 @@ study_graph_task.get_student_learning_graph
   - `error_message`
   - `error_code`
 
+输出兼容：
+
+- 真实模型如果把 `tree`、`features`、`changes` 作为 JSON 字符串返回，`StudentAgentResult` 会解析为 dict/list。
+- 该容错只处理结构化输出漂移，不改变学习树落盘逻辑。
+
 内部逻辑：
 
 - 构造 `StudentAgentDeps(payload, state)`。
 - 真实 Agent 按工具调用完成 RAG、上下文读取、变更候选构造、提交和读回。
 - 函数结束时从 `deps.state` 回填 `tree_id/tree/features/changes/tool_trace`。
+- 学习路径推荐可以只读 `study_graph` 状态，但推荐 plan 不写入 `study_graph`；只有学习计划 step 状态变化后，才由调用方显式同步进度。
 
 ### 3.2 `get_student_learning_graph(user_id, syllabus_id, include_debug=False) -> dict`
 

@@ -176,6 +176,20 @@ class PartialFailGenerationAgent(FakeResourceGenerationAgent):
         return super().generate_resource_content(request_payload, resource_type, planning_bundle)
 
 
+class RecordingGenerationAgent(FakeResourceGenerationAgent):
+    def __init__(self):
+        self.calls = []
+
+    def generate_resource_content(self, request_payload, resource_type, planning_bundle):
+        self.calls.append(
+            {
+                "resource_type": resource_type,
+                "planning_bundle": planning_bundle,
+            }
+        )
+        return super().generate_resource_content(request_payload, resource_type, planning_bundle)
+
+
 class RetrievalAwareFakeResourceGenerationAgent(FakeResourceGenerationAgent):
     def generate_resource_content(self, request_payload, resource_type, planning_bundle):
         if resource_type != "documents":
@@ -468,6 +482,55 @@ def test_resource_generation_agent_tools_persist_from_mock_generation(monkeypatc
         "retrieve_generation_materials",
         "write_generation_draft",
     ]
+    assert state["planning_bundle"]["learning_brief"]["topic"] == normalized["topic"]
+
+
+def test_resource_agent_compacts_generation_context(monkeypatch, tmp_path):
+    from tasks.generative.resource_agent_tools import (
+        tool_generate_resource_payload,
+        tool_read_generation_plan,
+        tool_read_generation_request,
+        tool_retrieve_generation_materials,
+        tool_write_generation_draft,
+    )
+
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    long_paragraph = "RowKey 热点说明 " + ("需要被压缩的检索原文。" * 80)
+    payload = dict(FIXED_PAYLOAD)
+    payload["retrieval_context"] = {
+        "success": True,
+        "result_count": 1,
+        "paragraphs": [long_paragraph],
+        "reasoning_paths": ["HBase -> RowKey -> 热点 -> 预分区"],
+    }
+    recorder = RecordingGenerationAgent()
+    planner = gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: payload["retrieval_context"])
+    normalized = gt.normalize_generation_request(payload)
+    state = {
+        "request": gt.build_single_resource_payload(normalized, "ppt"),
+        "resource_type": "ppt",
+        "planning_agent": planner,
+        "generation_tool": recorder,
+        "tool_trace": [],
+    }
+
+    assert tool_read_generation_request(state)["success"] is True
+    assert tool_read_generation_plan(state)["success"] is True
+    tool_retrieve_generation_materials(state)
+    draft_result = tool_write_generation_draft(state)
+    assert draft_result["learning_brief"]["evidence_summaries"]
+    assert tool_generate_resource_payload(state)["success"] is True
+
+    assert recorder.calls
+    generation_bundle = recorder.calls[0]["planning_bundle"]
+    assert generation_bundle["learning_brief"]["topic"] == normalized["topic"]
+    assert "paragraphs" not in generation_bundle["retrieval_context"]
+    serialized_bundle = json.dumps(generation_bundle, ensure_ascii=False)
+    assert long_paragraph not in serialized_bundle
+    assert all(len(item) <= 180 for item in generation_bundle["retrieval_context"]["evidence_summaries"])
+    assert "需要被压缩的检索原文。" in serialized_bundle
+    assert serialized_bundle.count("需要被压缩的检索原文。") < 12
 
 
 def test_resource_generation_agent_full_chain_persists_all_requested_resources(monkeypatch, tmp_path):

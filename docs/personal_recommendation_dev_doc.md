@@ -22,6 +22,17 @@ API/Agent payload
   -> return graph + candidates + selected + best_path
 ```
 
+路径被用户或总 Agent 采纳后，进入独立的学习计划确认链路：
+
+```text
+recommendation result
+  -> accept_recommendation_path
+  -> learning_plan manifest.jsonl
+  -> active plan + ordered steps
+  -> optional step status update
+  -> optional study_graph progress sync
+```
+
 ## 0. 新增的常量定义
 
 本次迁移没有新增 `constant.py` 级别的全局常量。
@@ -68,8 +79,11 @@ tasks/personal_recommendation/
   candidate_generator.py
   evaluator.py
   graph_adapter.py
+  graph_builder.py
+  learning_plan.py
   perception.py
   pruning.py
+  rag_overlay.py
   sample_data.py
   selector_ib_grpo.py
   service.py
@@ -142,6 +156,7 @@ POST /api/personal_recommendation
 - `tasks/personal_recommendation/` 只放包内实现，外部 API 或其他 Agent 不应直接依赖包内函数。
 - 原 `tasks/syllabus_to_learning_tree.py` 已迁入 `tasks/personal_recommendation/syllabus_adapter.py`，不再保留外层转发文件。
 - 公共检索工具位于 `tasks/common/search_tool.py`；推荐 Agent 通过 `tasks.personal_recommendation.agent_tools` 调用它。
+- 推荐 Agent 模型构造统一走 `tasks.common.agent_model.build_openai_compatible_model`，兼容 DashScope 工具调用时的 thinking/tool_choice 限制。
 
 输入 payload：
 
@@ -169,6 +184,10 @@ run_recommendation_route
       -> load syllabus JSON
       -> syllabus_json_to_learning_tree
       -> fallback sample_learning_tree
+  -> build_recommendation_graph_tree
+      -> apply rag_overlay
+      -> apply profile state
+      -> apply readonly study_graph_state
   -> generate_state
   -> generate candidate paths
   -> hard_prune
@@ -178,6 +197,12 @@ run_recommendation_route
   -> ib_grpo_select
   -> build graph/candidates/selected public response
 ```
+
+生成链路边界：
+
+- `study_graph_state` 只作为只读输入，不写回学习成长树。
+- `rag_overlay` 和画像/study_graph 状态只进入推荐用图和评分解释，不污染原始 syllabus JSON。
+- 推荐图从“syllabus 直接映射树”扩展为 `syllabus_adapter -> graph_builder -> candidate_generator -> evaluator -> selector`。
 
 ### 输出
 
@@ -308,6 +333,7 @@ run_recommendation_route
 
 - 构建学习画像。
 - 构建推荐用 learning tree。
+- 构建推荐用图，融合 syllabus 主干、RAG overlay、画像状态和只读 `study_graph_state`。
 - 生成候选路径。
 - 执行硬裁剪、软裁剪和最终选择。
 - 返回前端可直接渲染的推荐图、候选路径、选中路径和默认高亮路径。
@@ -319,6 +345,7 @@ run_recommendation_route
 - 候选路径为空时仍返回 `success=true`，由上层决定是否追问或更换目标。
 - `graph` 始终基于当前 learning tree 构建，即使候选路径为空也可用于前端展示可推荐网络。
 - `best_path` 优先来自 `selected[0]`，没有选中路径时回退到 `candidates[0]`，再没有候选时为 `null`。
+- `study_graph_state` 只用于避开已完成、阻塞或薄弱节点等推荐约束，不负责写入学习成长树。
 
 ### `build_recommendation_profile(user_id: int, syllabus_id: int | None) -> dict`
 
@@ -354,6 +381,20 @@ run_recommendation_route
 
 - 将个人教学大纲 JSON 转换为推荐算法使用的节点、边和元数据结构。
 - 保持输出结构和 `tasks.personal_recommendation` 算法模块兼容。
+
+### `build_recommendation_graph_tree(learning_tree: dict, rag_overlay: dict | None, profile: dict | None, study_graph_state: dict | None) -> dict`
+
+职责：
+
+- 将原始 syllabus learning tree 转换为推荐用图。
+- 合并 RAG 命中的节点、临时边和图结构置信度。
+- 标注画像状态和只读学习进度状态。
+
+关键边界：
+
+- 不原地修改原始 `learning_tree`。
+- RAG 边和 RAG 命中只作为推荐用图属性进入候选生成和评分。
+- `study_graph_state` 只标注 `completed`、`blocked`、`weak` 等状态，不触发持久化。
 
 ### `generate_state(profile: dict, learning_tree: dict) -> tuple[dict, list[str]]`
 
@@ -424,6 +465,43 @@ run_recommendation_route
 - 将内部候选路径转换为 API/前端安全结构。
 - 将 `set`、`tuple` 等 Python 对象转换为 JSON 可序列化对象。
 - 补充 `path_edges`、`selected`、`rank` 和 `scores`。
+
+### `accept_recommendation_path(user_id: int, syllabus_id: int | None, recommendation_result: dict, candidate_index: int | None = None, source: str = "recommendation") -> dict`
+
+职责：
+
+- 将用户或总 Agent 采纳的推荐路径写成 active learning plan。
+- 旧 active plan 通过 manifest 事件标记为 `superseded`。
+- 为路径节点生成有序 plan steps。
+
+输出：
+
+```json
+{
+  "success": true,
+  "plan_id": "plan_xxx",
+  "status": "active",
+  "superseded_plan_id": "plan_old",
+  "steps": [
+    {
+      "step_id": "step_1",
+      "node_id": "n2",
+      "title": "Statistics 101",
+      "status": "active",
+      "order_index": 0,
+      "resource_ids": []
+    }
+  ]
+}
+```
+
+### `update_learning_plan_step_status(plan_id: str, step_id: str, status: str, *, sync_study_graph: bool = False) -> dict`
+
+职责：
+
+- 更新 learning plan step 状态。
+- 默认只追加 manifest 事件，不写 `study_graph`。
+- 当调用方显式开启 `sync_study_graph` 时，才把 step 进度同步给 `study_graph_task`。
 
 ## 4. 测试用例的构建描述
 
@@ -509,9 +587,23 @@ python experiments/learning_path_recommendation/benchmarks/benchmark_perf.py --n
 
 ## 5. 新增的持久化内容
 
-本功能没有新增运行时持久化表。
+本功能没有新增运行时数据库表。
 
-推荐结果当前作为 API/Task 返回值即时生成，不写入数据库。已有 syllabus JSON 由现有 syllabus 存储链路提供，推荐 task 只读取，不修改。
+推荐生成结果当前作为 API/Task 返回值即时生成，不写入数据库。已有 syllabus JSON 由现有 syllabus 存储链路提供，推荐 task 只读取，不修改。
+
+被用户或总 Agent 确认采纳的路径可以写入独立 learning plan manifest：
+
+```text
+learning_plan/user_{user_id}/syllabus_{syllabus_id}/manifest.jsonl
+```
+
+持久化边界：
+
+- `accept_recommendation_path(...)` 从 `best_path` 或指定 `candidate_index` 中创建 active plan。
+- 每个 plan step 保存 `node_id`、`title`、`outcomes`、`order_index`、`status` 和 `resource_ids`。
+- 新 plan 创建时，旧 active plan 通过 `plan_superseded` 事件逻辑失效，不物理覆盖历史。
+- `update_learning_plan_step_status(...)` 只更新 plan step 状态；如调用方显式开启同步，才把 step 进度传给 `study_graph_task`。
+- manifest 是当前过渡形态，后续统一 `manifest -> MySQL` 时再迁移为正式表。
 
 实验输出保存在：
 
@@ -528,4 +620,4 @@ experiments/learning_path_recommendation/benchmarks/results/
 - `KnowLionGraphAdapter` 属于后续真实图谱接入边界，当前主测试覆盖的是内存图适配器和 syllabus 转换链路。
 - RAG/多路检索属于 Agent 工具层，不写入推荐算法内部。这样后续可以替换为五路检索、reasoning path 检索或 mock 检索，而不影响剪枝、评分和选择算法。
 - `P` 偏好评分目前为占位实现，后续可接入学习画像中的偏好、节奏、资源类型倾向。
-- 推荐结果未持久化；如果后续需要审计、回放或 A/B 对比，应新增独立 recommendation log，而不是写入学习成长树。
+- learning plan 当前只做 manifest 级路径确认和执行状态记录；正式落库、审计、A/B 对比和跨设备恢复应在后续 `manifest -> MySQL` 迁移中统一完成。

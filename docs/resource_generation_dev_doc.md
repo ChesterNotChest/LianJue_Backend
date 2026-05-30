@@ -28,6 +28,11 @@
 - `GENERAL_MODEL_KEYS_BY_TIER`
 - `PPT_MODEL_KEYS_BY_TIER`
 
+工具型资源 Agent 契约常量位于 `tasks/generative/resource_agent_contracts.py`：
+
+- `RESOURCE_AGENT_SCHEMA_VERSION = "generative_agent.v1"`
+- `RESOURCE_GENERATION_TOOL_ORDER = ("read_generation_request", "read_generation_plan", "retrieve_generation_materials", "write_generation_draft", "generate_resource_payload", "persist_generated_resource")`
+
 当前资源模块没有新增数据库表。资源落盘、校验、索引更新和 `pptx` 导出都由文件系统完成，运行时目录统一收口到 `/generative`。
 
 ## 1. 影响的文件范围
@@ -43,13 +48,23 @@
   - 模块间统一入口和兼容包装层。
   - 生成资源 manifest 列表、分组和 detail 包装入口。
 - `tasks/generative/resource_generation_agent.py`
-  - 资源生成主逻辑。
+  - 资源生成外层聚合、输入归一化和旧内容生成兼容层。
   - 输入归一化。
   - 单资源生成。
   - 多资源聚合。
+- `tasks/generative/resource_agent_contracts.py`
+  - 工具型资源 Agent 的 schema、deps、输出模型和工具顺序常量。
+- `tasks/generative/resource_agent_runtime.py`
+  - pydantic-ai 资源生成 Agent 构造、工具注册和单资源 Agent 运行入口。
+  - 模型构造统一走 `tasks.common.agent_model.build_openai_compatible_model`，兼容 DashScope Qwen/QwQ/DeepSeek thinking 模式与 tool calling 的参数限制。
+- `tasks/generative/resource_agent_tools.py`
+  - Agent 工具实现：读取请求、读取计划、检索材料、写草稿、生成资源 payload、持久化资源。
 - `tasks/generative/resource_planning_agent.py`
-  - 资源编排层。
-  - 计划、检索、草稿的原子 tool 组合。
+  - 资源计划、检索、草稿 helper。
+  - 由 `resource_agent_tools` 调用，不再作为完整资源生成 Agent 主控。
+- `tasks/common/agent_model.py`
+  - 统一构造 OpenAI-compatible pydantic-ai 模型。
+  - 处理工具型 Agent 的供应商参数兼容。
 - `tasks/generative/resource_persistence.py`
   - 落盘、校验、manifest 更新、`pptx` 导出。
 - `tasks/generative/storage.py`
@@ -178,6 +193,7 @@ state 核心字段：
 - `tool_trace`
 - `planning_results`
 - 单资源生成时的 `resource_type`
+- `learning_brief`
 
 ### 2.3 资源编排 agent 的原子 tool
 
@@ -199,21 +215,37 @@ state 核心字段：
 run_resource_generation_agent(payload)
   -> normalize_generation_request
   -> for each resource_type
-      -> invoke_resource_planning_agent
-      -> generate_resource_content
-      -> persist_generated_resource
+      -> run_single_resource_generation_agent
+          -> read_generation_request
+          -> read_generation_plan
+          -> retrieve_generation_materials
+          -> write_generation_draft
+              -> build learning_brief
+          -> generate_resource_payload
+              -> use compact planning bundle
+          -> persist_generated_resource
   -> 聚合 success / failure / tool_trace
 ```
+
+该链路中，pydantic-ai `ResourceGenerationAgent` 是默认主控。旧 `LLMResourceGenerationAgent` 仅保留为 `generate_resource_payload` 工具内部的兼容内容生成器，默认生产入口不直接把它当作 Agent 主控。
+
+上下文压缩边界：
+
+- `retrieve_generation_materials` 可以保留完整检索结果，供审计和 artifact 查看。
+- `write_generation_draft` 会从 request、plan、retrieval_context、draft 中提炼 `learning_brief`。
+- `generate_resource_payload` 不直接把完整 `retrieval_context.paragraphs` 送入模型，而是使用 compact planning bundle。
+- `documents` 可保留较多证据摘要；`ppt`、`quiz`、`mindmap` 默认只保留短 evidence summaries 和 generation constraints，减少长链路 token 消耗。
 
 对应的调用关系可以概括为：
 
 ```mermaid
 flowchart LR
   A[固定 payload] --> B[normalize_generation_request]
-  B --> C[run_resource_planning_agent]
-  C --> D[LLMResourceGenerationAgent]
-  D --> E[persist_generated_resource]
-  E --> F[manifest.json / 资源文件 / pptx]
+  B --> C[ResourceGenerationAgent]
+  C --> D[resource_agent_tools]
+  D --> E[generate_resource_payload]
+  E --> F[persist_generated_resource]
+  F --> G[manifest.json / 资源文件 / pptx]
 ```
 
 模块输出契约：
@@ -227,7 +259,11 @@ flowchart LR
   "success_count": 3,
   "failed_count": 0,
   "tool_trace": [
-    "invoke_resource_planning_agent",
+    "read_generation_request",
+    "read_generation_plan",
+    "retrieve_generation_materials",
+    "write_generation_draft",
+    "generate_resource_payload",
     "persist_generated_resource"
   ],
   "error_message": "",
@@ -290,13 +326,33 @@ flowchart LR
 - `mindmap` 资源若没有 `knowledge_items`，会用 `weak_points` 或 `topic` 补齐。
 - 该函数只负责单资源请求拼装，不做生成和落盘。
 
-### 3.3 `generate_single_resource_from_request(request_payload: dict, resource_type: str, *, generation_agent=None, planning_agent=None) -> dict`
+### 3.3 `run_single_resource_generation_agent(request_payload: dict, resource_type: str, *, deps=None) -> ResourceGenerationAgentResult`
 
 输入：
 
 - 单资源请求 payload。
 - 指定的资源类型。
-- 可注入的 generation agent 和 planning agent。
+- 可选 deps，包含 planning helper、payload generator、workspace root 和工具状态。
+
+输出：
+
+- `ResourceGenerationAgentResult`。
+- 成功时带 `success=True`、`resource_type`、`resource`、`tool_trace`、`error_message`、`error_code`。
+
+内部逻辑：
+
+- 构造 pydantic-ai Agent，并注册六个资源生成工具。
+- Agent 必须通过工具完成资源生成；最终 `resource` 以 `persist_generated_resource` 的返回为准。
+- `write_generation_draft` 会生成 `learning_brief`，`generate_resource_payload` 使用 compact planning bundle 作为模型输入。
+- 如果模型异常或工具链中断，从 deps state 中回填已生成的失败结果，保证外层聚合可以继续处理其他资源类型。
+
+### 3.4 `generate_single_resource_from_request(request_payload: dict, resource_type: str, *, generation_agent=None, planning_agent=None) -> dict`
+
+输入：
+
+- 单资源请求 payload。
+- 指定的资源类型。
+- 可注入的兼容 generation agent 和 planning agent。
 
 输出：
 
@@ -305,13 +361,11 @@ flowchart LR
 
 内部逻辑：
 
-- 调用 `normalize_generation_request(...)`。
-- 调用资源编排 agent 获取 planning bundle。
-- 通过 `LLMResourceGenerationAgent.generate_resource_content(...)` 生成结构化内容。
-- 调用 `persist_generated_resource(...)` 写盘并回填 manifest。
+- 默认情况下委托 `run_single_resource_generation_agent(...)`。
+- 如果测试或旧调用方显式注入 `generation_agent`，则走兼容路径，便于 fake agent 和旧单元测试稳定运行。
 - 将 planning trace 和 tool trace 透出给调用方。
 
-### 3.4 `run_resource_generation_agent(request_payload: dict, *, generation_agent=None, planning_agent=None) -> dict`
+### 3.5 `run_resource_generation_agent(request_payload: dict, *, generation_agent=None, planning_agent=None) -> dict`
 
 输入：
 
@@ -326,12 +380,12 @@ flowchart LR
 内部逻辑：
 
 - 先归一化请求。
-- 按 `resource_types` 逐个调用 planning agent。
-- 按资源类型调用 `generate_resource_content(...)`。
-- 通过持久化层生成最终文件和 manifest entry。
+- 按 `resource_types` 逐个调用 `run_single_resource_generation_agent(...)`。
+- 每种资源独立执行完整工具链。
+- 通过持久化工具生成最终文件和 manifest entry。
 - 单个资源失败不会阻止其他资源继续生成。
 
-### 3.5 `generate_resources_from_request(request_payload: dict, generation_agent=None, planning_agent=None) -> dict`
+### 3.6 `generate_resources_from_request(request_payload: dict, generation_agent=None, planning_agent=None) -> dict`
 
 输入：
 
@@ -346,7 +400,7 @@ flowchart LR
 - 作为兼容包装层，直接委托给 `run_resource_generation_agent(...)`。
 - 该函数主要用于旧调用方和测试代码。
 
-### 3.6 `LLMResourceGenerationAgent.generate_resource_content(request_payload: dict, resource_type: str, planning_bundle: dict) -> dict`
+### 3.7 `LLMResourceGenerationAgent.generate_resource_content(request_payload: dict, resource_type: str, planning_bundle: dict) -> dict`
 
 输入：
 
@@ -363,6 +417,7 @@ flowchart LR
 - `documents`、`mindmap`、`quiz`、`coding_practice`、`ppt` 各自走独立生成函数。
 - 每类资源都会先调用 `_call_json(...)`，再做结构化归一化。
 - 生成结果只负责内容，不负责文件写入。
+- 当前仅作为 `generate_resource_payload` 工具内的兼容实现，默认外部入口不直接把它当作 Agent 主控。
 
 ## 4. 当前完成度
 
@@ -413,17 +468,43 @@ flowchart LR
 
 - `test_generative_resource_agent_integration.py`
   - 验证固定 payload 下的资源生成全流程。
-  - 验证资源编排 agent 的原子 tool 顺序。
+  - 验证资源 Agent 的完整工具顺序。
+  - 验证资源编排 helper 的 plan / retrieval / draft 原子步骤。
   - 验证部分失败时的聚合收口。
+  - 真实 LLM + 真实 search opt-in 用例会按进度输出阶段 checkpoint，便于观察多资源长链路是否卡在某一类资源。
 
 - `test_generative_task.py`
   - 验证各资源类型的文件写入、校验和 manifest 逻辑。
 
 当前已验证结果（按仓库内最近回归记录）：
 
-- `tests/test_generative_task.py`：`25 passed, 1 skipped`
-- `tests/test_generative_api.py`：`2 passed`
-- `tests/test_generative_resource_agent_integration.py`：`9 passed, 3 skipped`
+- 默认回归命令：
+
+```bash
+python -m pytest -q tests/test_generative_task.py tests/test_generative_api.py tests/test_generative_resource_agent_integration.py -m "not llm and not search"
+```
+
+最近一次默认回归结果：
+
+```text
+40 passed, 3 deselected
+```
+
+- 真实 LLM + 真实 search 功能验证命令：
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_generative_resource_agent_integration.py -m "llm and search" --capture=tee-sys -rs
+```
+
+主要产物：
+
+```text
+tests/artifacts/resources_generative_real_search_real_llm_generation_checkpoint.json
+tests/artifacts/resources_generative_real_search_real_llm_all_resources_result.json
+tests/artifacts/resources_generative_real_search_real_llm_all_resources_ppt.md
+tests/artifacts/resources_generative_real_search_real_llm_workspace/
+```
+
 - 已通过真实 `curl` 请求验证 `ppt` 资源可生成 `ppt.pptx`
 
 测试的文件落盘方式：
