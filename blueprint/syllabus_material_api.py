@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from tasks import syllabus_task, material_task
+from tasks import generative_task, syllabus_task
 
 
 bp = Blueprint('syllabus_material_api', __name__, url_prefix='/api')
@@ -273,20 +273,12 @@ def update_material_draft_api():
 
 @bp.route('/syllabus_material_update', methods=['POST'])
 def update_final_material_api():
-    if not request.is_json:
-        return jsonify({'success': False, 'material': None, 'error_message': 'invalid json', 'error_code': 'invalid_json'}), 400
-    data = request.get_json()
-    material_id = data.get('material_id')
-    material_json = data.get('material_json')
-    if not material_id or not isinstance(material_json, dict):
-        return jsonify({'success': False, 'material': None, 'error_message': 'missing material_id/material_json', 'error_code': 'missing_fields'}), 400
-    try:
-        m = material_task.update_final_material_json(int(material_id), material_json)
-        if not m:
-            return jsonify({'success': False, 'material': None, 'error_message': 'update failed', 'error_code': 'update_failed'}), 400
-        return jsonify({'success': True, 'material': {'material_id': getattr(m, 'material_id', None)}, 'error_message': '', 'error_code': ''}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'material': None, 'error_message': str(e), 'error_code': 'exception'}), 500
+    return jsonify({
+        'success': False,
+        'material': None,
+        'error_message': 'syllabus_material_update is deprecated; generated resources are immutable artifacts',
+        'error_code': 'deprecated',
+    }), 410
 
 
 @bp.route('/syllabus_material_draft_detail', methods=['POST'])
@@ -351,9 +343,14 @@ def get_material_detail_api():
         return jsonify({'success': False, 'material': None, 'error_message': 'missing material_id or user_id/resource_id', 'error_code': 'missing_fields'}), 400
     try:
         if user_id and resource_id:
-            info = material_task.get_generated_resource_detail(int(user_id), str(resource_id))
+            info = generative_task.get_generated_resource_detail(int(user_id), str(resource_id))
         else:
-            info = material_task.get_material_detail_info(int(material_id))
+            return jsonify({
+                'success': False,
+                'material': None,
+                'error_message': 'material_id detail is deprecated; use user_id/resource_id or /api/generative_detail',
+                'error_code': 'deprecated',
+            }), 410
         if not info:
             return jsonify({'success': False, 'material': None, 'error_message': 'not found', 'error_code': 'not_found'}), 404
         return jsonify({'success': True, 'material': info, 'error_message': '', 'error_code': ''}), 200
@@ -363,19 +360,12 @@ def get_material_detail_api():
 
 @bp.route('/syllabus_material_status', methods=['POST'])
 def get_material_status_api():
-    if not request.is_json:
-        return jsonify({'success': False, 'status': None, 'error_message': 'invalid json', 'error_code': 'invalid_json'}), 400
-    data = request.get_json()
-    material_id = data.get('material_id')
-    if not material_id:
-        return jsonify({'success': False, 'status': None, 'error_message': 'missing material_id', 'error_code': 'missing_fields'}), 400
-    try:
-        status = material_task.get_material_status(int(material_id))
-        if status is None:
-            return jsonify({'success': False, 'status': None, 'error_message': 'not found', 'error_code': 'not_found'}), 404
-        return jsonify({'success': True, 'status': status, 'error_message': '', 'error_code': ''}), 200
-    except Exception as e:
-        return jsonify({'success': False, 'status': None, 'error_message': str(e), 'error_code': 'exception'}), 500
+    return jsonify({
+        'success': False,
+        'status': None,
+        'error_message': 'syllabus_material_status is deprecated; generated resources expose status in manifest entries',
+        'error_code': 'deprecated',
+    }), 410
 
 
 @bp.route('/syllabus_material_list', methods=['POST'])
@@ -395,20 +385,20 @@ def list_materials_api():
     group_by_type = bool(data.get('group_by_type'))
     try:
         if user_id and group_by_type:
-            rows = material_task.list_generated_resources_by_type(
+            rows = generative_task.list_generated_resources_by_type(
                 int(user_id),
                 syllabus_id=int(syllabus_id) if syllabus_id else None,
                 limit_per_type=limit_per_type,
             )
         elif user_id:
-            rows = material_task.list_generated_resources(
+            rows = generative_task.list_generated_resources(
                 int(user_id),
                 syllabus_id=int(syllabus_id) if syllabus_id else None,
                 resource_type=str(resource_type) if resource_type else None,
                 limit=limit,
             )
         elif syllabus_id:
-            rows = material_task.list_materials_draft_brief_info(int(syllabus_id))
+            rows = []
         else:
             # list all materials is not directly implemented; fall back to empty list
             rows = []

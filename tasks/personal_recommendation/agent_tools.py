@@ -1,7 +1,7 @@
 import os
 from typing import Any, Dict
 
-from tasks.search_tool import search_tool
+from tasks.common.search_tool import search_tool
 
 
 def safe_text(value: Any) -> str:

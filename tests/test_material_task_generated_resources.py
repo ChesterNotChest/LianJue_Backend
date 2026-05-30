@@ -1,6 +1,6 @@
 import json
 
-from tasks import material_task
+from tasks import generative_task
 
 
 def test_get_generated_resource_detail_resolves_repo_relative_paths(monkeypatch, tmp_path):
@@ -28,11 +28,11 @@ def test_get_generated_resource_detail_resolves_repo_relative_paths(monkeypatch,
             }
         ]
     }
-    monkeypatch.setattr(material_task, "_get_backend_root", lambda: backend_root)
-    monkeypatch.setattr(material_task.generative_task, "load_manifest", lambda user_id: manifest)
+    monkeypatch.setattr(generative_task, "_get_backend_root", lambda: backend_root)
+    monkeypatch.setattr(generative_task, "load_manifest", lambda user_id: manifest)
     monkeypatch.chdir(other_cwd)
 
-    detail = material_task.get_generated_resource_detail(5, "doc-1")
+    detail = generative_task.get_generated_resource_detail(5, "doc-1")
 
     assert detail["content"] == {"title": "RowKey document"}
 
@@ -63,9 +63,9 @@ def test_list_generated_resources_filters_and_sorts(monkeypatch):
             },
         ]
     }
-    monkeypatch.setattr(material_task.generative_task, "load_manifest", lambda user_id: manifest)
+    monkeypatch.setattr(generative_task, "load_manifest", lambda user_id: manifest)
 
-    resources = material_task.list_generated_resources(user_id=5, syllabus_id=9)
+    resources = generative_task.list_generated_resources(user_id=5, syllabus_id=9)
 
     assert [item["resource_id"] for item in resources] == ["document-new", "quiz-old"]
 
@@ -78,9 +78,9 @@ def test_list_generated_resources_by_type_applies_limit(monkeypatch):
             {"resource_id": "mindmap-1", "resource_type": "mindmap", "syllabus_id": 9, "created_at": 30},
         ]
     }
-    monkeypatch.setattr(material_task.generative_task, "load_manifest", lambda user_id: manifest)
+    monkeypatch.setattr(generative_task, "load_manifest", lambda user_id: manifest)
 
-    grouped = material_task.list_generated_resources_by_type(
+    grouped = generative_task.list_generated_resources_by_type(
         user_id=5,
         syllabus_id=9,
         limit_per_type=1,
@@ -117,9 +117,10 @@ def test_get_generated_resource_detail_returns_render_ready_wrapper(monkeypatch,
             }
         ]
     }
-    monkeypatch.setattr(material_task.generative_task, "load_manifest", lambda user_id: manifest)
+    monkeypatch.setattr(generative_task, "_get_backend_root", lambda: tmp_path)
+    monkeypatch.setattr(generative_task, "load_manifest", lambda user_id: manifest)
 
-    detail = material_task.get_generated_resource_detail(5, "quiz-1")
+    detail = generative_task.get_generated_resource_detail(5, "quiz-1")
 
     assert detail["resource_id"] == "quiz-1"
     assert detail["resource_type"] == "quiz"

@@ -17,9 +17,9 @@ from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
-from tasks.search_tool import search_tool
+from tasks.common.search_tool import search_tool
 from tasks.study_graph.normalizer import normalize_knowledge_title
-from tasks.study_graph_task import (
+from tasks.study_graph.service import (
     build_study_graph_changes_from_student_payload,
     get_learning_tree_features,
     get_student_learning_tree,

@@ -12,6 +12,13 @@ from schemas.syllabus import Syllabus
 from schemas.user import User
 from schemas.user_syllabus import UserSyllabus
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import agent_runtime as profile_runtime
+from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import personal_syllabus as profile_syllabus
+from tasks.learning_profile import service as profile_service
+from tasks.learning_profile import storage as profile_storage
+from tasks.learning_profile.models import LearningProfileResult
+from config import OPENAI_COMPAT_MODEL_CONFIGS
 
 
 WORKING_SYLLABUS_PATH = "tests/fixtures/大数据概论_20260322235507.json"
@@ -29,21 +36,21 @@ class _ProfileToolchainAgent:
     def run_sync(self, user_prompt, deps=None, **kwargs):
         self.calls += 1
         state = deps.state
-        lpt._tool_load_history_context(state)
-        lpt._tool_load_personal_syllabus_context(state)
-        lpt._tool_normalize_events(state)
-        lpt._tool_compute_features(state)
-        lpt._tool_assemble_profile(state)
-        return _FakeRunResult(lpt.LearningProfileResult(success=True, profile=state["profile"]))
+        profile_tools._tool_load_history_context(state)
+        profile_tools._tool_load_personal_syllabus_context(state)
+        profile_tools._tool_normalize_events(state)
+        profile_tools._tool_compute_features(state)
+        profile_tools._tool_assemble_profile(state)
+        return _FakeRunResult(LearningProfileResult(success=True, profile=state["profile"]))
 
 
 def _normalize_model_for_dashscope():
-    text_config = lpt.OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
+    text_config = OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
     api_base = str(text_config.get("api_base") or text_config.get("base_url") or "")
     model_name = str(text_config.get("model_name") or "")
     if "dashscope.aliyuncs.com" in api_base and model_name.startswith("openai/"):
         text_config["model_name"] = model_name.removeprefix("openai/")
-        lpt.get_learning_profile_agent.cache_clear()
+        profile_runtime.get_learning_profile_agent.cache_clear()
 
 
 @pytest.fixture
@@ -115,15 +122,18 @@ def test_profile_personal_syllabus_full_chain(monkeypatch, repo_json_factory):
         relation.personal_syllabus_path = path
         return relation
 
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == 71 else None)
-    monkeypatch.setattr(lpt, "get_user_syllabus", lambda user_id, syllabus_id: relation)
-    monkeypatch.setattr(lpt, "list_user_syllabuses", lambda user_id: [relation] if user_id == 71 else [])
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 171 else None)
-    monkeypatch.setattr(lpt, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
-    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: True)
-    monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: agent)
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lpt, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_service, "get_user_by_id", lambda user_id: user if user_id == 71 else None)
+    monkeypatch.setattr(profile_syllabus, "get_user_syllabus", lambda user_id, syllabus_id: relation)
+    monkeypatch.setattr(profile_service, "list_user_syllabuses", lambda user_id: [relation] if user_id == 71 else [])
+    monkeypatch.setattr(profile_service, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 171 else None)
+    monkeypatch.setattr(profile_syllabus, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 171 else None)
+    monkeypatch.setattr(profile_tools, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 171 else None)
+    monkeypatch.setattr(profile_syllabus, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
+    monkeypatch.setattr(profile_storage, "set_personal_profile_path", lambda user_id, syllabus_id, path: True)
+    monkeypatch.setattr(profile_runtime, "get_learning_profile_agent", lambda: agent)
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(profile_service, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_syllabus, "time", lambda: 1760000000)
 
     first_profile = lpt.build_learning_profile(
         user_id=71,
@@ -237,17 +247,20 @@ def test_profile_personal_syllabus_multi_round_propagation(monkeypatch, repo_jso
         relation.personal_syllabus_path = path
         return relation
 
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == 72 else None)
-    monkeypatch.setattr(lpt, "get_user_syllabus", lambda user_id, syllabus_id: relation)
-    monkeypatch.setattr(lpt, "list_user_syllabuses", lambda user_id: [relation] if user_id == 72 else [])
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 172 else None)
-    monkeypatch.setattr(lpt, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
-    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda user_id, syllabus_id, path: True)
-    monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: agent)
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(profile_service, "get_user_by_id", lambda user_id: user if user_id == 72 else None)
+    monkeypatch.setattr(profile_syllabus, "get_user_syllabus", lambda user_id, syllabus_id: relation)
+    monkeypatch.setattr(profile_service, "list_user_syllabuses", lambda user_id: [relation] if user_id == 72 else [])
+    monkeypatch.setattr(profile_service, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 172 else None)
+    monkeypatch.setattr(profile_syllabus, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 172 else None)
+    monkeypatch.setattr(profile_tools, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 172 else None)
+    monkeypatch.setattr(profile_syllabus, "set_personal_syllabus_path", fake_set_personal_syllabus_path)
+    monkeypatch.setattr(profile_storage, "set_personal_profile_path", lambda user_id, syllabus_id, path: True)
+    monkeypatch.setattr(profile_runtime, "get_learning_profile_agent", lambda: agent)
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda *args, **kwargs: [])
 
     now = {"value": 1760000000}
-    monkeypatch.setattr(lpt, "time", lambda: now["value"])
+    monkeypatch.setattr(profile_service, "time", lambda: now["value"])
+    monkeypatch.setattr(profile_syllabus, "time", lambda: now["value"])
 
     def build_profile(dialogue_text, correct):
         return lpt.build_learning_profile(
@@ -352,8 +365,9 @@ def test_real_learning_profile_agent_full_chain_integration(monkeypatch, db_real
 
     _normalize_model_for_dashscope()
     user, syllabus, relation = db_real_learning_profile_case
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lpt, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(profile_service, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_syllabus, "time", lambda: 1760000000)
 
     trace = []
 
@@ -366,14 +380,14 @@ def test_real_learning_profile_agent_full_chain_integration(monkeypatch, db_real
 
         return traced
 
-    monkeypatch.setattr(lpt, "_tool_load_existing_profile_context", wrap("load_existing_profile_context", lpt._tool_load_existing_profile_context))
-    monkeypatch.setattr(lpt, "_tool_load_history_context", wrap("load_history_context", lpt._tool_load_history_context))
-    monkeypatch.setattr(lpt, "_tool_load_personal_syllabus_context", wrap("load_personal_syllabus_context", lpt._tool_load_personal_syllabus_context))
-    monkeypatch.setattr(lpt, "_tool_normalize_events", wrap("normalize_events", lpt._tool_normalize_events))
-    monkeypatch.setattr(lpt, "_tool_compute_features", wrap("compute_features", lpt._tool_compute_features))
-    monkeypatch.setattr(lpt, "_tool_assemble_profile", wrap("assemble_profile", lpt._tool_assemble_profile))
-    monkeypatch.setattr(lpt, "_tool_save_or_update_profile", wrap("save_or_update_profile", lpt._tool_save_or_update_profile))
-    lpt.get_learning_profile_agent.cache_clear()
+    monkeypatch.setattr(profile_runtime, "_tool_load_existing_profile_context", wrap("load_existing_profile_context", profile_runtime._tool_load_existing_profile_context))
+    monkeypatch.setattr(profile_runtime, "_tool_load_history_context", wrap("load_history_context", profile_runtime._tool_load_history_context))
+    monkeypatch.setattr(profile_runtime, "_tool_load_personal_syllabus_context", wrap("load_personal_syllabus_context", profile_runtime._tool_load_personal_syllabus_context))
+    monkeypatch.setattr(profile_runtime, "_tool_normalize_events", wrap("normalize_events", profile_runtime._tool_normalize_events))
+    monkeypatch.setattr(profile_runtime, "_tool_compute_features", wrap("compute_features", profile_runtime._tool_compute_features))
+    monkeypatch.setattr(profile_runtime, "_tool_assemble_profile", wrap("assemble_profile", profile_runtime._tool_assemble_profile))
+    monkeypatch.setattr(profile_runtime, "_tool_save_or_update_profile", wrap("save_or_update_profile", profile_runtime._tool_save_or_update_profile))
+    profile_runtime.get_learning_profile_agent.cache_clear()
     payload = {
         "user_id": user.user_id,
         "syllabus_id": syllabus.syllabus_id,
@@ -404,7 +418,7 @@ def test_real_learning_profile_agent_full_chain_integration(monkeypatch, db_real
     try:
         profile = lpt.build_learning_profile(**payload)
     finally:
-        lpt.get_learning_profile_agent.cache_clear()
+        profile_runtime.get_learning_profile_agent.cache_clear()
 
     initialized = json.loads(open(relation.personal_syllabus_path, "r", encoding="utf-8").read())
     working_syllabus = json.loads(open(WORKING_SYLLABUS_PATH, "r", encoding="utf-8").read())

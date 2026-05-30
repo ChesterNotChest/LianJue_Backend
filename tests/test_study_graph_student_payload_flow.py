@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 
-from tasks.student_agent_task import get_student_learning_graph
+from tasks.study_graph_task import get_student_learning_graph
 from tasks.study_graph import storage as study_graph_storage
 from tasks.study_graph_task import build_study_graph_changes_from_student_payload, get_student_learning_tree, get_learning_tree_features, submit_learning_tree_changes
 

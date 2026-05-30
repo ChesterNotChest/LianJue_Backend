@@ -5,16 +5,20 @@ from flask import Flask
 
 from blueprint import user_api
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import agent_runtime as profile_runtime
+from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import service as profile_service
 from tasks.learning_profile import storage as profile_storage
+from tasks.learning_profile.models import LearningProfileResult
 
 
 def test_learning_profile_agent_and_model_can_initialize():
-    model = lpt._build_learning_profile_model()
-    agent = lpt.get_learning_profile_agent()
+    model = profile_runtime._build_learning_profile_model()
+    agent = profile_runtime.get_learning_profile_agent()
 
     assert type(model).__name__ in {"OpenAIModel", "OpenAIChatModel"}
     assert agent.name == "learning_profile_agent"
-    assert agent.output_type is lpt.LearningProfileResult
+    assert agent.output_type is LearningProfileResult
 
 
 def test_learning_profile_toolchain_builds_profile_without_llm():
@@ -82,9 +86,9 @@ def test_learning_profile_toolchain_builds_profile_without_llm():
         "tool_trace": [],
     }
 
-    normalized = lpt._tool_normalize_events(state)
-    features = lpt._tool_compute_features(state)
-    assembled = lpt._tool_assemble_profile(state)
+    normalized = profile_tools._tool_normalize_events(state)
+    features = profile_tools._tool_compute_features(state)
+    assembled = profile_tools._tool_assemble_profile(state)
 
     profile = state["profile"]
 
@@ -115,7 +119,7 @@ def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
         lambda user_id, syllabus_id, path: updated_paths.append((user_id, syllabus_id, path)) or True,
     )
 
-    result = lpt._tool_save_or_update_profile(state)
+    result = profile_tools._tool_save_or_update_profile(state)
 
     assert result["saved"] is True
     assert result["profile_revision"] == 4
@@ -129,7 +133,7 @@ def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
 def test_build_personal_profile_path_has_no_read_side_effect(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
-    profile_path = lpt.build_personal_profile_path(2, 9)
+    profile_path = profile_storage.build_personal_profile_path(2, 9)
 
     assert Path(profile_path).parts[-2:] == ("profiles", "9-2.json")
     assert not (tmp_path / "profiles").exists()
@@ -141,7 +145,7 @@ def test_save_personal_profile_removes_temp_file_when_db_update_fails(monkeypatc
     profile = {"user_id": 2, "syllabus_id": 9, "confidence": 0.7}
 
     saved = profile_storage.save_personal_profile(2, 9, profile)
-    profile_path = Path(lpt.build_personal_profile_path(2, 9))
+    profile_path = Path(profile_storage.build_personal_profile_path(2, 9))
 
     assert saved is None
     assert not profile_path.exists()
@@ -193,8 +197,8 @@ def test_get_or_build_learning_profile_returns_persisted_profile_without_refresh
         "saved_at": 1760000000,
     }
     build_calls = []
-    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
-    monkeypatch.setattr(lpt, "build_learning_profile", lambda *args, **kwargs: build_calls.append((args, kwargs)) or {"user_id": 3})
+    monkeypatch.setattr(profile_service, "load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
+    monkeypatch.setattr(profile_service, "build_learning_profile", lambda *args, **kwargs: build_calls.append((args, kwargs)) or {"user_id": 3})
 
     profile = lpt.get_or_build_learning_profile(3, 11)
 
@@ -211,8 +215,8 @@ def test_get_or_build_learning_profile_builds_when_missing_or_refreshing(monkeyp
         build_calls.append((args, kwargs))
         return {"user_id": args[0], "confidence": 0.6}
 
-    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (None, None))
-    monkeypatch.setattr(lpt, "build_learning_profile", fake_build)
+    monkeypatch.setattr(profile_service, "load_existing_profile", lambda user_id, syllabus_id: (None, None))
+    monkeypatch.setattr(profile_service, "build_learning_profile", fake_build)
 
     missing_profile = lpt.get_or_build_learning_profile(4, 12)
 
@@ -226,7 +230,7 @@ def test_get_or_build_learning_profile_builds_when_missing_or_refreshing(monkeyp
         "profile_path": "profiles/12-4.json",
         "saved_at": 1760000000,
     }
-    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
+    monkeypatch.setattr(profile_service, "load_existing_profile", lambda user_id, syllabus_id: (persisted, persisted["profile_path"]))
 
     refreshed_profile = lpt.get_or_build_learning_profile(4, 12, refresh_profile=True)
 
@@ -248,10 +252,10 @@ def test_get_persisted_learning_profile_rejects_identity_mismatch(monkeypatch):
         "saved_at": 1760000000,
     }
 
-    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (wrong_user, wrong_user["profile_path"]))
+    monkeypatch.setattr(profile_service, "load_existing_profile", lambda user_id, syllabus_id: (wrong_user, wrong_user["profile_path"]))
     assert lpt.get_persisted_learning_profile(4, 12) is None
 
-    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (wrong_syllabus, wrong_syllabus["profile_path"]))
+    monkeypatch.setattr(profile_service, "load_existing_profile", lambda user_id, syllabus_id: (wrong_syllabus, wrong_syllabus["profile_path"]))
     assert lpt.get_persisted_learning_profile(4, 12) is None
 
 
@@ -262,7 +266,7 @@ def test_get_persisted_learning_profile_accepts_root_syllabus_id(monkeypatch):
         "confidence": 0.8,
     }
 
-    monkeypatch.setattr(lpt, "load_existing_profile", lambda user_id, syllabus_id: (persisted, "profiles/12-4.json"))
+    monkeypatch.setattr(profile_service, "load_existing_profile", lambda user_id, syllabus_id: (persisted, "profiles/12-4.json"))
 
     profile = lpt.get_persisted_learning_profile(4, 12)
 
@@ -310,7 +314,7 @@ def test_user_learning_profile_api_defaults_to_cached_read_and_parses_refresh(mo
 
 
 def test_learning_profile_result_schema_accepts_profile():
-    result = lpt.LearningProfileResult(
+    result = LearningProfileResult(
         success=True,
         profile={"user_id": 1, "confidence": 0.5},
     )

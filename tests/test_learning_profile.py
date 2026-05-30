@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import agent_runtime as profile_runtime
+from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import service as profile_service
+from tasks.learning_profile.models import LearningProfileResult
 
 
 def test_build_learning_profile_uses_behavior_answer_and_resource_signals(
@@ -45,27 +49,27 @@ def test_build_learning_profile_uses_behavior_answer_and_resource_signals(
         def run_sync(self, user_prompt, deps=None, **kwargs):
             self.calls += 1
             state = deps.state
-            lpt._tool_load_history_context(state)
-            lpt._tool_normalize_events(state)
-            lpt._tool_compute_features(state)
-            lpt._tool_assemble_profile(state)
+            profile_tools._tool_load_history_context(state)
+            profile_tools._tool_normalize_events(state)
+            profile_tools._tool_compute_features(state)
+            profile_tools._tool_assemble_profile(state)
             return FakeRunResult(
-                lpt.LearningProfileResult(success=True, profile=state["profile"])
+                LearningProfileResult(success=True, profile=state["profile"])
             )
 
     fake_agent = FakeAgent()
 
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == 7 else None)
+    monkeypatch.setattr(profile_service, "get_user_by_id", lambda user_id: user if user_id == 7 else None)
     monkeypatch.setattr(
-        lpt, "list_user_syllabuses", lambda user_id: [user_syllabus] if user_id == 7 else []
+        profile_service, "list_user_syllabuses", lambda user_id: [user_syllabus] if user_id == 7 else []
     )
     monkeypatch.setattr(
-        lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 19 else None
+        profile_service, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 19 else None
     )
-    monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: fake_agent)
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda user_id, syllabus_id=None: [])
-    monkeypatch.setattr(lpt, "load_personal_syllabus_rows", lambda user_id, syllabus_id=None: [])
-    monkeypatch.setattr(lpt, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_runtime, "get_learning_profile_agent", lambda: fake_agent)
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda user_id, syllabus_id=None: [])
+    monkeypatch.setattr(profile_service, "load_personal_syllabus_rows", lambda user_id, syllabus_id=None: [])
+    monkeypatch.setattr(profile_service, "time", lambda: 1760000000)
 
     profile = lpt.build_learning_profile(
         user_id=7,
@@ -193,28 +197,28 @@ def test_build_learning_profile_can_call_context_tools_before_feature_tools(
         def run_sync(self, user_prompt, deps=None, **kwargs):
             self.calls += 1
             state = deps.state
-            lpt._tool_load_history_context(state)
-            lpt._tool_load_personal_syllabus_context(state)
-            lpt._tool_normalize_events(state)
-            lpt._tool_compute_features(state)
-            lpt._tool_assemble_profile(state)
+            profile_tools._tool_load_history_context(state)
+            profile_tools._tool_load_personal_syllabus_context(state)
+            profile_tools._tool_normalize_events(state)
+            profile_tools._tool_compute_features(state)
+            profile_tools._tool_assemble_profile(state)
             return FakeRunResult(
-                lpt.LearningProfileResult(success=True, profile=state["profile"])
+                LearningProfileResult(success=True, profile=state["profile"])
             )
 
     fake_agent = FakeAgent()
 
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == 8 else None)
+    monkeypatch.setattr(profile_service, "get_user_by_id", lambda user_id: user if user_id == 8 else None)
     monkeypatch.setattr(
-        lpt, "list_user_syllabuses", lambda user_id: [user_syllabus] if user_id == 8 else []
+        profile_service, "list_user_syllabuses", lambda user_id: [user_syllabus] if user_id == 8 else []
     )
     monkeypatch.setattr(
-        lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 20 else None
+        profile_service, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 20 else None
     )
-    monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: fake_agent)
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: history_entries)
+    monkeypatch.setattr(profile_runtime, "get_learning_profile_agent", lambda: fake_agent)
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda *args, **kwargs: history_entries)
     monkeypatch.setattr(
-        lpt,
+        profile_service,
         "load_personal_syllabus_rows",
         lambda *args, **kwargs: [
             (
@@ -234,7 +238,7 @@ def test_build_learning_profile_can_call_context_tools_before_feature_tools(
             )
         ],
     )
-    monkeypatch.setattr(lpt, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_service, "time", lambda: 1760000000)
 
     profile = lpt.build_learning_profile(
         user_id=8,

@@ -32,14 +32,17 @@
 
 核心实现：
 
-- `tasks/student_agent_task.py`
-  - 真实 Student Agent 编排入口。
-  - `run_student_agent(payload)` 写路径。
-  - `get_student_learning_graph(user_id, syllabus_id, include_debug=False)` 只读完整学习树入口。
 - `tasks/study_graph_task.py`
-  - 学习树工具层入口。
+  - 学习进度图谱唯一跨模块 task 门户。
+  - 暴露真实 Student Agent 编排入口：`run_student_agent(payload)`。
+  - 暴露只读完整学习树入口：`get_student_learning_graph(user_id, syllabus_id, include_debug=False)`。
+  - 暴露学习树工具层入口。
   - payload 到 changes 的规则转换。
   - 提交变更、读取树、读取摘要特征。
+- `tasks/study_graph/student_agent.py`
+  - Student Agent 包内实现。
+- `tasks/study_graph/service.py`
+  - 确定性学习树服务层。
 - `tasks/study_graph/contracts.py`
   - ID、根节点、空树、掌握度标签、client change id 等契约函数。
 - `tasks/study_graph/storage.py`
@@ -173,7 +176,7 @@ get_student_learning_graph(user_id: int, syllabus_id: int, include_debug: bool =
 完整数据流：
 
 ```text
-student_agent_task.get_student_learning_graph
+study_graph_task.get_student_learning_graph
   -> study_graph_task.get_student_learning_tree
   -> study_graph_task.get_learning_tree_features
   -> 返回完整 tree + features bundle
@@ -196,6 +199,12 @@ student_agent_task.get_student_learning_graph
 ```
 
 该入口不调用 LLM，不调用 RAG，只读当前持久化学习树。
+
+入口边界：
+
+- `tasks/study_graph_task.py` 是学习进度图谱和 Student Agent 的唯一跨模块 task 门户。
+- `tasks/study_graph/` 只放包内实现，外部 API 或其他 Agent 不应直接依赖包内函数。
+- 原 `tasks/student_agent_task.py` 已并入 `tasks/study_graph/student_agent.py`，不再保留外层文件。
 
 ## 3. 精确到输入输出的函数级收口
 

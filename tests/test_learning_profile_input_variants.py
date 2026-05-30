@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import agent_runtime as profile_runtime
+from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import service as profile_service
+from tasks.learning_profile.models import LearningProfileResult
 
 
 class _FakeRunResult:
@@ -11,12 +15,12 @@ class _FakeRunResult:
 class _ProfileToolchainAgent:
     def run_sync(self, user_prompt, deps=None, **kwargs):
         state = deps.state
-        lpt._tool_load_history_context(state)
-        lpt._tool_load_personal_syllabus_context(state)
-        lpt._tool_normalize_events(state)
-        lpt._tool_compute_features(state)
-        lpt._tool_assemble_profile(state)
-        return _FakeRunResult(lpt.LearningProfileResult(success=True, profile=state["profile"]))
+        profile_tools._tool_load_history_context(state)
+        profile_tools._tool_load_personal_syllabus_context(state)
+        profile_tools._tool_normalize_events(state)
+        profile_tools._tool_compute_features(state)
+        profile_tools._tool_assemble_profile(state)
+        return _FakeRunResult(LearningProfileResult(success=True, profile=state["profile"]))
 
 
 def _install_profile_mocks(monkeypatch, user, syllabuses, relations, personal_payloads):
@@ -24,12 +28,11 @@ def _install_profile_mocks(monkeypatch, user, syllabuses, relations, personal_pa
     syllabus_by_id = {syllabus.syllabus_id: syllabus for syllabus in syllabuses}
     personal_by_syllabus = dict(personal_payloads)
 
-    monkeypatch.setattr(lpt, "get_user_by_id", lambda user_id: user if user_id == user.user_id else None)
-    monkeypatch.setattr(lpt, "list_user_syllabuses", lambda user_id: relations if user_id == user.user_id else [])
-    monkeypatch.setattr(lpt, "get_user_syllabus", lambda user_id, syllabus_id: relation_by_syllabus.get(syllabus_id))
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: syllabus_by_id.get(syllabus_id))
+    monkeypatch.setattr(profile_service, "get_user_by_id", lambda user_id: user if user_id == user.user_id else None)
+    monkeypatch.setattr(profile_service, "list_user_syllabuses", lambda user_id: relations if user_id == user.user_id else [])
+    monkeypatch.setattr(profile_service, "get_syllabus_by_id", lambda syllabus_id: syllabus_by_id.get(syllabus_id))
     monkeypatch.setattr(
-        lpt,
+        profile_service,
         "load_personal_syllabus_rows",
         lambda user_id, syllabus_id=None: [
             (
@@ -41,10 +44,9 @@ def _install_profile_mocks(monkeypatch, user, syllabuses, relations, personal_pa
             if syllabus_id is None or sid == syllabus_id
         ],
     )
-    monkeypatch.setattr(lpt, "collect_history_entries", lambda *args, **kwargs: [])
-    monkeypatch.setattr(lpt, "set_personal_profile_path", lambda *args, **kwargs: True)
-    monkeypatch.setattr(lpt, "get_learning_profile_agent", lambda: _ProfileToolchainAgent())
-    monkeypatch.setattr(lpt, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(profile_runtime, "get_learning_profile_agent", lambda: _ProfileToolchainAgent())
+    monkeypatch.setattr(profile_service, "time", lambda: 1760000000)
 
 
 def test_profile_from_personal_syllabus_only(monkeypatch):

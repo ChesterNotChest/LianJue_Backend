@@ -38,6 +38,8 @@
 - `tasks/learning_profile_task.py`
   - 学习画像 Agent 编排入口。
   - 画像构建、读取、持久化、个人大纲初始化和建议更新。
+- `tasks/learning_profile/`
+  - 学习画像包内实现。`service.py` 承接画像构建服务，`personal_syllabus.py` 承接个人大纲读写，`agent_runtime.py` / `agent_tools.py` 承接 Agent 运行时和工具。
 - `tasks/learning_profile/profile_builder.py`
   - 画像特征计算和最终 profile 组装。
 - `tasks/learning_profile/alignment.py`
@@ -48,7 +50,7 @@
   - `LearningProfileDeps`
   - `LearningProfileResult`
 - `tasks/learning_profile/__init__.py`
-  - 对外导出学习画像包内模型和存储工具。
+  - 仅作为包说明，不作为外部业务入口。
 - `repositories/user_syllabus_repo.py`
   - `personal_syllabus_path`
   - `personal_profile_path`
@@ -60,6 +62,8 @@
 接口和测试：
 
 - `blueprint/user_api.py`
+- `blueprint/learning_api.py`
+  - 学习页个人大纲初始化和详情读取 API。该文件不再经过 `learning_task.py`，直接调用 `learning_profile_task`。
 - `tests/test_learning_profile.py`
 - `tests/test_learning_profile_toolchain.py`
 - `tests/test_learning_profile_input_variants.py`
@@ -79,6 +83,8 @@ API 入口：
 
 ```text
 POST /api/user_learning_profile
+POST /api/learning_init_personal_syllabus
+POST /api/learning_personal_syllabus_detail
 ```
 
 Task 入口：
@@ -86,7 +92,17 @@ Task 入口：
 ```python
 get_or_build_learning_profile(...)
 build_learning_profile(...)
+read_profile_personal_syllabus(...)
+init_profile_personal_syllabus(...)
+append_profile_personal_syllabus_suggestion(...)
 ```
+
+入口边界：
+
+- `tasks/learning_profile_task.py` 是画像和个人大纲的唯一跨模块 task 门户。
+- `tasks/learning_profile/` 只放包内实现，外部 API 或其他 Agent 不应直接依赖包内函数。
+- `tasks/learning_task.py` 已废弃并删除；学习页个人大纲初始化和详情读取由 `blueprint/learning_api.py -> learning_profile_task` 直接完成。
+- `/api/learning_ask_question` 和 `/api/learning_update_personal_syllabus` 仍保留为 legacy URL，但返回 `410 deprecated`。
 
 外部输入契约：
 

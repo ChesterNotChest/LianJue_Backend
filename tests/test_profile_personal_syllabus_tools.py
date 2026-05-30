@@ -2,6 +2,8 @@ import json
 from types import SimpleNamespace
 
 from tasks import learning_profile_task as lpt
+from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import personal_syllabus as profile_syllabus
 
 
 def test_read_profile_personal_syllabus_is_read_only(monkeypatch, repo_json_factory):
@@ -24,11 +26,11 @@ def test_read_profile_personal_syllabus_is_read_only(monkeypatch, repo_json_fact
         prefix="91_personal",
     )
     monkeypatch.setattr(
-        lpt,
+        profile_syllabus,
         "get_user_syllabus",
         lambda user_id, syllabus_id: SimpleNamespace(personal_syllabus_path=str(personal_path)),
     )
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: None)
+    monkeypatch.setattr(profile_syllabus, "get_syllabus_by_id", lambda syllabus_id: None)
 
     before = personal_path.read_text(encoding="utf-8")
     result = lpt.read_profile_personal_syllabus(31, 91)
@@ -55,12 +57,12 @@ def test_init_profile_personal_syllabus_creates_default_document(monkeypatch, re
     )
     saved_paths = []
     monkeypatch.setattr(
-        lpt,
+        profile_syllabus,
         "get_syllabus_by_id",
         lambda syllabus_id: SimpleNamespace(syllabus_path=str(syllabus_path)),
     )
     monkeypatch.setattr(
-        lpt,
+        profile_syllabus,
         "set_personal_syllabus_path",
         lambda user_id, syllabus_id, path: saved_paths.append(path) or True,
     )
@@ -96,12 +98,12 @@ def test_append_suggestion_stacks_until_threshold_then_applies(monkeypatch, repo
         prefix="93_personal",
     )
     monkeypatch.setattr(
-        lpt,
+        profile_syllabus,
         "get_user_syllabus",
         lambda user_id, syllabus_id: SimpleNamespace(personal_syllabus_path=str(personal_path)),
     )
-    monkeypatch.setattr(lpt, "get_syllabus_by_id", lambda syllabus_id: None)
-    monkeypatch.setattr(lpt, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_syllabus, "get_syllabus_by_id", lambda syllabus_id: None)
+    monkeypatch.setattr(profile_syllabus, "time", lambda: 1760000000)
 
     for index in range(4):
         result = lpt.append_profile_personal_syllabus_suggestion(
@@ -152,7 +154,7 @@ def test_append_suggestion_rejects_low_confidence(monkeypatch, repo_json_factory
         prefix="94_personal",
     )
     monkeypatch.setattr(
-        lpt,
+        profile_syllabus,
         "get_user_syllabus",
         lambda user_id, syllabus_id: SimpleNamespace(personal_syllabus_path=str(personal_path)),
     )
@@ -223,9 +225,9 @@ def test_profile_refresh_outputs_suggestions_without_writing_personal_syllabus(m
     }
 
     before = personal_path.read_text(encoding="utf-8")
-    lpt._tool_normalize_events(state)
-    lpt._tool_compute_features(state)
-    lpt._tool_assemble_profile(state)
+    profile_tools._tool_normalize_events(state)
+    profile_tools._tool_compute_features(state)
+    profile_tools._tool_assemble_profile(state)
     after = personal_path.read_text(encoding="utf-8")
 
     assert before == after

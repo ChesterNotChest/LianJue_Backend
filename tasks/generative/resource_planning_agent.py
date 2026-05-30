@@ -124,7 +124,7 @@ class ResourcePlanningAgent:
         if self.search_fn is not None:
             return self.search_fn
         try:
-            from tasks.search_tool import search_tool
+            from tasks.common.search_tool import search_tool
         except Exception:
             return None
         self.search_fn = search_tool

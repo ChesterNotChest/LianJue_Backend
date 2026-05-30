@@ -7,8 +7,9 @@ from tasks.personal_recommendation.graph_adapter import InMemoryGraphAdapter
 from tasks.personal_recommendation.perception import generate_state
 from tasks.personal_recommendation.sample_data import goals, learning_tree, user_profile
 from tasks.personal_recommendation_task import run_recommendation_route
-from tasks import personal_recommendation_task as prt
+from tasks import personal_recommendation_task as prt_facade
 from tasks.personal_recommendation import agent_tools as prat
+from tasks.personal_recommendation import service as prt
 
 
 TEST_RECOMMENDATION_ARTIFACT_ROOT = Path(__file__).resolve().parent / "artifacts" / "personal_recommendation"
@@ -43,11 +44,11 @@ def _recommendation_summary(result: dict) -> dict:
 
 def test_personal_recommendation_task_generates_candidates(monkeypatch):
     monkeypatch.setattr(
-        "tasks.personal_recommendation_task.build_recommendation_profile",
+        "tasks.personal_recommendation.service.build_recommendation_profile",
         lambda user_id, syllabus_id=None: user_profile,
     )
     monkeypatch.setattr(
-        "tasks.personal_recommendation_task.load_recommendation_learning_tree",
+        "tasks.personal_recommendation.service.load_recommendation_learning_tree",
         lambda syllabus_id=None: learning_tree,
     )
 
@@ -142,7 +143,7 @@ def test_personal_recommendation_agent_tools_keep_rag_outside_algorithm(monkeypa
         }
 
     monkeypatch.setattr(prat, "search_tool", fake_search)
-    monkeypatch.setattr(prt, "run_recommendation_route_from_payload", fake_route)
+    monkeypatch.setattr(prt_facade, "run_recommendation_route_from_payload", fake_route)
     state = {
         "payload": {
             "user_id": 123,
