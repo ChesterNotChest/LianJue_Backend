@@ -6,4 +6,4 @@ contracts、resource_planning_agent、resource_generation_agent、
 resource_persistence、storage、validation。
 """
 
-__all__: list[str] = []
+__all__ = []

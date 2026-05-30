@@ -5,4 +5,4 @@
 models、storage、personal_syllabus、agent_tools、agent_runtime、service。
 """
 
-__all__: list[str] = []
+__all__ = []

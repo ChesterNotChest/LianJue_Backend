@@ -5,4 +5,4 @@
 contracts、normalizer、storage、tree_builder、features、service、student_agent。
 """
 
-__all__: list[str] = []
+__all__ = []

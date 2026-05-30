@@ -6,4 +6,4 @@ agent_contracts、agent_tools、agent_runtime、service、perception、
 candidate_generator、pruning、evaluator、selector_ib_grpo。
 """
 
-__all__: list[str] = []
+__all__ = []
