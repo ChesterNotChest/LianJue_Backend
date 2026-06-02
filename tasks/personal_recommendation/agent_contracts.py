@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 import json
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 @dataclass
@@ -26,3 +26,17 @@ class PersonalRecommendationResult(BaseModel):
                 return None
             return parsed if isinstance(parsed, dict) else None
         return value
+
+
+@dataclass
+class ConceptDecompositionDeps:
+    state: Dict[str, Any] = field(default_factory=dict)
+
+
+class ConceptDecompositionAgentResult(BaseModel):
+    success: bool = True
+    concepts: list[dict] = Field(default_factory=list)
+    edges: list[dict] = Field(default_factory=list)
+    fallback_used: bool = False
+    error_message: str = ""
+    error_code: str = ""

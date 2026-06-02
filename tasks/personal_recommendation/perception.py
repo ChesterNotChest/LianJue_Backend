@@ -39,6 +39,25 @@ def _as_set(value):
     return {str(value)}
 
 
+def _node_outcomes_known(node, knowledge):
+    outcomes = node.get('outcomes', []) if isinstance(node, dict) else []
+    if not outcomes:
+        return False
+    return all(knowledge.get(s, 0) > 0 for s in outcomes)
+
+
+def _prerequisites_satisfied(node, learning_tree, knowledge, completed_nodes):
+    prerequisites = node.get('prerequisites', []) if isinstance(node, dict) else []
+    for prerequisite in prerequisites:
+        prerequisite_id = str(prerequisite)
+        if prerequisite_id in completed_nodes:
+            continue
+        prerequisite_node = learning_tree.get(prerequisite_id, {})
+        if not _node_outcomes_known(prerequisite_node, knowledge):
+            return False
+    return True
+
+
 def generate_state(user_profile, learning_tree, study_graph_state=None):
     knowledge = _normalize_knowledge_levels(user_profile)
     study_graph_state = study_graph_state if isinstance(study_graph_state, dict) else {}
@@ -48,14 +67,20 @@ def generate_state(user_profile, learning_tree, study_graph_state=None):
     current_node = str(study_graph_state.get("current_node_id") or "")
     start_nodes = []
     for nid,node in learning_tree.items():
-        if str(nid) in blocked_nodes:
+        normalized_id = str(nid)
+        if normalized_id in blocked_nodes:
             continue
-        if str(nid) in completed_nodes:
+        if normalized_id in completed_nodes:
             continue
-        # a node is candidate start if it has at least one outcome not fully known
-        outcomes = node.get('outcomes',[])
-        if str(nid) == current_node or str(nid) in weak_nodes or not all(knowledge.get(s,0) > 0 for s in outcomes):
-            # but only include node if prerequisites are not impossible (simple check)
+        # Current/weak nodes may be resumed even if their prerequisites are not fully satisfied.
+        if normalized_id == current_node or normalized_id in weak_nodes:
+            start_nodes.append(nid)
+            continue
+        # Otherwise a node is a valid start only if it adds new outcomes and its
+        # direct prerequisites are already satisfied by profile knowledge or the
+        # study graph. This prevents jumping straight to a target node and losing
+        # prerequisite context from the candidate path.
+        if not _node_outcomes_known(node, knowledge) and _prerequisites_satisfied(node, learning_tree, knowledge, completed_nodes):
             start_nodes.append(nid)
     constraints = dict(user_profile.get('constraints',{}) or {})
     existing_blocked = _as_set(constraints.get("blocked_nodes"))

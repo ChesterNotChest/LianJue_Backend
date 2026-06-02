@@ -52,6 +52,11 @@ def score(path_item, S, learning_tree):
                 confidences.append(1.0)
         else:
             confidences.append(1.0)
+    for node_id in path:
+        try:
+            confidences.append(float(learning_tree.get(node_id, {}).get('reliability', 1.0)))
+        except Exception:
+            confidences.append(1.0)
     C = sum(confidences) / len(confidences) if confidences else 0.5
     return {'E': E, 'D': D, 'R': R, 'P': P, 'G': G, 'C': C}
 

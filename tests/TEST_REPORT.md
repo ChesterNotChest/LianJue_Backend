@@ -105,6 +105,17 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_cho
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
 ```
 
+每周知识点 Agent 破拆真实 LLM + RAG 验证：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py::test_period_concept_decomposer_real_llm_rag_optional -m llm
+```
+
+调试 Agent proposal / RAG evidence 时可额外打开：
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py::test_period_concept_decomposer_real_llm_rag_optional -m llm
+```
+
 可选环境变量：
 
 ```text
@@ -113,6 +124,10 @@ PERSONAL_RECOMMENDATION_RAG_QUERY=<query>
 PERSONAL_RECOMMENDATION_RAG_TOP_K=5
 PERSONAL_RECOMMENDATION_ROUTE_K=10
 PERSONAL_RECOMMENDATION_BEAM_WIDTH=8
+PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1
+PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
+PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG
+PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K=5
 ```
 
 ## 2 用例描述

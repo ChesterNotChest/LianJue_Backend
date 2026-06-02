@@ -381,6 +381,144 @@ run_recommendation_route
 
 - 将个人教学大纲 JSON 转换为推荐算法使用的节点、边和元数据结构。
 - 保持输出结构和 `tasks.personal_recommendation` 算法模块兼容。
+- 对 `period` 教学周/课次结构，生成语义化每周知识点 anchor，而不是把 `week_x` 当主学习节点。
+- 当前已接入每周知识点 Agent/RAG 破拆链路，能够把通用语义增强过的每周知识点派生为推荐侧 concept graph；该产物只作为推荐侧派生图，不覆盖原始 syllabus。
+- 规则型 concept fallback 保留为可诊断兜底，只在 Agent 不可用、超时或输出无法通过本地校验时触发。
+
+`period` 结构输出边界：
+
+```text
+period item
+  -> syllabus_period anchor
+  -> Agent/RAG concept decomposition
+  -> validate_concept_graph
+  -> syllabus_period_concept nodes
+  -> recommendation learning_tree
+```
+
+Agent 破拆节点会显式标记结构来源、置信度和证据来源：
+
+```json
+{
+  "title": "RowKey设计",
+  "node_source": "syllabus_period_concept",
+  "decomposition_method": "agent",
+  "fallback_tag": "",
+  "source_period": {"week_index": "6", "title": "分布式数据库中典型技术HBase"},
+  "confidence": 0.9,
+  "reliability": 0.9,
+  "matched_by": ["text"],
+  "reason": "Explicitly mentioned in enhanced_content as key design aspect",
+  "prerequisites": ["HBase数据模型"]
+}
+```
+
+真实 LLM/RAG 验证中，HBase period 可以被破拆为：
+
+```text
+HBase概述
+HBase数据模型
+RowKey设计
+Region划分
+预分区
+热点规避
+HBase架构
+HBase与HDFS关系
+```
+
+并生成先修边：
+
+```text
+HBase数据模型 -> RowKey设计
+RowKey设计 -> Region划分
+Region划分 -> 预分区
+RowKey设计 -> 热点规避
+Region划分 -> 热点规避
+预分区 -> 热点规避
+```
+
+规则 fallback 节点同样会显式标记来源，方便推荐 Agent 或总 Agent 识别低可信路径：
+
+```json
+{
+  "title": "RowKey",
+  "node_source": "syllabus_period_concept",
+  "decomposition_method": "rule_fallback",
+  "fallback_tag": "period_concept_rule_fallback",
+  "source_period": {"week_index": "6", "title": "分布式数据库中典型技术HBase"},
+  "confidence": 0.75,
+  "matched_by": ["RowKey"],
+  "implied": false
+}
+```
+
+HBase 这类明确主题可以低置信度派生 RowKey、Region、预分区、热点规避等 implied concept：
+
+```json
+{
+  "title": "热点规避",
+  "decomposition_method": "rule_fallback",
+  "fallback_tag": "period_concept_rule_implied_fallback",
+  "confidence": 0.55,
+  "matched_by": ["implied_by:HBase"],
+  "implied": true
+}
+```
+
+当前边界：
+
+- Agent/RAG concept decomposer 是默认破拆方向，输出 `decomposition_method="agent"`。
+- 规则 fallback 是可诊断兜底，不作为通用学科破拆首选。
+- Agent 成功输出时不会混入规则 fallback；Agent 失败时输出 `fallback_used=true` 和 `fallback_summary`。
+- 本地 validator 负责接住真实模型常见 schema 漂移，例如 `matched_by` 字符串、`from/to` 边字段，并归一为内部 schema。
+- Agent 破拆通过 mock structured output 做 CI 测试；真实 LLM/RAG 放 opt-in 测试。
+- 原始 syllabus JSON 不被写回；派生节点通过 `source_period` 引用原始每周知识点。
+
+### `run_period_concept_decomposer_agent(payload: dict) -> dict`
+
+职责：
+
+- 读取每周知识点上下文。
+- 检索或复用 RAG evidence。
+- 调用 LLM Agent 生成 concept graph proposal。
+- 通过本地 `validate_concept_graph` 归一化、校验和兜底。
+
+工具顺序：
+
+```text
+read_period_context
+retrieve_period_evidence
+decompose_period_concepts
+validate_concept_graph
+```
+
+输出：
+
+```json
+{
+  "success": true,
+  "method": "agent",
+  "fallback_used": false,
+  "concepts": [],
+  "edges": [],
+  "tool_trace": [
+    "read_period_context",
+    "retrieve_period_evidence",
+    "decompose_period_concepts",
+    "validate_concept_graph"
+  ],
+  "error_code": "",
+  "error_message": ""
+}
+```
+
+调试开关：
+
+```text
+PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
+```
+
+开启后 artifact 会包含 `debug.concept_proposal` 和压缩后的 `debug.rag_context_summary`，用于判断模型 schema 漂移、RAG evidence 质量和 fallback 触发原因。
 
 ### `build_recommendation_graph_tree(learning_tree: dict, rag_overlay: dict | None, profile: dict | None, study_graph_state: dict | None) -> dict`
 
@@ -523,6 +661,18 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_cho
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
 ```
 
+每周知识点 Agent 破拆真实 LLM/RAG 验证：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py::test_period_concept_decomposer_real_llm_rag_optional -m llm
+```
+
+如需查看 Agent 原始 proposal 和 RAG evidence 摘要，可打开调试开关：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py::test_period_concept_decomposer_real_llm_rag_optional -m llm
+```
+
 可选环境变量：
 
 ```text
@@ -531,6 +681,10 @@ PERSONAL_RECOMMENDATION_RAG_QUERY=<query>
 PERSONAL_RECOMMENDATION_RAG_TOP_K=5
 PERSONAL_RECOMMENDATION_ROUTE_K=10
 PERSONAL_RECOMMENDATION_BEAM_WIDTH=8
+PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1
+PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
+PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG
+PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K=5
 ```
 
 测试层面的默认图名固定为 `RAG`；环境变量只用于临时覆盖。
@@ -548,6 +702,10 @@ PERSONAL_RECOMMENDATION_BEAM_WIDTH=8
 - mock RAG 闭环验证 `rag_context -> run_recommendation_route -> graph/candidates/selected/best_path` 可以形成前端可渲染推荐图。
 - 闭环测试断言 `best_path` 来自候选路径，且路径节点、路径边都存在于返回的 `graph.nodes` / `graph.edges` 中。
 - LLM opt-in 测试验证真实模型会选择 `load_request_context -> search_recommendation_context -> run_recommendation_route`。
+- 每周知识点 concept decomposer 单测覆盖 mock Agent 输出、本地 schema 漂移归一、Agent invalid 后 rule fallback、RAG context 归一和原始 period 不被修改。
+- syllabus adapter 测试覆盖注入 Agent concept 后输出 `decomposition_method="agent"`，以及无 Agent 时保留 `rule_fallback` 兜底。
+- task 测试覆盖 Agent 破拆概念进入推荐路径，以及 fallback 节点在候选路径中形成 `fallback_dependency` 诊断字段。
+- 真实 LLM/RAG opt-in 测试验证每周知识点 Agent 会按工具链完成 `read_period_context -> retrieve_period_evidence -> decompose_period_concepts -> validate_concept_graph`，并产出 `method="agent"` 的 concept graph。
 
 测试产物：
 
@@ -555,9 +713,10 @@ PERSONAL_RECOMMENDATION_BEAM_WIDTH=8
 tests/artifacts/personal_recommendation/mock_rag_route_graph_closure/route_result.json
 tests/artifacts/personal_recommendation/agent_choice/agent_choice_result.json
 tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_rag_result.json
+tests/artifacts/personal_recommendation/concept_decomposer_real_rag/concept_decomposer_real_rag_result.json
 ```
 
-其中 `mock_rag_route_graph_closure` 保存 mock RAG 到推荐图的完整闭环结果，`agent_choice` 保存真实 LLM 工具选择链路和最终 `PersonalRecommendationResult`，`agent_choice_real_rag` 保存可选真实 RAG 返回和推荐闭环结果。
+其中 `mock_rag_route_graph_closure` 保存 mock RAG 到推荐图的完整闭环结果，`agent_choice` 保存真实 LLM 工具选择链路和最终 `PersonalRecommendationResult`，`agent_choice_real_rag` 保存可选真实 RAG 返回和推荐闭环结果，`concept_decomposer_real_rag` 保存每周知识点 Agent/RAG 破拆的概念、边、fallback 状态和可选 debug evidence。
 
 测试边界：
 
@@ -566,6 +725,7 @@ tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_
 - 默认 LLM 集成测试使用 mock RAG；如需评估真实检索质量，使用 `RUN_REAL_RAG_TESTS=1` 打开可选真实 RAG 链路。
 - API 测试使用临时 syllabus JSON 和测试数据库上下文。
 - `test_personal_recommendation_agent_choice.py` 使用真实 LLM，RAG 使用 mock，profile/tree 使用固定 fixture，推荐算法走真实 `run_recommendation_route_from_payload` 链路，重点验证 Agent 工具选择和推荐闭环能力。
+- 每周知识点 Agent 破拆默认不访问真实 LLM/RAG；真实链路必须同时打开 `RUN_LLM_TESTS=1`、`RUN_REAL_RAG_TESTS=1` 和 `PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1`。
 
 最近一次本地验证结果：
 

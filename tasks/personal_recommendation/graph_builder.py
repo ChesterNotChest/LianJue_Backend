@@ -107,6 +107,10 @@ def build_recommendation_graph_tree(
             edge_confidence.setdefault(str(prerequisite), EDGE_CONFIDENCE_SYLLABUS)
         node["edge_sources"] = edge_sources
         node["edge_confidence"] = edge_confidence
+        try:
+            node["reliability"] = float(node.get("reliability", 1.0))
+        except Exception:
+            node["reliability"] = 1.0
         node["profile_state"] = _annotate_profile_state(node, profile)
         node["study_graph_state"] = _annotate_study_graph_state(str(node_id), study_graph_state)
 

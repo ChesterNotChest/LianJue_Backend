@@ -1,0 +1,115 @@
+{
+  "input": {
+    "tree_source": "schedule/syllabus/大数据概论_20260322235507.json",
+    "goals": [
+      "rowkey_hotspot_avoidance"
+    ],
+    "depth_strategy": "balanced",
+    "L_max": 6,
+    "T_max": 100,
+    "K": 20,
+    "beam_width": 6,
+    "has_rag_context": false,
+    "has_study_graph_state": false
+  },
+  "graph_stats_before_overlay": {
+    "node_count": 16,
+    "edge_count": 15,
+    "root_count": 1,
+    "leaf_count": 1,
+    "roots": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ],
+    "leaves": [
+      "分析和研究不同行业中的复杂问题"
+    ],
+    "out_degree_histogram": {
+      "0": 1,
+      "1": 15
+    },
+    "max_out_degree": 1,
+    "branch_node_count": 0,
+    "branch_nodes": [],
+    "missing_prerequisites": []
+  },
+  "graph_stats_after_overlay": {
+    "node_count": 16,
+    "edge_count": 15,
+    "root_count": 1,
+    "leaf_count": 1,
+    "roots": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ],
+    "leaves": [
+      "分析和研究不同行业中的复杂问题"
+    ],
+    "out_degree_histogram": {
+      "0": 1,
+      "1": 15
+    },
+    "max_out_degree": 1,
+    "branch_node_count": 0,
+    "branch_nodes": [],
+    "missing_prerequisites": []
+  },
+  "starts": [
+    "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+  ],
+  "state": {
+    "knowledge": {
+      "data_basic": 1,
+      "stats_basic": 0,
+      "python_basic": 0
+    },
+    "preferences": {
+      "time_per_day": 2,
+      "preferred_formats": [
+        "video",
+        "text"
+      ],
+      "risk_aversion": 0.3
+    },
+    "constraints": {
+      "deadline_days": 30,
+      "max_total_time": 30
+    },
+    "study_graph_state": {
+      "current_node_id": "",
+      "completed_node_ids": [],
+      "blocked_node_ids": [],
+      "weak_node_ids": []
+    }
+  },
+  "rag_overlay_summary": {
+    "enabled": false,
+    "matched_node_count": 0,
+    "temporary_edge_count": 0,
+    "matched_nodes": [],
+    "temporary_edges": [],
+    "warnings": [
+      "rag_context missing or unsuccessful"
+    ]
+  },
+  "pipeline_counts": {
+    "generated": 0,
+    "after_hard_prune": 0,
+    "after_soft_prune": 0
+  },
+  "start_report_generated": {
+    "candidate_count_by_start": {},
+    "starts_without_candidate": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ]
+  },
+  "start_report_after_soft": {
+    "candidate_count_by_start": {},
+    "starts_without_candidate": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ]
+  },
+  "generated_candidates": [],
+  "after_hard_prune_candidates": [],
+  "after_soft_prune_candidates": [],
+  "dropped_by_hard_prune": [],
+  "dropped_by_soft_prune": []
+}

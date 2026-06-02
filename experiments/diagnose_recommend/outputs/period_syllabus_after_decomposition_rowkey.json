@@ -1,0 +1,494 @@
+{
+  "input": {
+    "tree_source": "schedule/syllabus/大数据概论_20260322235507.json",
+    "goals": [
+      "RowKey",
+      "热点规避"
+    ],
+    "depth_strategy": "balanced",
+    "L_max": 6,
+    "T_max": 100,
+    "K": 20,
+    "beam_width": 6,
+    "has_rag_context": false,
+    "has_study_graph_state": false
+  },
+  "graph_stats_before_overlay": {
+    "node_count": 51,
+    "edge_count": 68,
+    "root_count": 1,
+    "leaf_count": 8,
+    "roots": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ],
+    "leaves": [
+      "分布式数据库中典型技术HBase.Hive",
+      "非关系型数据库兴起的原因_与关系型数据库对比.图数据库",
+      "常用特征表示_特征提取和特征选择的方法_常用的数据建模方法.特征选择",
+      "常用的数据挖掘算法_2_常用的数据挖掘算法_3.关联规则",
+      "大数据可视化方法与技术_早期流行的集中式分布架构.数据可视化",
+      "MapReduce和Spark.Spark",
+      "大数据隐私保护的意义_大数据在网络安全中的应用.隐私保护",
+      "分析和研究不同行业中的复杂问题"
+    ],
+    "out_degree_histogram": {
+      "0": 8,
+      "1": 18,
+      "2": 25
+    },
+    "max_out_degree": 2,
+    "branch_node_count": 25,
+    "branch_nodes": [
+      {
+        "node_id": "GPU_TPU和FPGA_大数据安全的意义和面临的问题",
+        "title": "GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+        "out_degree": 2,
+        "children": [
+          "GPU_TPU和FPGA_大数据安全的意义和面临的问题.Hadoop",
+          "大数据隐私保护的意义_大数据在网络安全中的应用"
+        ]
+      },
+      {
+        "node_id": "MapReduce和Spark",
+        "title": "MapReduce和Spark",
+        "out_degree": 2,
+        "children": [
+          "MapReduce和Spark.HDFS",
+          "GPU_TPU和FPGA_大数据安全的意义和面临的问题"
+        ]
+      },
+      {
+        "node_id": "MapReduce和Spark.Hadoop",
+        "title": "Hadoop",
+        "out_degree": 2,
+        "children": [
+          "MapReduce和Spark.Spark",
+          "GPU_TPU和FPGA_大数据安全的意义和面临的问题.Hadoop"
+        ]
+      },
+      {
+        "node_id": "不同数据源的获取方法和策略_数据抽取_转换_装载的过程_典型数据采集的开源工具和",
+        "title": "不同数据源的获取方法和策略；数据抽取、转换、装载的过程；典型数据采集的开源工具和",
+        "out_degree": 2,
+        "children": [
+          "不同数据源的获取方法和策略_数据抽取_转换_装载的过程_典型数据采集的开源工具和.特征提取",
+          "分布式文件系统及主流技术HDFS"
+        ]
+      },
+      {
+        "node_id": "介绍学科背景_课程目标_考核方式_以及核心概念框架",
+        "title": "介绍学科背景、课程目标、考核方式，以及核心概念框架",
+        "out_degree": 2,
+        "children": [
+          "介绍学科背景_课程目标_考核方式_以及核心概念框架.隐私保护",
+          "大数据的应用场景_机遇与挑战等相关内容"
+        ]
+      },
+      {
+        "node_id": "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1",
+        "title": "关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）",
+        "out_degree": 2,
+        "children": [
+          "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1.Apriori",
+          "常用的数据挖掘算法_2_常用的数据挖掘算法_3"
+        ]
+      },
+      {
+        "node_id": "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1.Apriori",
+        "title": "Apriori",
+        "out_degree": 2,
+        "children": [
+          "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1.关联规则",
+          "常用的数据挖掘算法_2_常用的数据挖掘算法_3.Apriori"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase",
+        "title": "分布式数据库中典型技术HBase",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.HDFS",
+          "非关系型数据库兴起的原因_与关系型数据库对比"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.HBase",
+        "title": "HBase",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.Hive",
+          "非关系型数据库兴起的原因_与关系型数据库对比.HBase"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.HDFS",
+        "title": "HDFS",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.MapReduce",
+          "大数据可视化方法与技术_早期流行的集中式分布架构.HDFS"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.Hadoop",
+        "title": "Hadoop",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.HBase",
+          "大数据可视化方法与技术_早期流行的集中式分布架构.Hadoop"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.MapReduce",
+        "title": "MapReduce",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.Hadoop",
+          "MapReduce和Spark.MapReduce"
+        ]
+      },
+      {
+        "node_id": "分布式文件系统及主流技术HDFS",
+        "title": "分布式文件系统及主流技术HDFS",
+        "out_degree": 2,
+        "children": [
+          "分布式文件系统及主流技术HDFS.HDFS",
+          "分布式数据库中典型技术HBase"
+        ]
+      },
+      {
+        "node_id": "分布式文件系统及主流技术HDFS.HDFS",
+        "title": "HDFS",
+        "out_degree": 2,
+        "children": [
+          "分布式文件系统及主流技术HDFS.MapReduce",
+          "分布式数据库中典型技术HBase.HDFS"
+        ]
+      },
+      {
+        "node_id": "分布式文件系统及主流技术HDFS.MapReduce",
+        "title": "MapReduce",
+        "out_degree": 2,
+        "children": [
+          "分布式文件系统及主流技术HDFS.Hadoop",
+          "分布式数据库中典型技术HBase.MapReduce"
+        ]
+      },
+      {
+        "node_id": "大数据可视化方法与技术_早期流行的集中式分布架构",
+        "title": "大数据可视化方法与技术；早期流行的集中式分布架构",
+        "out_degree": 2,
+        "children": [
+          "大数据可视化方法与技术_早期流行的集中式分布架构.HDFS",
+          "MapReduce和Spark"
+        ]
+      },
+      {
+        "node_id": "大数据可视化方法与技术_早期流行的集中式分布架构.HDFS",
+        "title": "HDFS",
+        "out_degree": 2,
+        "children": [
+          "大数据可视化方法与技术_早期流行的集中式分布架构.Hadoop",
+          "MapReduce和Spark.HDFS"
+        ]
+      },
+      {
+        "node_id": "大数据可视化方法与技术_早期流行的集中式分布架构.Hadoop",
+        "title": "Hadoop",
+        "out_degree": 2,
+        "children": [
+          "大数据可视化方法与技术_早期流行的集中式分布架构.数据可视化",
+          "MapReduce和Spark.Hadoop"
+        ]
+      },
+      {
+        "node_id": "大数据的应用场景_机遇与挑战等相关内容",
+        "title": "大数据的应用场景、机遇与挑战等相关内容",
+        "out_degree": 2,
+        "children": [
+          "大数据的应用场景_机遇与挑战等相关内容.数据可视化",
+          "数据的来源与类型_数据源分布的多源_异构特性_数据源的一般分布"
+        ]
+      },
+      {
+        "node_id": "大数据的应用场景_机遇与挑战等相关内容.数据可视化",
+        "title": "数据可视化",
+        "out_degree": 2,
+        "children": [
+          "大数据的应用场景_机遇与挑战等相关内容.隐私保护",
+          "大数据可视化方法与技术_早期流行的集中式分布架构.数据可视化"
+        ]
+      }
+    ],
+    "missing_prerequisites": []
+  },
+  "graph_stats_after_overlay": {
+    "node_count": 51,
+    "edge_count": 68,
+    "root_count": 1,
+    "leaf_count": 8,
+    "roots": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ],
+    "leaves": [
+      "分布式数据库中典型技术HBase.Hive",
+      "非关系型数据库兴起的原因_与关系型数据库对比.图数据库",
+      "常用特征表示_特征提取和特征选择的方法_常用的数据建模方法.特征选择",
+      "常用的数据挖掘算法_2_常用的数据挖掘算法_3.关联规则",
+      "大数据可视化方法与技术_早期流行的集中式分布架构.数据可视化",
+      "MapReduce和Spark.Spark",
+      "大数据隐私保护的意义_大数据在网络安全中的应用.隐私保护",
+      "分析和研究不同行业中的复杂问题"
+    ],
+    "out_degree_histogram": {
+      "0": 8,
+      "1": 18,
+      "2": 25
+    },
+    "max_out_degree": 2,
+    "branch_node_count": 25,
+    "branch_nodes": [
+      {
+        "node_id": "GPU_TPU和FPGA_大数据安全的意义和面临的问题",
+        "title": "GPU、TPU和FPGA；大数据安全的意义和面临的问题",
+        "out_degree": 2,
+        "children": [
+          "GPU_TPU和FPGA_大数据安全的意义和面临的问题.Hadoop",
+          "大数据隐私保护的意义_大数据在网络安全中的应用"
+        ]
+      },
+      {
+        "node_id": "MapReduce和Spark",
+        "title": "MapReduce和Spark",
+        "out_degree": 2,
+        "children": [
+          "MapReduce和Spark.HDFS",
+          "GPU_TPU和FPGA_大数据安全的意义和面临的问题"
+        ]
+      },
+      {
+        "node_id": "MapReduce和Spark.Hadoop",
+        "title": "Hadoop",
+        "out_degree": 2,
+        "children": [
+          "MapReduce和Spark.Spark",
+          "GPU_TPU和FPGA_大数据安全的意义和面临的问题.Hadoop"
+        ]
+      },
+      {
+        "node_id": "不同数据源的获取方法和策略_数据抽取_转换_装载的过程_典型数据采集的开源工具和",
+        "title": "不同数据源的获取方法和策略；数据抽取、转换、装载的过程；典型数据采集的开源工具和",
+        "out_degree": 2,
+        "children": [
+          "不同数据源的获取方法和策略_数据抽取_转换_装载的过程_典型数据采集的开源工具和.特征提取",
+          "分布式文件系统及主流技术HDFS"
+        ]
+      },
+      {
+        "node_id": "介绍学科背景_课程目标_考核方式_以及核心概念框架",
+        "title": "介绍学科背景、课程目标、考核方式，以及核心概念框架",
+        "out_degree": 2,
+        "children": [
+          "介绍学科背景_课程目标_考核方式_以及核心概念框架.隐私保护",
+          "大数据的应用场景_机遇与挑战等相关内容"
+        ]
+      },
+      {
+        "node_id": "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1",
+        "title": "关联规则挖掘基本概念和常用算法；常用的数据挖掘算法（1）",
+        "out_degree": 2,
+        "children": [
+          "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1.Apriori",
+          "常用的数据挖掘算法_2_常用的数据挖掘算法_3"
+        ]
+      },
+      {
+        "node_id": "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1.Apriori",
+        "title": "Apriori",
+        "out_degree": 2,
+        "children": [
+          "关联规则挖掘基本概念和常用算法_常用的数据挖掘算法_1.关联规则",
+          "常用的数据挖掘算法_2_常用的数据挖掘算法_3.Apriori"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase",
+        "title": "分布式数据库中典型技术HBase",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.HDFS",
+          "非关系型数据库兴起的原因_与关系型数据库对比"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.HBase",
+        "title": "HBase",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.Hive",
+          "非关系型数据库兴起的原因_与关系型数据库对比.HBase"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.HDFS",
+        "title": "HDFS",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.MapReduce",
+          "大数据可视化方法与技术_早期流行的集中式分布架构.HDFS"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.Hadoop",
+        "title": "Hadoop",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.HBase",
+          "大数据可视化方法与技术_早期流行的集中式分布架构.Hadoop"
+        ]
+      },
+      {
+        "node_id": "分布式数据库中典型技术HBase.MapReduce",
+        "title": "MapReduce",
+        "out_degree": 2,
+        "children": [
+          "分布式数据库中典型技术HBase.Hadoop",
+          "MapReduce和Spark.MapReduce"
+        ]
+      },
+      {
+        "node_id": "分布式文件系统及主流技术HDFS",
+        "title": "分布式文件系统及主流技术HDFS",
+        "out_degree": 2,
+        "children": [
+          "分布式文件系统及主流技术HDFS.HDFS",
+          "分布式数据库中典型技术HBase"
+        ]
+      },
+      {
+        "node_id": "分布式文件系统及主流技术HDFS.HDFS",
+        "title": "HDFS",
+        "out_degree": 2,
+        "children": [
+          "分布式文件系统及主流技术HDFS.MapReduce",
+          "分布式数据库中典型技术HBase.HDFS"
+        ]
+      },
+      {
+        "node_id": "分布式文件系统及主流技术HDFS.MapReduce",
+        "title": "MapReduce",
+        "out_degree": 2,
+        "children": [
+          "分布式文件系统及主流技术HDFS.Hadoop",
+          "分布式数据库中典型技术HBase.MapReduce"
+        ]
+      },
+      {
+        "node_id": "大数据可视化方法与技术_早期流行的集中式分布架构",
+        "title": "大数据可视化方法与技术；早期流行的集中式分布架构",
+        "out_degree": 2,
+        "children": [
+          "大数据可视化方法与技术_早期流行的集中式分布架构.HDFS",
+          "MapReduce和Spark"
+        ]
+      },
+      {
+        "node_id": "大数据可视化方法与技术_早期流行的集中式分布架构.HDFS",
+        "title": "HDFS",
+        "out_degree": 2,
+        "children": [
+          "大数据可视化方法与技术_早期流行的集中式分布架构.Hadoop",
+          "MapReduce和Spark.HDFS"
+        ]
+      },
+      {
+        "node_id": "大数据可视化方法与技术_早期流行的集中式分布架构.Hadoop",
+        "title": "Hadoop",
+        "out_degree": 2,
+        "children": [
+          "大数据可视化方法与技术_早期流行的集中式分布架构.数据可视化",
+          "MapReduce和Spark.Hadoop"
+        ]
+      },
+      {
+        "node_id": "大数据的应用场景_机遇与挑战等相关内容",
+        "title": "大数据的应用场景、机遇与挑战等相关内容",
+        "out_degree": 2,
+        "children": [
+          "大数据的应用场景_机遇与挑战等相关内容.数据可视化",
+          "数据的来源与类型_数据源分布的多源_异构特性_数据源的一般分布"
+        ]
+      },
+      {
+        "node_id": "大数据的应用场景_机遇与挑战等相关内容.数据可视化",
+        "title": "数据可视化",
+        "out_degree": 2,
+        "children": [
+          "大数据的应用场景_机遇与挑战等相关内容.隐私保护",
+          "大数据可视化方法与技术_早期流行的集中式分布架构.数据可视化"
+        ]
+      }
+    ],
+    "missing_prerequisites": []
+  },
+  "starts": [
+    "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+  ],
+  "state": {
+    "knowledge": {
+      "data_basic": 1,
+      "stats_basic": 0,
+      "python_basic": 0
+    },
+    "preferences": {
+      "time_per_day": 2,
+      "preferred_formats": [
+        "video",
+        "text"
+      ],
+      "risk_aversion": 0.3
+    },
+    "constraints": {
+      "deadline_days": 30,
+      "max_total_time": 30
+    },
+    "study_graph_state": {
+      "current_node_id": "",
+      "completed_node_ids": [],
+      "blocked_node_ids": [],
+      "weak_node_ids": []
+    }
+  },
+  "rag_overlay_summary": {
+    "enabled": false,
+    "matched_node_count": 0,
+    "temporary_edge_count": 0,
+    "matched_nodes": [],
+    "temporary_edges": [],
+    "warnings": [
+      "rag_context missing or unsuccessful"
+    ]
+  },
+  "pipeline_counts": {
+    "generated": 0,
+    "after_hard_prune": 0,
+    "after_soft_prune": 0
+  },
+  "start_report_generated": {
+    "candidate_count_by_start": {},
+    "starts_without_candidate": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ]
+  },
+  "start_report_after_soft": {
+    "candidate_count_by_start": {},
+    "starts_without_candidate": [
+      "介绍学科背景_课程目标_考核方式_以及核心概念框架"
+    ]
+  },
+  "generated_candidates": [],
+  "after_hard_prune_candidates": [],
+  "after_soft_prune_candidates": [],
+  "dropped_by_hard_prune": [],
+  "dropped_by_soft_prune": []
+}

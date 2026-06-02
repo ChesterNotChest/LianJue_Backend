@@ -38,8 +38,48 @@ def soft_prune_by_dominance(candidates, raw_scores):
                 break
         if not dominated:
             keep.append(ci)
-    # 如果全部被保留，则返回原始集合
-    return keep if keep else candidates
+    if not keep:
+        return candidates
+
+    # Dominance pruning can accidentally remove an alternative prerequisite
+    # branch that is useful for route diversity (for example n2->target and
+    # n3->target). Keep the best representative for each original start node.
+    kept_paths = {tuple(item.get('path', [])) for item in keep}
+    representative_by_start = {}
+    for candidate, candidate_score in zip(candidates, raw_scores):
+        path = candidate.get('path') or []
+        if not path:
+            continue
+        start = path[0]
+        current = representative_by_start.get(start)
+        if current is None:
+            representative_by_start[start] = (candidate, candidate_score)
+            continue
+        _, current_score = current
+        if _simple_score(candidate_score) > _simple_score(current_score):
+            representative_by_start[start] = (candidate, candidate_score)
+
+    for candidate, _ in representative_by_start.values():
+        path_key = tuple(candidate.get('path', []))
+        if path_key not in kept_paths:
+            keep.append(candidate)
+            kept_paths.add(path_key)
+    return keep
+
+
+def _simple_score(score):
+    if not isinstance(score, dict):
+        return 0.0
+    # D and R are lower-is-better metrics; this rough score is only used to pick
+    # a branch representative, not for final ranking.
+    return (
+        float(score.get('E', 0.0))
+        + float(score.get('P', 0.0))
+        + float(score.get('G', 0.0))
+        + float(score.get('C', 0.0))
+        - float(score.get('D', 0.0)) * 0.1
+        - float(score.get('R', 0.0)) * 0.1
+    )
 
 
 def local_replace_candidates(candidates, learning_tree, S, max_attempts=100):

@@ -1,0 +1,355 @@
+{
+  "input": {
+    "tree_source": "sample_data.learning_tree",
+    "goals": [
+      "ml_basic",
+      "dl_basic"
+    ],
+    "depth_strategy": "balanced",
+    "L_max": 6,
+    "T_max": 100,
+    "K": 20,
+    "beam_width": 6,
+    "has_rag_context": false,
+    "has_study_graph_state": false
+  },
+  "graph_stats_before_overlay": {
+    "node_count": 5,
+    "edge_count": 5,
+    "root_count": 1,
+    "leaf_count": 1,
+    "roots": [
+      "n1"
+    ],
+    "leaves": [
+      "n5"
+    ],
+    "out_degree_histogram": {
+      "0": 1,
+      "1": 3,
+      "2": 1
+    },
+    "max_out_degree": 2,
+    "branch_node_count": 1,
+    "branch_nodes": [
+      {
+        "node_id": "n1",
+        "title": "Intro to Data",
+        "out_degree": 2,
+        "children": [
+          "n2",
+          "n3"
+        ]
+      }
+    ],
+    "missing_prerequisites": []
+  },
+  "graph_stats_after_overlay": {
+    "node_count": 5,
+    "edge_count": 5,
+    "root_count": 1,
+    "leaf_count": 1,
+    "roots": [
+      "n1"
+    ],
+    "leaves": [
+      "n5"
+    ],
+    "out_degree_histogram": {
+      "0": 1,
+      "1": 3,
+      "2": 1
+    },
+    "max_out_degree": 2,
+    "branch_node_count": 1,
+    "branch_nodes": [
+      {
+        "node_id": "n1",
+        "title": "Intro to Data",
+        "out_degree": 2,
+        "children": [
+          "n2",
+          "n3"
+        ]
+      }
+    ],
+    "missing_prerequisites": []
+  },
+  "starts": [
+    "n2",
+    "n3",
+    "n4",
+    "n5"
+  ],
+  "state": {
+    "knowledge": {
+      "data_basic": 1,
+      "stats_basic": 0,
+      "python_basic": 0
+    },
+    "preferences": {
+      "time_per_day": 2,
+      "preferred_formats": [
+        "video",
+        "text"
+      ],
+      "risk_aversion": 0.3
+    },
+    "constraints": {
+      "deadline_days": 30,
+      "max_total_time": 30
+    },
+    "study_graph_state": {
+      "current_node_id": "",
+      "completed_node_ids": [],
+      "blocked_node_ids": [],
+      "weak_node_ids": []
+    }
+  },
+  "rag_overlay_summary": {
+    "enabled": false,
+    "matched_node_count": 0,
+    "temporary_edge_count": 0,
+    "matched_nodes": [],
+    "temporary_edges": [],
+    "warnings": [
+      "rag_context missing or unsuccessful"
+    ]
+  },
+  "pipeline_counts": {
+    "generated": 4,
+    "after_hard_prune": 4,
+    "after_soft_prune": 3
+  },
+  "start_report_generated": {
+    "candidate_count_by_start": {
+      "n2": 1,
+      "n3": 1,
+      "n4": 1,
+      "n5": 1
+    },
+    "starts_without_candidate": []
+  },
+  "start_report_after_soft": {
+    "candidate_count_by_start": {
+      "n2": 1,
+      "n4": 1,
+      "n5": 1
+    },
+    "starts_without_candidate": [
+      "n3"
+    ]
+  },
+  "generated_candidates": [
+    {
+      "index": 1,
+      "path": [
+        "n4"
+      ],
+      "path_depth": 1,
+      "cost": 8.0,
+      "skills": [
+        "ml_basic"
+      ],
+      "scores": {}
+    },
+    {
+      "index": 2,
+      "path": [
+        "n5"
+      ],
+      "path_depth": 1,
+      "cost": 10.0,
+      "skills": [
+        "dl_basic"
+      ],
+      "scores": {}
+    },
+    {
+      "index": 3,
+      "path": [
+        "n2",
+        "n4"
+      ],
+      "path_depth": 2,
+      "cost": 12.0,
+      "skills": [
+        "ml_basic",
+        "stats_basic"
+      ],
+      "scores": {}
+    },
+    {
+      "index": 4,
+      "path": [
+        "n3",
+        "n4"
+      ],
+      "path_depth": 2,
+      "cost": 13.0,
+      "skills": [
+        "ml_basic",
+        "python_basic"
+      ],
+      "scores": {}
+    }
+  ],
+  "after_hard_prune_candidates": [
+    {
+      "index": 1,
+      "path": [
+        "n4"
+      ],
+      "path_depth": 1,
+      "cost": 8.0,
+      "skills": [
+        "ml_basic"
+      ],
+      "scores": {
+        "E": 0.12499998437500197,
+        "D": 2.6666666666666665,
+        "R": 1.0,
+        "P": 0.5,
+        "G": 0.25,
+        "C": 0.5
+      }
+    },
+    {
+      "index": 2,
+      "path": [
+        "n5"
+      ],
+      "path_depth": 1,
+      "cost": 10.0,
+      "skills": [
+        "dl_basic"
+      ],
+      "scores": {
+        "E": 0.09999999000000101,
+        "D": 3.6666666666666665,
+        "R": 1.0,
+        "P": 0.5,
+        "G": 0.25,
+        "C": 0.5
+      }
+    },
+    {
+      "index": 3,
+      "path": [
+        "n2",
+        "n4"
+      ],
+      "path_depth": 2,
+      "cost": 12.0,
+      "skills": [
+        "ml_basic",
+        "stats_basic"
+      ],
+      "scores": {
+        "E": 0.16666665277777895,
+        "D": 2.1666666666666665,
+        "R": 0.6666666666666666,
+        "P": 0.5,
+        "G": 0.75,
+        "C": 1.0
+      }
+    },
+    {
+      "index": 4,
+      "path": [
+        "n3",
+        "n4"
+      ],
+      "path_depth": 2,
+      "cost": 13.0,
+      "skills": [
+        "ml_basic",
+        "python_basic"
+      ],
+      "scores": {
+        "E": 0.15384614201183525,
+        "D": 2.1666666666666665,
+        "R": 0.6666666666666666,
+        "P": 0.5,
+        "G": 0.75,
+        "C": 1.0
+      }
+    }
+  ],
+  "after_soft_prune_candidates": [
+    {
+      "index": 1,
+      "path": [
+        "n4"
+      ],
+      "path_depth": 1,
+      "cost": 8.0,
+      "skills": [
+        "ml_basic"
+      ],
+      "scores": {
+        "E": 0.12499998437500197,
+        "D": 2.6666666666666665,
+        "R": 1.0,
+        "P": 0.5,
+        "G": 0.25,
+        "C": 0.5
+      }
+    },
+    {
+      "index": 2,
+      "path": [
+        "n5"
+      ],
+      "path_depth": 1,
+      "cost": 10.0,
+      "skills": [
+        "dl_basic"
+      ],
+      "scores": {
+        "E": 0.09999999000000101,
+        "D": 3.6666666666666665,
+        "R": 1.0,
+        "P": 0.5,
+        "G": 0.25,
+        "C": 0.5
+      }
+    },
+    {
+      "index": 3,
+      "path": [
+        "n2",
+        "n4"
+      ],
+      "path_depth": 2,
+      "cost": 12.0,
+      "skills": [
+        "ml_basic",
+        "stats_basic"
+      ],
+      "scores": {
+        "E": 0.16666665277777895,
+        "D": 2.1666666666666665,
+        "R": 0.6666666666666666,
+        "P": 0.5,
+        "G": 0.75,
+        "C": 1.0
+      }
+    }
+  ],
+  "dropped_by_hard_prune": [],
+  "dropped_by_soft_prune": [
+    {
+      "path": [
+        "n3",
+        "n4"
+      ],
+      "path_depth": 2,
+      "cost": 13.0,
+      "skills": [
+        "ml_basic",
+        "python_basic"
+      ]
+    }
+  ]
+}

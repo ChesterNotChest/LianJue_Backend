@@ -8,6 +8,7 @@ from repositories.syllabus_repo import get_syllabus_by_id
 from tasks.learning_profile.storage import load_json_file
 from tasks.learning_profile_task import get_or_build_learning_profile
 from tasks.personal_recommendation.candidate_generator import DEFAULT_DEPTH_STRATEGY, SUPPORTED_DEPTH_STRATEGIES, generate
+from tasks.personal_recommendation.concept_decomposer import summarize_fallback_dependency
 from tasks.personal_recommendation.evaluator import score
 from tasks.personal_recommendation.graph_builder import build_recommendation_graph_tree
 from tasks.personal_recommendation.perception import generate_state
@@ -22,6 +23,7 @@ RECOMMENDATION_SCHEMA_VERSION = "personal_recommendation.v2"
 NEXT_ACTION_CONFIRM_PATH = "confirm_path"
 NEXT_ACTION_GENERATE_RESOURCES = "generate_resources"
 NEXT_ACTION_ASK_GOAL_CLARIFICATION = "ask_goal_clarification"
+NODE_SOURCE_SAMPLE_FALLBACK = "sample_fallback"
 
 
 def _json_safe(value: Any) -> Any:
@@ -34,6 +36,16 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {key: _json_safe(item) for key, item in value.items()}
     return value
+
+
+def _sample_learning_tree_with_source(reason: str = "") -> Dict[str, Any]:
+    tree = _json_safe(sample_learning_tree)
+    for node in tree.values():
+        if isinstance(node, dict):
+            node["node_source"] = NODE_SOURCE_SAMPLE_FALLBACK
+            if reason:
+                node["fallback_reason"] = reason
+    return tree
 
 
 def _path_edges(path: List[Any], learning_tree: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -56,6 +68,66 @@ def _path_edges(path: List[Any], learning_tree: Optional[Dict[str, Any]] = None)
     return edges
 
 
+def _node_outcomes_known(node: Dict[str, Any], state: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(state, dict):
+        return False
+    knowledge = state.get("knowledge") if isinstance(state.get("knowledge"), dict) else {}
+    outcomes = node.get("outcomes") if isinstance(node, dict) else []
+    if not outcomes:
+        return False
+    return all(float(knowledge.get(outcome) or 0.0) > 0 for outcome in outcomes)
+
+
+def _completed_nodes(state: Optional[Dict[str, Any]]) -> set[str]:
+    if not isinstance(state, dict):
+        return set()
+    study_state = state.get("study_graph_state") if isinstance(state.get("study_graph_state"), dict) else {}
+    return {str(item) for item in study_state.get("completed_node_ids") or [] if item not in (None, "")}
+
+
+def _context_prefix_for_path(path: List[str], learning_tree: Optional[Dict[str, Any]], state: Optional[Dict[str, Any]]) -> List[str]:
+    if not path or not isinstance(learning_tree, dict):
+        return []
+    path_set = set(path)
+    completed = _completed_nodes(state)
+    prefix: List[str] = []
+    visiting: set[str] = set()
+
+    def visit(node_id: str) -> None:
+        if node_id in visiting:
+            return
+        visiting.add(node_id)
+        node = learning_tree.get(node_id, {})
+        for prerequisite in node.get("prerequisites") or []:
+            prerequisite_id = str(prerequisite)
+            if prerequisite_id in path_set:
+                continue
+            prerequisite_node = learning_tree.get(prerequisite_id, {})
+            if prerequisite_id in completed or _node_outcomes_known(prerequisite_node, state):
+                visit(prerequisite_id)
+                if prerequisite_id not in prefix:
+                    prefix.append(prerequisite_id)
+        visiting.discard(node_id)
+
+    visit(path[0])
+    return prefix
+
+
+def _actionable_path(path: List[str], learning_tree: Optional[Dict[str, Any]], state: Optional[Dict[str, Any]]) -> List[str]:
+    if not isinstance(learning_tree, dict):
+        return list(path)
+    completed = _completed_nodes(state)
+    actionable = []
+    for node_id in path:
+        node = learning_tree.get(str(node_id), {})
+        if str(node_id) in completed:
+            continue
+        if _node_outcomes_known(node, state):
+            continue
+        actionable.append(str(node_id))
+    return actionable or list(path)
+
+
 def _build_recommendation_graph(learning_tree: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     nodes = []
     edges = []
@@ -70,6 +142,11 @@ def _build_recommendation_graph(learning_tree: Dict[str, Any]) -> Dict[str, List
             "outcomes": list(node.get("outcomes") or []),
             "prerequisites": [str(item) for item in node.get("prerequisites") or []],
             "node_source": node.get("node_source"),
+            "decomposition_method": node.get("decomposition_method"),
+            "fallback_tag": node.get("fallback_tag"),
+            "reliability": node.get("reliability"),
+            "confidence": node.get("confidence"),
+            "source_period": node.get("source_period"),
             "profile_state": node.get("profile_state"),
             "study_graph_state": node.get("study_graph_state"),
         })
@@ -132,12 +209,21 @@ def _serialize_path_item(
     selected: bool = False,
     rag_overlay: Optional[Dict[str, Any]] = None,
     learning_tree: Optional[Dict[str, Any]] = None,
+    state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     item = _json_safe(dict(candidate))
     path = [str(node_id) for node_id in item.get("path") or []]
+    context_path = _context_prefix_for_path(path, learning_tree, state)
+    full_path = context_path + [node_id for node_id in path if node_id not in context_path]
     item["path"] = path
+    item["context_path"] = context_path
+    item["full_path"] = full_path
+    item["actionable_path"] = _actionable_path(path, learning_tree, state)
     item["path_edges"] = _path_edges(path, learning_tree)
+    item["full_path_edges"] = _path_edges(full_path, learning_tree)
+    item["fallback_dependency"] = summarize_fallback_dependency(path, learning_tree or {})
     item["path_depth"] = int(item.get("path_depth") or len(path))
+    item["full_path_depth"] = len(full_path)
     item["selected"] = selected
     if rank is not None:
         item["rank"] = rank
@@ -187,21 +273,30 @@ def _build_planning_hints(result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def load_recommendation_learning_tree(syllabus_id: Optional[int] = None) -> Dict[str, Any]:
+def load_recommendation_learning_tree(
+    syllabus_id: Optional[int] = None,
+    *,
+    concept_decomposer: Any = None,
+    rag_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Load the recommendation graph, preferring a real syllabus-derived tree."""
     if not syllabus_id:
-        return sample_learning_tree
+        return _sample_learning_tree_with_source("missing_syllabus_id")
 
     try:
         syllabus = get_syllabus_by_id(int(syllabus_id))
         syllabus_path = getattr(syllabus, "syllabus_path", None) if syllabus else None
         if not syllabus_path:
-            return sample_learning_tree
+            return _sample_learning_tree_with_source("missing_syllabus_path")
         syllabus_json = load_json_file(syllabus_path)
-        mapped = syllabus_json_to_learning_tree(syllabus_json)
-        return mapped or sample_learning_tree
+        mapped = syllabus_json_to_learning_tree(
+            syllabus_json,
+            concept_decomposer=concept_decomposer,
+            rag_context=rag_context,
+        )
+        return mapped or _sample_learning_tree_with_source("empty_syllabus_mapping")
     except Exception:
-        return sample_learning_tree
+        return _sample_learning_tree_with_source("syllabus_load_error")
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -400,6 +495,7 @@ def run_recommendation_route(
     rag_context: Optional[Dict[str, Any]] = None,
     study_graph_state: Optional[Dict[str, Any]] = None,
     depth_strategy: str = DEFAULT_DEPTH_STRATEGY,
+    concept_decomposer: Any = None,
 ) -> Dict[str, Any]:
     """Run the full recommendation pipeline and return API-ready data."""
     if not user_id:
@@ -411,7 +507,19 @@ def run_recommendation_route(
             "error_code": "missing_fields",
         }
 
-    learning_tree = load_recommendation_learning_tree(syllabus_id)
+    if concept_decomposer is not None or rag_context is not None:
+        try:
+            learning_tree = load_recommendation_learning_tree(
+                syllabus_id,
+                concept_decomposer=concept_decomposer,
+                rag_context=rag_context,
+            )
+        except TypeError:
+            if concept_decomposer is not None:
+                raise
+            learning_tree = load_recommendation_learning_tree(syllabus_id)
+    else:
+        learning_tree = load_recommendation_learning_tree(syllabus_id)
     profile = build_recommendation_profile(int(user_id), syllabus_id)
     rag_overlay = build_rag_overlay(rag_context, learning_tree)
     recommendation_graph_tree = build_recommendation_graph_tree(
@@ -455,6 +563,7 @@ def run_recommendation_route(
                 rank=len(response_candidates) + 1,
                 rag_overlay=rag_overlay,
                 learning_tree=recommendation_graph_tree,
+                state=state,
             )
         )
 
@@ -500,6 +609,7 @@ def run_recommendation_route(
                 selected=True,
                 rag_overlay=rag_overlay,
                 learning_tree=recommendation_graph_tree,
+                state=state,
             )
         for candidate in selected
     ]
@@ -549,4 +659,5 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
         rag_context=payload.get("rag_context") if isinstance(payload.get("rag_context"), dict) else None,
         study_graph_state=payload.get("study_graph_state") if isinstance(payload.get("study_graph_state"), dict) else None,
         depth_strategy=_normalize_depth_strategy(payload.get("depth_strategy")),
+        concept_decomposer=payload.get("concept_decomposer") if callable(payload.get("concept_decomposer")) else None,
     )

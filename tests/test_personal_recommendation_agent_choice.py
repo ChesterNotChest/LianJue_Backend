@@ -56,6 +56,7 @@ def _normalize_model_for_dashscope():
     if "dashscope.aliyuncs.com" in api_base and model_name.startswith("openai/"):
         text_config["model_name"] = model_name.removeprefix("openai/")
         prar.get_personal_recommendation_agent.cache_clear()
+        prar.get_period_concept_decomposer_agent.cache_clear()
 
 
 def test_personal_recommendation_mock_agent_accepts_learning_plan(monkeypatch):
@@ -327,3 +328,57 @@ def test_personal_recommendation_agent_real_rag_optional(monkeypatch):
             **accept_payload,
         },
     )
+
+
+@pytest.mark.llm
+def test_period_concept_decomposer_real_llm_rag_optional():
+    if os.getenv("RUN_LLM_TESTS") != "1":
+        pytest.skip("Set RUN_LLM_TESTS=1 to run the real concept decomposer agent test.")
+    if os.getenv("RUN_REAL_RAG_TESTS") != "1":
+        pytest.skip("Set RUN_REAL_RAG_TESTS=1 to run the optional real RAG concept decomposer test.")
+    if os.getenv("PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER") != "1":
+        pytest.skip("Set PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 to run concept decomposition.")
+
+    _normalize_model_for_dashscope()
+    artifact_root = _reset_artifact_root("concept_decomposer_real_rag")
+    payload = {
+        "syllabus_id": 20,
+        "periods": [
+            {
+                "week_index": "6",
+                "content": "大数据存储与管理：分布式数据库中典型技术HBase",
+                "enhanced_content": "HBase 运行在 HDFS 之上，涉及 RowKey 设计、Region 划分、预分区和热点规避。",
+                "importance": "high",
+            }
+        ],
+        "graph_name": os.getenv("PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME")
+        or os.getenv("PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME")
+        or os.getenv("SEARCH_TOOL_GRAPH_NAME")
+        or "RAG",
+        "rag_top_k": int(os.getenv("PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K") or "5"),
+    }
+
+    try:
+        result = prar.run_period_concept_decomposer_agent(payload)
+    finally:
+        prar.get_period_concept_decomposer_agent.cache_clear()
+
+    artifact = {
+        "test_name": "test_period_concept_decomposer_real_llm_rag_optional",
+        "payload": payload,
+        "result": result,
+        "decomposition_summary": {
+            "success": result.get("success"),
+            "tool_trace": result.get("tool_trace") or [],
+            "concept_count": len(result.get("concepts") or []),
+            "edge_count": len(result.get("edges") or []),
+            "fallback_used": bool(result.get("fallback_used")),
+            "fallback_count": sum(1 for item in result.get("concepts") or [] if item.get("fallback_tag")),
+        },
+    }
+    _write_artifact(artifact_root, "concept_decomposer_real_rag_result.json", artifact)
+
+    assert result.get("success") is True
+    assert result.get("tool_trace") == prar.CONCEPT_DECOMPOSITION_TOOL_ORDER
+    assert result.get("concepts")
+    assert artifact["decomposition_summary"]["concept_count"] > 0
