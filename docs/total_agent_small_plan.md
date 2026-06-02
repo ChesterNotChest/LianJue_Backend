@@ -1,6 +1,27 @@
-# Teacher / Total Agent small plan
+# Total Agent small plan
 
-> 本计划用于推进正式总 Agent（Teacher Agent）实现。当前 `tests/total_agent/` 已经沉淀了总 Agent 前置闭环的行为契约；正式实现时应复用这些契约，不重新设计一套不同的流程。
+> 本计划用于推进正式总 Agent（Total Agent）实现。后续代码、测试和 artifact 统一使用 `total_agent` 命名；`Teacher Agent` 只作为产品/论文叙述中的角色名保留，不再作为工程命名空间。当前 `tests/total_agent/` 已经沉淀了总 Agent 前置闭环的行为契约；正式实现时应复用这些契约，不重新设计一套不同的流程。
+
+## 计划关系
+
+当前存在三类相关文档，边界如下：
+
+```text
+docs/total_agent_small_plan.md
+  -> 正式 Total Agent runtime 实现计划和背景
+
+docs/total_agent_contract.md
+  -> 正式 Total Agent 执行级实现契约
+
+tests/total_agent/small_plan.md
+tests/total_agent/contract.md
+  -> 测试侧前置闭环契约，只验证推荐、learning_plan、反馈事件和下一任务衔接
+
+docs/*_dev_doc.md
+  -> 子能力关闭报告，说明总 Agent 可调用的稳定入口和产物
+```
+
+`tests/total_agent/*` 不是正式总 Agent 的重复计划；它们是实现总 Agent 前已经跑通的行为样本和验收基线。
 
 ## 目标
 
@@ -25,6 +46,8 @@
 - 推荐无 `best_path` 时不能生成偏题资源，必须先做目标归一化或追问。
 - 已有 active plan 时，可以继续执行当前计划，而不是重新挑任意 syllabus 节点。
 - 推荐路径只是建议；采纳 learning plan 必须来自学生确认，测试或演示可以显式使用 `auto_accept=true`。
+- 每周知识点已经可以通过 personal recommendation 的 Agent/RAG concept decomposer 破拆为推荐侧 concept graph；规则 fallback 只作为可诊断兜底。
+- 资源生成、学习画像、学生成长树和学习路径推荐四个子能力均已有总 Agent 可调用的 task/agent 边界。
 
 ## 阶段 1：建立总 Agent runtime 和工具边界
 
@@ -74,11 +97,11 @@ TOTAL_AGENT_INTENTS = {
 ### 1. 影响的文件范围
 
 ```text
-tasks/total_agent_task.py                 # 新增 task 门户
 tasks/total_agent/__init__.py             # 新增包
 tasks/total_agent/agent_contracts.py      # 新增结构化输出与常量
 tasks/total_agent/agent_tools.py          # 新增工具实现
 tasks/total_agent/agent_runtime.py        # 新增 pydantic-ai runtime
+tasks/total_agent_task.py                 # 可选薄门户；需要 API/前端统一入口时再新增
 tests/test_total_agent_task.py            # 新增默认 deterministic 测试
 tests/test_total_agent_agent_choice.py    # 新增 opt-in LLM 工具选择测试
 tests/total_agent/test_process_contract.py
@@ -678,10 +701,11 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 建议顺序：
 
 ```text
-1. 先补 syllabus_adapter 对 `period` 结构的支持，把教学周/课次映射为语义主题节点，并把 `week_index` 仅作为元数据保留，减少真实 syllabus fallback 到 sample tree。
-2. 再实现 tasks/total_agent 的最小 runtime 和工具。
-3. 把 tests/total_agent 里的 deterministic router 契约迁移成正式工具行为。
-4. 最后补 LLM agent choice 和大型 opt-in E2E。
+1. 实现 `tasks/total_agent/` 的最小 runtime、contracts 和工具。
+2. 把 `tests/total_agent` 里的 deterministic router 契约迁移成正式工具行为。
+3. 补默认 deterministic tests，覆盖 insufficient / history-driven / force 三类主路径。
+4. 再补 LLM agent choice，验证真实模型会按意图选择工具链。
+5. 最后补大型 opt-in E2E，把真实 RAG、DB、资源生成和 study_graph sync 串起来。
 ```
 
 关键原则：

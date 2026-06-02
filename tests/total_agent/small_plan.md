@@ -2,7 +2,7 @@
 
 > 本计划只覆盖总 Agent 实现前的测试契约。学习过程闭环先放在 `tests/total_agent/`，用于验证推荐、learning plan、学习事件和下一任务之间的衔接。
 >
-> 正式总 Agent 的运行时设计计划见 `docs/teacher_agent_small_plan.md`。本文档只描述测试侧契约，不新增生产 task、API 或业务模块。
+> 正式总 Agent 的运行时设计计划见 `docs/total_agent_small_plan.md`。本文档只描述测试侧契约，不新增生产 task、API 或业务模块。
 
 ## 目标
 
