@@ -714,3 +714,458 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 - 有 active plan 时优先继续已有计划。
 - 没有语义对齐时追问用户。
 - 资源生成围绕当前 step，不默认全量生成。
+
+## Next Deepening
+
+Profile / Study Graph / Resource Strategy 的下一轮深化先作为测试侧预备契约收口，放在 `tests/total_agent/small_plan.md` 和 `tests/total_agent/contract.md` 中维护。稳定后再把通过测试验证的最小必要接口迁移回正式 `tasks/total_agent/` runtime。
+
+正式实现侧继续遵守当前原则：
+
+- 有 active plan 时优先 history-driven，不重新随机推荐。
+- 推荐成功后等待学生确认，不隐式 accept。
+- 没有语义证据时追问，不强行 fallback。
+- 资源生成围绕当前 step，不默认全量生成。
+- fallback 节点只作为诊断和降级信号，不能和 Agent/RAG 置信节点完全等价。
+
+## 阶段 8：Profile / Study Graph / Resource Strategy 正式迁移
+
+本阶段把 `tests/total_agent` 中已经通过的预备契约迁移进正式 `tasks/total_agent/` runtime。迁移范围只包含已验证的最小接口，不扩大到真实 profile 重建、真实 study graph 写入或复杂个性化推荐重排。
+
+### 0. 新增的常量定义
+
+建议新增到 `tasks/total_agent/agent_contracts.py`：
+
+```python
+TOTAL_AGENT_CONTEXT_SCHEMA_VERSION = "total_agent.context.v1"
+RESOURCE_STRATEGY_DEFAULT_TYPE = "documents"
+
+RESOURCE_STRATEGY_DIFFICULTY_STANDARD = "standard"
+RESOURCE_STRATEGY_DIFFICULTY_TARGETED = "targeted"
+RESOURCE_STRATEGY_DIFFICULTY_REVIEW = "review"
+```
+
+### 1. 影响的文件范围
+
+```text
+tasks/total_agent/agent_contracts.py
+tasks/total_agent/agent_tools.py
+tests/test_total_agent_task.py
+tests/total_agent/test_context_strategy_contract.py
+docs/total_agent_dev_doc.md
+tests/TEST_REPORT.md
+```
+
+测试侧 `tests/total_agent/test_context_strategy_contract.py` 保留为预备契约样本；正式 runtime 测试新增到 `tests/test_total_agent_task.py`。
+
+### 2. 函数级收口的完整数据流
+
+```text
+run_total_agent(payload)
+  -> load_total_context
+      -> get active learning_plan
+      -> get next_task
+      -> read profile summary, best-effort
+      -> read study graph features, best-effort
+      -> normalize profile_summary
+      -> normalize study_graph_state
+  -> infer_user_intent
+  -> generate_current_step_resource
+      -> get_next_learning_task
+      -> build_current_step_resource_strategy
+      -> build generative request from strategy
+      -> generative_task.generate_resources_from_request
+```
+
+### 3. 精确到输入输出的函数级收口
+
+`normalize_profile_summary(profile: dict | None) -> dict`
+
+输入可以来自 `learning_profile_task` 的读取入口、profile artifact 或测试 mock。
+
+输出：
+
+```json
+{
+  "learning_goal": "掌握 HBase RowKey 热点规避",
+  "weak_points": ["RowKey 热点", "预分区"],
+  "preferred_formats": ["documents", "quiz"],
+  "risk_level": "medium",
+  "time_budget": {"minutes_per_day": 30},
+  "updated_at": 1760000000
+}
+```
+
+内部逻辑：
+
+- 缺失字段归一为空字符串、空列表或空 dict。
+- profile 读取失败不让 `load_total_context` 失败，只写 warning。
+- profile 不覆盖用户显式 message、intent 或 resource_types。
+
+`normalize_study_graph_state(features: dict | None) -> dict`
+
+输出：
+
+```json
+{
+  "current_node_id": "rowkey_design",
+  "completed_node_ids": ["hbase_intro"],
+  "weak_node_ids": ["rowkey_design"],
+  "mastered_node_ids": [],
+  "recent_node_ids": ["hbase_intro"],
+  "stale_node_ids": [],
+  "warnings": []
+}
+```
+
+内部逻辑：
+
+- 兼容缺失字段。
+- study graph 读取失败不阻断 active plan / next task，只写 warning。
+- study graph 状态只作为调度信号，不在 `load_total_context` 中写回。
+
+`build_current_step_resource_strategy(state: dict) -> dict`
+
+输入来自当前 Total Agent state：
+
+```json
+{
+  "payload": {"message": "继续学习，最好给我一点练习"},
+  "next_task": {
+    "node_id": "rowkey_design",
+    "outcomes": ["rowkey_design", "rowkey_hotspot_avoidance"]
+  },
+  "total_context": {
+    "profile_summary": {
+      "weak_points": ["RowKey 热点"],
+      "preferred_formats": ["documents", "quiz"]
+    },
+    "study_graph_state": {
+      "weak_node_ids": ["rowkey_design"]
+    }
+  }
+}
+```
+
+输出：
+
+```json
+{
+  "success": true,
+  "schema_version": "total_agent.context.v1",
+  "resource_types": ["documents", "quiz"],
+  "difficulty": "targeted",
+  "knowledge_items": ["rowkey_design", "rowkey_hotspot_avoidance", "RowKey 热点"],
+  "reason": "current step is weak and profile/study graph indicates targeted practice",
+  "strategy_signals": {
+    "explicit_resource_types": false,
+    "matched_profile_weak_point": true,
+    "matched_study_graph_weak_node": true,
+    "message_requests_practice": true,
+    "message_requests_review": false
+  },
+  "error_code": "",
+  "error_message": ""
+}
+```
+
+内部逻辑：
+
+- 用户显式 `resource_types` 优先，不被 profile 覆盖。
+- 无显式类型且 profile/study graph 指向薄弱时，默认扩展为 `documents + quiz`。
+- message 包含“代码/coding”时优先 `coding_practice`。
+- message 包含“复习/总结/梳理/review”时选择复习型资源。
+- 没有任何信号时保持 `documents`。
+- strategy 只决定资源请求，不推进 learning plan。
+
+`tool_generate_current_step_resource(state: dict) -> dict`
+
+变更点：
+
+- 调用 `build_current_step_resource_strategy`。
+- generative request 使用 strategy 的：
+  - `resource_types`
+  - `knowledge_items`
+  - `difficulty`
+  - `strategy_reason`
+  - `strategy_signals`
+- 返回结果中保留 `resource_strategy`，便于 artifact 审查。
+
+### 4. 测试用例的构建描述
+
+正式默认测试补到 `tests/test_total_agent_task.py`：
+
+- `test_total_agent_load_context_includes_profile_summary`
+  - monkeypatch profile 读取入口。
+  - 断言 `load_total_context` 输出包含 `profile_summary`。
+
+- `test_total_agent_load_context_includes_normalized_study_graph_state`
+  - monkeypatch `study_graph_task.get_learning_tree_features`。
+  - 断言 `study_graph_state` 包含 weak/completed/recent/stale 字段。
+
+- `test_total_agent_context_read_failures_are_warnings`
+  - profile 或 study graph 读取抛错。
+  - 断言 Total Agent 不失败，warnings 可见。
+
+- `test_total_agent_resource_strategy_uses_profile_and_study_graph`
+  - active step 命中 weak profile 和 weak graph。
+  - 断言生成 request 的 `resource_types` 包含 `documents + quiz`。
+
+- `test_total_agent_resource_strategy_respects_explicit_resource_types`
+  - payload 显式 `resource_types=["documents"]`。
+  - 断言不被 profile preferred formats 覆盖。
+
+迁移完成后继续保留预备测试：
+
+```bash
+python -m pytest -q tests/total_agent/test_context_strategy_contract.py
+```
+
+正式 runtime 验收：
+
+```bash
+python -m pytest -q tests/test_total_agent_task.py
+```
+## 阶段 9：真实 Profile 读取接入 Total Agent
+
+本阶段把正式 Total Agent 里的 `load_profile_summary(payload)` 从空 hook 接到真实画像读取入口。目标是让 `load_total_context` 能在真实链路中读到已有学生画像，并把它归一成资源策略可消费的 `profile_summary`。本阶段不在 Total Agent 内重建画像算法，不在读取失败时伪造 mock profile，也不把 profile 写回逻辑塞进 Total Agent。
+
+边界：
+
+- 正式链路禁止在 profile 读取失败时 fallback 到 mock profile。
+- profile 缺失或读取失败时，只返回空 `profile_summary` 并写 warning。
+- mock 只允许存在于测试 monkeypatch / fixture 中，不进入 `tasks/total_agent/agent_tools.py` 的真实失败分支。
+- Total Agent 只读取和归一化画像，不负责计算画像、不刷新画像、不保存画像。
+- 如果后续确实需要刷新画像，必须通过 `learning_profile_task` 的显式工具或单独 intent 触发。
+
+### 0. 新增的常量定义
+
+建议新增到 `tasks/total_agent/agent_contracts.py`：
+
+```python
+PROFILE_SOURCE_NONE = "none"
+PROFILE_SOURCE_PERSISTED = "persisted_profile"
+PROFILE_SOURCE_BUILT = "built_profile"
+
+PROFILE_READ_ACTION_USE_PERSISTED_ONLY = "use_persisted_only"
+PROFILE_READ_ACTION_BUILD_IF_MISSING = "build_if_missing"
+
+PROFILE_WARNING_NOT_FOUND = "profile_not_found"
+PROFILE_WARNING_READ_FAILED = "profile_read_failed"
+PROFILE_WARNING_BUILD_SKIPPED = "profile_build_skipped"
+```
+
+默认策略：
+
+```text
+profile_read_action = use_persisted_only
+```
+
+只有 payload 显式 `profile_read_action="build_if_missing"` 或 opt-in E2E 明确打开时，才允许调用 `get_or_build_learning_profile` 构建缺失画像。
+
+### 1. 影响的文件范围
+
+```text
+tasks/total_agent/agent_contracts.py
+tasks/total_agent/agent_tools.py
+tasks/learning_profile_task.py              # 只通过 task 门户调用，不改包内 service
+tests/test_total_agent_task.py
+tests/test_total_agent_agent_choice.py       # 只检查 artifact 字段，不要求真实 profile
+tests/total_agent/test_total_agent_e2e.py    # opt-in 验证真实 profile 读取
+docs/total_agent_dev_doc.md
+tests/TEST_REPORT.md
+```
+
+### 2. 函数级收口的完整数据流
+
+```text
+run_total_agent(payload)
+  -> load_total_context
+      -> get active learning_plan
+      -> get next_task
+      -> load_profile_summary(payload)
+          -> validate user_id / syllabus_id
+          -> try learning_profile_task.get_persisted_learning_profile
+          -> if missing and profile_read_action=build_if_missing
+               -> learning_profile_task.get_or_build_learning_profile
+          -> never create mock profile on failure
+      -> normalize_profile_summary(profile)
+      -> read and normalize study_graph_state
+  -> infer_user_intent
+  -> generate_current_step_resource
+      -> build_current_step_resource_strategy
+      -> strategy consumes real profile_summary when available
+```
+
+失败路径：
+
+```text
+profile missing / read failed
+  -> load_profile_summary returns success=false or empty profile with warning
+  -> normalize_profile_summary({})
+  -> load_total_context remains success=true
+  -> resource strategy uses study graph / message / default documents
+```
+
+### 3. 精确到输入输出的函数级收口
+
+#### `load_profile_summary(payload: dict) -> dict`
+
+输入：
+
+```json
+{
+  "user_id": 8,
+  "syllabus_id": 20,
+  "message": "继续学习 RowKey",
+  "profile_read_action": "use_persisted_only"
+}
+```
+
+输出：命中已持久化画像
+
+```json
+{
+  "success": true,
+  "source": "persisted_profile",
+  "profile": {
+    "user_id": 8,
+    "syllabus_id": 20,
+    "learning_goal": "掌握 HBase RowKey 热点规避",
+    "knowledge_levels": {},
+    "preferences": {
+      "preferred_formats": ["documents", "quiz"]
+    },
+    "weak_points": ["RowKey 热点"],
+    "risk_level": "medium",
+    "updated_at": 1760000000
+  },
+  "warnings": [],
+  "error_code": "",
+  "error_message": ""
+}
+```
+
+输出：未命中且不构建
+
+```json
+{
+  "success": false,
+  "source": "none",
+  "profile": {},
+  "warnings": ["profile_not_found", "profile_build_skipped"],
+  "error_code": "profile_not_found",
+  "error_message": "no persisted learning profile"
+}
+```
+
+重要内部逻辑：
+
+- `user_id` 缺失时直接返回结构化错误，不抛异常。
+- `syllabus_id` 缺失时优先返回空 profile，不任意猜测课程画像。
+- 默认只调用 `learning_profile_task.get_persisted_learning_profile(user_id, syllabus_id)`。
+- `profile_read_action="build_if_missing"` 时，才允许调用 `learning_profile_task.get_or_build_learning_profile(..., refresh_profile=False)`。
+- `get_or_build_learning_profile` 异常时返回 warning，不让 `load_total_context` 失败。
+- 不允许硬编码 HBase / RowKey / quiz 等 mock profile。
+- 不允许在 `except` 分支返回测试用假画像。
+
+#### `normalize_profile_summary(profile: dict | None) -> dict`
+
+输入可以是 `load_profile_summary` 的完整返回，也可以是已展开 profile。
+
+输出：
+
+```json
+{
+  "learning_goal": "掌握 HBase RowKey 热点规避",
+  "weak_points": ["RowKey 热点"],
+  "preferred_formats": ["documents", "quiz"],
+  "risk_level": "medium",
+  "time_budget": {"minutes_per_day": 30},
+  "updated_at": 1760000000,
+  "profile_source": "persisted_profile"
+}
+```
+
+重要内部逻辑：
+
+- 兼容 `profile.preferences.preferred_formats`、顶层 `preferred_formats`、`resource_preferences`。
+- 兼容顶层 `weak_points`、`knowledge_weaknesses`、profile feature bundle 中可稳定识别的弱点字段。
+- 输出 `profile_source`，便于 artifact 判断是真实读取还是空 profile。
+- 缺失字段归一为空字符串、空列表或空 dict。
+- 不根据 message 临时构造 weak_points，避免把用户意图误写成画像事实。
+
+#### `tool_load_total_context(state: dict) -> dict`
+
+变更点：
+
+```json
+{
+  "profile_summary": {
+    "learning_goal": "掌握 HBase RowKey 热点规避",
+    "weak_points": ["RowKey 热点"],
+    "preferred_formats": ["documents", "quiz"],
+    "risk_level": "medium",
+    "time_budget": {"minutes_per_day": 30},
+    "updated_at": 1760000000,
+    "profile_source": "persisted_profile"
+  },
+  "warnings": []
+}
+```
+
+重要内部逻辑：
+
+- `profile_summary.profile_source="none"` 时，资源策略不能假装命中 profile weak point。
+- profile warning 合并到 `total_context.warnings`。
+- profile 读取失败不影响 active plan 和 next task。
+
+### 4. 测试用例的构建描述
+
+默认 deterministic 测试补到 `tests/test_total_agent_task.py`：
+
+- `test_total_agent_load_profile_summary_reads_persisted_profile`
+  - monkeypatch `learning_profile_task.get_persisted_learning_profile` 返回真实形状 profile。
+  - 断言 `load_profile_summary` 返回 `source="persisted_profile"`。
+  - 断言没有 mock 字段污染。
+
+- `test_total_agent_load_profile_summary_missing_profile_is_empty_warning`
+  - monkeypatch persisted profile 返回 `None`。
+  - 断言 `profile_summary.profile_source="none"`。
+  - 断言 warnings 包含 `profile_not_found` / `profile_build_skipped`。
+  - 断言不出现 HBase / RowKey 等测试假数据。
+
+- `test_total_agent_load_profile_summary_build_if_missing_opt_in`
+  - persisted 返回 `None`。
+  - payload 显式 `profile_read_action="build_if_missing"`。
+  - monkeypatch `get_or_build_learning_profile` 返回 profile。
+  - 断言 `source="built_profile"`。
+
+- `test_total_agent_load_profile_summary_read_failure_does_not_mock`
+  - persisted 读取抛错。
+  - 断言返回空 profile + warning。
+  - 断言正式链路没有 fallback 到任意 mock。
+
+- `test_total_agent_resource_strategy_with_real_profile_summary`
+  - monkeypatch persisted profile 返回 preferred formats / weak points。
+  - active step 命中 weak profile。
+  - 断言 resource request 包含 `documents + quiz` 和 `profile_source="persisted_profile"`。
+
+opt-in E2E：
+
+- `test_total_agent_large_e2e_reads_real_learning_profile`
+  - 先用 `learning_profile_task.get_or_build_learning_profile(..., refresh_profile=True)` 生成真实画像。
+  - 再调用 Total Agent continue/resource generation。
+  - 断言 artifact 中 `profile_summary.profile_source!="none"`。
+  - 断言失败时保存 profile read warnings，但不伪造 mock profile。
+
+验收命令：
+
+```bash
+python -m pytest -q tests/test_total_agent_task.py
+```
+
+真实 profile opt-in：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" -rs
+```

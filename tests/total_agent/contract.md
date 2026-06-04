@@ -391,3 +391,146 @@ aligned HBase recommendation graph fixture
 这条链路用于验证“目标已经对齐时”能走到资源生成和学习图谱更新。它不替代真实 syllabus 验证；如果真实 syllabus 链路停在 `ask_goal_clarification`，需要检查 syllabus adapter 是否覆盖当前课程 JSON 结构。
 
 默认测试不依赖真实 LLM、真实 RAG 或真实 MySQL。
+
+## 5. Profile / Study Graph / Resource Strategy 预备契约
+
+本节仍是测试侧预备契约，不作为生产 runtime 暴露。目标是在正式 Total Agent 进一步深化前，先验证画像、学习树状态和资源策略三个调度输入可以稳定收口。
+
+### 常量
+
+```python
+TOTAL_AGENT_CONTEXT_CONTRACT_VERSION = "total_agent_context_contract.v1"
+RESOURCE_STRATEGY_DEFAULT_TYPE = "documents"
+```
+
+### `_load_total_context_with_profile_and_graph(payload: dict) -> dict`
+
+输入：
+
+```json
+{
+  "user_id": 8,
+  "syllabus_id": 20,
+  "message": "继续学习 RowKey 热点规避",
+  "context": {
+    "active_plan_id": "plan_xxx",
+    "current_resource_id": "documents_xxx"
+  }
+}
+```
+
+输出：
+
+```json
+{
+  "success": true,
+  "schema_version": "total_agent_context_contract.v1",
+  "active_plan": {"plan_id": "plan_xxx", "status": "active"},
+  "next_task": {
+    "step_id": "step_2",
+    "node_id": "rowkey_design",
+    "title": "HBase RowKey 设计",
+    "outcomes": ["rowkey_design", "rowkey_hotspot_avoidance"]
+  },
+  "profile_summary": {
+    "learning_goal": "掌握 HBase RowKey 热点规避",
+    "weak_points": ["RowKey 热点", "预分区"],
+    "preferred_formats": ["documents", "quiz"],
+    "risk_level": "medium",
+    "time_budget": {"minutes_per_day": 30},
+    "updated_at": 1760000000
+  },
+  "study_graph_state": {
+    "current_node_id": "rowkey_design",
+    "completed_node_ids": ["hbase_intro"],
+    "weak_node_ids": ["rowkey_design"],
+    "mastered_node_ids": [],
+    "recent_node_ids": ["hbase_intro"],
+    "stale_node_ids": [],
+    "warnings": []
+  },
+  "warnings": [],
+  "error_code": "",
+  "error_message": ""
+}
+```
+
+规则：
+
+- active plan 和 next task 仍以 learning plan 为准，不从 profile 或 study graph 任意推断。
+- profile summary 是调度上下文，不替代用户显式 message。
+- profile 读取失败时返回空 `profile_summary` 和 warning，不阻断 active plan。
+- study graph 读取失败时返回空 `study_graph_state` 和 warning，不阻断 active plan。
+- 该 helper 不写 profile、不写 study graph、不生成资源。
+
+### `_build_current_step_resource_strategy(context: dict) -> dict`
+
+输入：
+
+```json
+{
+  "message": "继续学习，最好给我一点练习",
+  "next_task": {
+    "node_id": "rowkey_design",
+    "title": "HBase RowKey 设计",
+    "outcomes": ["rowkey_design", "rowkey_hotspot_avoidance"]
+  },
+  "profile_summary": {
+    "weak_points": ["RowKey 热点"],
+    "preferred_formats": ["documents", "quiz"]
+  },
+  "study_graph_state": {
+    "weak_node_ids": ["rowkey_design"]
+  },
+  "explicit_resource_types": []
+}
+```
+
+输出：
+
+```json
+{
+  "success": true,
+  "schema_version": "total_agent_context_contract.v1",
+  "resource_types": ["documents", "quiz"],
+  "difficulty": "targeted",
+  "knowledge_items": ["rowkey_design", "rowkey_hotspot_avoidance", "RowKey 热点"],
+  "reason": "current step is weak and profile prefers documents/quiz",
+  "strategy_signals": {
+    "explicit_resource_types": false,
+    "matched_profile_weak_point": true,
+    "matched_study_graph_weak_node": true,
+    "message_requests_practice": true,
+    "message_requests_review": false
+  },
+  "error_code": "",
+  "error_message": ""
+}
+```
+
+规则：
+
+- 用户显式传入 `resource_types` 时优先尊重用户，不被 profile 覆盖。
+- 无显式类型且 profile/study graph 指向薄弱时，默认可扩展为 `documents + quiz`。
+- message 包含“练习/代码/coding”时优先加入 `coding_practice`。
+- message 包含“复习/总结/梳理”时可选择 `mindmap` 或 `ppt`。
+- 没有任何信号时返回 `["documents"]`。
+- strategy 只决定资源请求，不推进 learning plan。
+- strategy 必须返回 `reason` 和 `strategy_signals`，供 artifact 审查。
+
+### 默认测试目标
+
+```text
+mock profile + mock study graph
+  -> load total context
+  -> build resource strategy
+  -> write context strategy artifact
+```
+
+默认测试命令建议：
+
+```bash
+python -m pytest -q tests/total_agent/test_context_strategy_contract.py
+```
+
+该测试不访问真实 LLM、真实 RAG、真实 MySQL 或真实资源生成。

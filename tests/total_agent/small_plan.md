@@ -458,3 +458,119 @@ recommendation.best_path is None
 ```
 
 这个策略的目的不是让测试强行通过，而是提前约束总 Agent：不能因为推荐链路失败就退到任意 syllabus 节点并生成偏题资源。
+
+## 阶段 4：Profile / Study Graph / Resource Strategy 预备契约
+
+该阶段仍属于测试侧预备工作，不进入生产 runtime。目标是在正式 Total Agent 进一步接入画像和学习树前，先把三个调度输入的边界验证清楚：
+
+```text
+profile_summary
+  -> 解释用户目标、弱点、资源偏好和风险
+
+study_graph_state
+  -> 解释当前学习事实、薄弱节点、已完成节点和复习需求
+
+resource_strategy
+  -> 把 message + next_task + profile + study_graph 转成当前 step 的资源请求策略
+```
+
+### 0. 新增的常量定义
+
+仅在测试 contract 中定义：
+
+```python
+TOTAL_AGENT_CONTEXT_CONTRACT_VERSION = "total_agent_context_contract.v1"
+RESOURCE_STRATEGY_DEFAULT_TYPE = "documents"
+```
+
+### 1. 影响的文件范围
+
+```text
+tests/total_agent/contract.md
+tests/total_agent/small_plan.md
+tests/total_agent/test_context_strategy_contract.py   # 后续新增
+tests/artifacts/total_agent/context_strategy_contract/
+```
+
+### 2. 函数级收口的完整数据流
+
+```text
+fixed active learning_plan fixture
+  -> _load_total_context_with_profile_and_graph
+      -> mock profile summary
+      -> mock study graph features
+      -> normalized total_context
+  -> _build_current_step_resource_strategy
+      -> inspect message
+      -> inspect next_task
+      -> inspect profile_summary
+      -> inspect study_graph_state
+      -> produce strategy
+  -> write context strategy artifact
+```
+
+### 3. 精确到输入输出的函数级收口
+
+`_load_total_context_with_profile_and_graph(payload: dict) -> dict`
+
+输出：
+
+```json
+{
+  "success": true,
+  "schema_version": "total_agent_context_contract.v1",
+  "active_plan": {},
+  "next_task": {},
+  "profile_summary": {
+    "learning_goal": "掌握 HBase RowKey 热点规避",
+    "weak_points": ["RowKey 热点", "预分区"],
+    "preferred_formats": ["documents", "quiz"],
+    "risk_level": "medium",
+    "time_budget": {"minutes_per_day": 30}
+  },
+  "study_graph_state": {
+    "current_node_id": "rowkey_design",
+    "completed_node_ids": ["hbase_intro"],
+    "weak_node_ids": ["rowkey_design"],
+    "stale_node_ids": []
+  }
+}
+```
+
+`_build_current_step_resource_strategy(context: dict) -> dict`
+
+输出：
+
+```json
+{
+  "success": true,
+  "schema_version": "total_agent_context_contract.v1",
+  "resource_types": ["documents", "quiz"],
+  "difficulty": "targeted",
+  "knowledge_items": ["rowkey_design", "RowKey 热点", "预分区"],
+  "reason": "current step is weak and profile prefers documents/quiz",
+  "strategy_signals": {
+    "explicit_resource_types": false,
+    "matched_profile_weak_point": true,
+    "matched_study_graph_weak_node": true
+  }
+}
+```
+
+内部规则：
+
+- 用户显式传入 `resource_types` 时优先尊重用户。
+- 没有显式类型时，弱点命中优先 `documents + quiz`。
+- 用户消息包含“练习/代码/coding”时优先 `coding_practice`。
+- 用户消息包含“复习/总结/梳理”时可选择 `mindmap` 或 `ppt`。
+- 默认仍是 `documents`，避免无依据全量生成。
+- strategy 只生成资源请求策略，不推进 learning plan。
+
+### 4. 测试用例的构建描述
+
+- profile summary 能进入 total context，profile 缺失时只产生 warning。
+- study graph features 能归一为 `study_graph_state`，读取失败时不阻断 active plan。
+- weak profile + weak study graph 会让默认策略包含 `quiz`。
+- 显式 `resource_types=["documents"]` 不被 profile 覆盖。
+- coding message 会选择 `coding_practice`。
+- artifact 保留 context、strategy 和触发信号，便于后续迁移到正式 runtime。

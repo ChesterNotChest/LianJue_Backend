@@ -93,6 +93,12 @@ python -m pytest -q tests/test_job_checker_startup_graph_sync.py
 python -m pytest -q tests/test_personal_recommendation_task.py tests/test_personal_recommendation_api.py tests/test_personal_recommendation_agent_choice.py
 ```
 
+### 1.l 单元测试包 8 - Total Agent
+
+```bash
+python -m pytest -q tests/test_total_agent_task.py tests/total_agent/test_process_contract.py
+```
+
 ### 1.k 集成测试 3 - 个人推荐路径 Agent 产物
 
 ```bash
@@ -586,6 +592,70 @@ tests/artifacts/personal_recommendation/mock_rag_route_graph_closure/route_resul
 
 该产物保留 mock RAG 输入、工具返回、推荐摘要和完整 `recommendation` 结果，可直接检查前端推荐图的数据质量。
 
+### 2.l 单元测试包 8 - Total Agent
+
+目标：验证正式 `tasks.total_agent_task` 的 deterministic 调度、learning plan 状态机、上下文继承和资源生成请求边界；同时保留 `tests/total_agent` 前置闭环契约作为回归基线。该单元测试包不访问真实 LLM/RAG/DB。
+
+覆盖文件：
+
+- `tests/test_total_agent_task.py`
+- `tests/total_agent/test_process_contract.py`
+
+默认链路：
+
+```text
+recommendation_result fixture
+  -> wait_user_acceptance
+  -> explicit confirmation / auto_accept=true
+  -> accept learning_plan
+  -> continue current step
+  -> generate current step resource request
+  -> record feedback
+  -> activate next step
+```
+
+覆盖范围：
+
+- 推荐成功后只返回候选和 `wait_user_acceptance`，不隐式创建 plan。
+- 用户确认或 `auto_accept=true` 时才执行 `accept_learning_plan`。
+- 已有 active plan 时，“继续学习”走 history-driven 当前 step，不重新随机推荐。
+- 反馈完成或跳过当前 step 后激活下一个 pending step。
+- `load_total_context` 读取 active plan、next task、持久化画像摘要和学习成长树摘要；读取失败只返回 warning，不伪造画像。
+- `generate_current_step_resource` 先构建 `resource_strategy`，再调用资源生成入口；单元测试通过 monkeypatch 隔离真实资源生成。
+
+测试侧前置闭环：
+
+```text
+fixed recommendation_result fixture
+  -> accept learning_plan
+  -> record first step completed
+  -> get next task
+
+run_recommendation_route_from_payload
+  -> accept learning_plan
+  -> record first step completed
+  -> get next task
+
+multi-turn deterministic router
+  -> recommend / continue / completed / skip
+  -> preserve active_plan_id and current step state
+```
+
+mock profile / mock study graph / mock resource result 只存在于测试侧契约和 monkeypatch 中。正式 `tasks/total_agent` 链路通过 `learning_profile_task` 读取真实持久化画像；读取失败只返回空 `profile_summary` 和 warning，不在 runtime 内伪造 profile。资源生成测试通过 monkeypatch `generate_resources_from_request` 完成，不通过 payload 注入 mock result。
+
+测试产物：
+
+```text
+tests/artifacts/total_agent/total_agent_deterministic_result.json
+tests/artifacts/total_agent/total_agent_persisted_profile_read_result.json
+tests/artifacts/total_agent/total_agent_profile_strategy_result.json
+tests/artifacts/total_agent/process_contract/
+```
+
+`total_agent_deterministic_result.json` 同时保留两种对照场景：无持久化画像时 `profile_source=none`，以及测试侧通过 `learning_profile_task` 注入持久化画像时 `profile_source=persisted_profile`。后者应能看到资源策略从默认 `documents` 变为 `documents + quiz`，并把 `difficulty` 标记为 `targeted`。
+
+`total_agent_persisted_profile_read_result.json` 验证画像存储层保存后的 profile 能通过正式 `load_profile_summary -> get_persisted_learning_profile` 读取回来，属于单元级持久化边界检查，不调用真实 Profile Agent。
+
 ### 2.k 集成测试 3 - 个人推荐路径 Agent
 
 目标：验证 `personal_recommendation_task.run_personal_recommendation_agent` 背后的真实 LLM 工具选择能力。该测试模拟总 Agent 传入的推荐 payload，mock RAG/多路检索结果，并使用固定 profile/tree fixture 跑真实推荐算法链路，重点验证路径推荐 Agent 会自行调度工具并完成推荐闭环。
@@ -651,3 +721,47 @@ print(tmp_path)
 - `schedule/syllabus/*.json`
 
 测试结束后只删除本次测试新增的 JSON 文件，不会删除已有缓存或历史文件。
+
+## 5 Total Agent
+
+Total Agent 的默认单元验收命令和用例说明已归入 `1.l / 2.l`。本节只保留可人工检查的探究产物和 opt-in 入口，避免和单元测试包重复。
+
+真实 LLM 工具选择 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py -m llm
+```
+
+真实 Profile Agent -> Total Agent 画像读取 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py::test_total_agent_reads_real_profile_agent_output_for_resource_strategy -m llm
+```
+
+大型端到端 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" -rs
+```
+
+可选探究用例：
+
+```bash
+python -m pytest -q tests/total_agent/test_context_strategy_contract.py
+```
+
+`tests/total_agent/test_context_strategy_contract.py` 是上下文策略的前置样本，用于观察 profile / study graph / resource strategy 的契约形态；正式 Total Agent 单元验收以 `tests/test_total_agent_task.py` 为准。
+
+测试产物：
+
+```text
+tests/artifacts/total_agent/total_agent_deterministic_result.json
+tests/artifacts/total_agent/total_agent_profile_strategy_result.json
+tests/artifacts/total_agent/context_strategy_contract/context_strategy_contract_result.json
+tests/artifacts/total_agent/agent_choice_continue/agent_choice_continue_result.json
+tests/artifacts/total_agent/real_profile_to_total_agent/real_profile_to_total_agent_result.json
+tests/artifacts/total_agent/process_contract/
+tests/artifacts/total_agent/e2e/
+```
+
+`real_profile_to_total_agent_result.json` 是窄集成产物：先用真实 Profile Agent 生成并持久化画像，再让正式 Total Agent 读取该画像并构建资源策略。该测试仍通过 monkeypatch 隔离真实资源生成，避免把资源质量问题混入画像读取验证。
