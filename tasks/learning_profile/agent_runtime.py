@@ -4,7 +4,7 @@ import json
 from functools import lru_cache
 from typing import Any, Dict
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
@@ -82,6 +82,26 @@ def get_learning_profile_agent() -> Agent:
 	@agent.tool(sequential=True)
 	def save_or_update_profile(ctx: RunContext[LearningProfileDeps]) -> dict:
 		return _tool_save_or_update_profile(ctx.deps.state)
+
+	@agent.output_validator
+	def require_profile_ready(
+		ctx: RunContext[LearningProfileDeps],
+		output: LearningProfileResult,
+	) -> LearningProfileResult:
+		state = ctx.deps.state
+		if not isinstance(state.get('profile'), dict):
+			raise ModelRetry(
+				'You must call normalize_events, compute_features, and assemble_profile before final output. '
+				'The state does not contain a profile yet.'
+			)
+		if state.get('syllabus_id') is not None and not state.get('profile_saved'):
+			raise ModelRetry(
+				'You must call save_or_update_profile before final output when syllabus_id is present. '
+				'The profile has not been persisted yet.'
+			)
+		if not isinstance(output.profile, dict):
+			output.profile = state['profile']
+		return output
 
 	return agent
 

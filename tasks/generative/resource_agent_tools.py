@@ -133,6 +133,27 @@ def _compact_planning_bundle_for_generation(planning_bundle: Dict[str, Any], res
     plan = planning_bundle.get("plan") if isinstance(planning_bundle.get("plan"), dict) else {}
     draft = planning_bundle.get("draft") if isinstance(planning_bundle.get("draft"), dict) else {}
     retrieval_context = planning_bundle.get("retrieval_context") if isinstance(planning_bundle.get("retrieval_context"), dict) else {}
+    retrieval_summary = _summarize_retrieval_context(retrieval_context, resource_type=resource_type)
+    brief_evidence_max_chars = 180 if resource_type == "documents" else 48
+    compact_learning_brief = {
+        "topic": learning_brief.get("topic") or plan.get("topic") or "",
+        "student_question": learning_brief.get("student_question") or plan.get("student_question") or "",
+        "learning_goal": learning_brief.get("learning_goal") or plan.get("learning_goal") or plan.get("objective") or "",
+        "resource_type": learning_brief.get("resource_type") or resource_type,
+        "key_concepts": _normalize_list(learning_brief.get("key_concepts"), limit=8, max_chars=80),
+        "weak_points": _normalize_list(learning_brief.get("weak_points"), limit=5, max_chars=80),
+        "selected_weeks": learning_brief.get("selected_weeks") if isinstance(learning_brief.get("selected_weeks"), list) else [],
+        "outline": _normalize_list(learning_brief.get("outline"), limit=6, max_chars=80),
+        "evidence_summaries": _normalize_list(
+            learning_brief.get("evidence_summaries") or retrieval_summary["evidence_summaries"],
+            limit=3 if resource_type == "documents" else 1,
+            max_chars=brief_evidence_max_chars,
+        ),
+        "reasoning_paths": _normalize_list(learning_brief.get("reasoning_paths"), limit=2, max_chars=140),
+        "generation_constraints": learning_brief.get("generation_constraints")
+        if isinstance(learning_brief.get("generation_constraints"), dict)
+        else {},
+    }
     compact = {
         "success": planning_bundle.get("success", True),
         "resource_type": resource_type,
@@ -156,8 +177,8 @@ def _compact_planning_bundle_for_generation(planning_bundle: Dict[str, Any], res
                 max_chars=180 if resource_type == "documents" else 48,
             ),
         },
-        "retrieval_context": _summarize_retrieval_context(retrieval_context, resource_type=resource_type),
-        "learning_brief": learning_brief,
+        "retrieval_context": retrieval_summary,
+        "learning_brief": compact_learning_brief,
         "tool_trace": planning_bundle.get("tool_trace") if isinstance(planning_bundle.get("tool_trace"), list) else [],
     }
     return compact
@@ -256,22 +277,6 @@ def tool_write_generation_draft(state: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-class LegacyResourcePayloadGenerator:
-    """Compatibility adapter around the old LiteLLM resource payload generator."""
-
-    def __init__(self, legacy_agent: Any = None) -> None:
-        self.legacy_agent = legacy_agent
-
-    def generate(self, request_payload: dict, resource_type: str, planning_bundle: dict) -> dict:
-        agent = self.legacy_agent
-        if agent is None:
-            from tasks.generative.resource_generation_agent import LLMResourceGenerationAgent
-
-            agent = LLMResourceGenerationAgent()
-            self.legacy_agent = agent
-        return agent.generate_resource_content(request_payload, resource_type, planning_bundle)
-
-
 def tool_generate_resource_payload(state: Dict[str, Any]) -> Dict[str, Any]:
     _append_trace(state, "generate_resource_payload")
     request = state.get("request") if isinstance(state.get("request"), dict) else {}
@@ -286,7 +291,15 @@ def tool_generate_resource_payload(state: Dict[str, Any]) -> Dict[str, Any]:
         elif hasattr(generator, "generate_resource_content"):
             generated_content = generator.generate_resource_content(request, resource_type, generation_bundle)
         else:
-            generated_content = LegacyResourcePayloadGenerator().generate(request, resource_type, generation_bundle)
+            error_message = "resource content generation tool is required"
+            state["generation_error"] = error_message
+            return {
+                "tool": "generate_resource_payload",
+                "success": False,
+                "resource_type": resource_type,
+                "error_code": RESOURCE_AGENT_ERROR_GENERATION_FAILED,
+                "error_message": error_message,
+            }
     except Exception as exc:
         state["generation_error"] = str(exc)
         return {

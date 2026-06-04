@@ -322,3 +322,12 @@ def test_learning_profile_result_schema_accepts_profile():
     assert result.success is True
     assert result.profile["user_id"] == 1
     assert result.error_message == ""
+
+
+def test_learning_profile_result_schema_parses_stringified_profile():
+    result = LearningProfileResult(
+        success=True,
+        profile='{"user_id": 1, "confidence": 0.5}',
+    )
+
+    assert result.profile == {"user_id": 1, "confidence": 0.5}

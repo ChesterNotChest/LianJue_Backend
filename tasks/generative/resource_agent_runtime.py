@@ -17,7 +17,6 @@ from tasks.generative.resource_agent_contracts import (
     ResourceGenerationDeps,
 )
 from tasks.generative.resource_agent_tools import (
-    LegacyResourcePayloadGenerator,
     tool_generate_resource_payload,
     tool_persist_generated_resource,
     tool_read_generation_plan,
@@ -130,14 +129,14 @@ def run_single_resource_generation_agent(
     generation_tool: Any = None,
     planning_agent: Any = None,
 ) -> ResourceGenerationAgentResult:
-    from tasks.generative.resource_generation_agent import build_single_resource_payload
+    from tasks.generative.resource_generation_agent import LLMResourceGenerationAgent, build_single_resource_payload
 
     single_payload = build_single_resource_payload(request_payload, resource_type)
     state: Dict[str, Any] = {
         "request": single_payload,
         "resource_type": resource_type,
         "planning_agent": planning_agent,
-        "generation_tool": generation_tool or LegacyResourcePayloadGenerator(),
+        "generation_tool": generation_tool or LLMResourceGenerationAgent(),
         "planning_bundle": None,
         "generated_content": None,
         "persisted_resource": None,

@@ -808,19 +808,19 @@ desired E2E scenario
     "requires": ["RUN_LLM_TESTS=1", "RUN_REAL_RAG_TESTS=1", "RUN_DB_TESTS=1"],
     "proves": "真实 DB + Profile + Recommendation/RAG + Resource Generation + Study Graph 可以完成端到端闭环"
   },
-  "deep_state_real_agents_future": {
+  "deep_state_real_agents": {
     "profile_source": "real_profile_agent_from_deep_records",
     "study_graph_source": "deep_study_graph_task_batches",
-    "recommendation_source": "real_personal_recommendation_agent_with_real_rag",
+    "recommendation_source": "accepted_plan_from_stable_fixture; real_recommendation_rag remains covered by large_real_llm_rag_db",
     "resource_source": "real_generative_agent",
     "requires": ["RUN_LLM_TESTS=1", "RUN_REAL_RAG_TESTS=1", "RUN_DB_TESTS=1"],
-    "status": "planned_if_final_release_requires_single_blackbox",
+    "status": "implemented_opt_in",
     "proves": "深学生状态和全真实 Agents 在单一黑盒 E2E 中同时闭环"
   }
 }
 ```
 
-现有可运行用例已经覆盖前两档；第三档是发布前可选增强，不应替代默认 amend，也不应在没有必要时把稳定验收变成昂贵慢测。
+三档均有可运行入口。第三档不替代默认 amend，也不进入默认 CI；它用于发布前或阶段收口时证明深学生状态能在真实 Profile Agent、真实 Total Agent、真实资源生成 Agent、真实 DB 和真实 study graph sync 下闭环。
 
 ### 1. 影响的文件范围
 
@@ -833,8 +833,6 @@ tests/artifacts/total_agent/e2e/
 tests/artifacts/total_agent/e2e_amend/
 tests/TEST_REPORT.md
 ```
-
-如果要新增第三档单一黑盒测试，建议新增：
 
 ```text
 tests/total_agent/test_total_agent_e2e_real_deep_state.py
@@ -872,7 +870,7 @@ test DB user/syllabus/UserSyllabus
   -> artifact
 ```
 
-未来单一深状态全真实 opt-in：
+深状态全真实 opt-in：
 
 ```text
 deep profile input records
@@ -884,8 +882,7 @@ real DB user/syllabus
   -> run_total_agent over student messages
       -> read deep persisted profile
       -> read deep study graph
-      -> recommendation/RAG if needed
-      -> resource generation if needed
+      -> real resource generation Agent
       -> feedback sync
   -> artifact
 ```
@@ -956,9 +953,9 @@ real DB user/syllabus
 
 - 全真实 opt-in 允许外部模型、RAG 和 DB 波动；artifact 必须保留失败原因、推荐尝试和 goal alignment 信息。
 - 真实 RAG 推荐失败但有合法 clarification 时，不应伪造 `best_path`。
-- 已有大型 E2E 侧重真实链路，不要求构造 amend 级深状态。
+- 已有大型 E2E 侧重真实推荐/RAG链路，不要求构造 amend 级深状态。
 - amend 默认 E2E 侧重深状态，不要求真实 LLM/RAG/DB。
-- 只有未来单一深状态全真实 opt-in 才同时要求“深状态”和“全真实 Agents”。
+- 深状态全真实 opt-in 同时要求“深状态”和“全真实 Agents”，但已有 active plan 时不强制重新触发推荐；真实推荐/RAG 仍由大型 E2E 覆盖。
 
 ### 4. 测试用例的构建描述
 
@@ -976,14 +973,20 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 RUN_LLM_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py::test_e2e_state_fixture_real_profile_agent_optional -m "llm and mysql"
 ```
 
-可选新增：
-
 - `test_total_agent_e2e_real_deep_state_all_agents`
   - 用真实 Profile Agent 消化深 `dialogue_text / learning_records / answer_records / resource_usage`。
+  - 断言真实画像原生保留 `resource_preference / concept_gaps / knowledge_mastery`，不把资源生成枚举写回画像结构。
+  - 断言 Total Agent 把 `resource_preference` 归一化为资源生成支持的 `documents / quiz / mindmap / coding_practice / ppt`。
   - 用真实 study graph task 构建深树。
   - 用真实 Total Agent 跑继续学习、资源生成和反馈。
-  - 用真实推荐/RAG 只在用户问题需要重新规划时触发。
+  - 已有 active plan 时不重新推荐；真实推荐/RAG 由大型 E2E 继续覆盖。
   - 默认不进入 CI，仅作为发布前 opt-in。
+
+运行命令：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_real_deep_state.py -m "llm and search and mysql" -rs
+```
 
 ## 推荐执行顺序
 
@@ -1002,5 +1005,5 @@ RUN_LLM_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_
 - 默认 E2E amend 不访问真实 LLM/RAG/DB，但必须构建深 profile 和深 study graph。
 - 深状态 artifact 必须能直接人工审查画像记录、树节点、树边、状态分布、学习计划和当前资源。
 - Total Agent 输出 artifact 必须能看到 profile / study graph 如何进入 context 和 resource strategy。
-- 旧大型 E2E 继续作为真实 Agent/RAG/DB/资源生成闭环验收入口。
-- 如需同时证明深状态和全真实 Agents，新增单独 opt-in，不把默认 amend 改成慢测。
+- 旧大型 E2E 继续作为真实推荐 Agent/RAG/DB/资源生成闭环验收入口。
+- 深状态全真实 opt-in 单独存在，不把默认 amend 改成慢测。

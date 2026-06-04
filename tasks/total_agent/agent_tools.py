@@ -190,6 +190,37 @@ def _unique_texts(items: Iterable[Any]) -> list[str]:
     return result
 
 
+def _normalize_resource_preferences(items: Iterable[Any]) -> list[str]:
+    mapping = {
+        "theory": "documents",
+        "text": "documents",
+        "article": "documents",
+        "document": "documents",
+        "documents": "documents",
+        "practice": "quiz",
+        "exercise": "quiz",
+        "quiz": "quiz",
+        "test": "quiz",
+        "visual": "mindmap",
+        "mindmap": "mindmap",
+        "diagram": "mindmap",
+        "video": "documents",
+        "code": "coding_practice",
+        "coding": "coding_practice",
+        "coding_practice": "coding_practice",
+        "ppt": "ppt",
+        "slides": "ppt",
+    }
+    normalized: list[str] = []
+    for item in items:
+        text = _safe_text(item)
+        if not text:
+            continue
+        mapped = mapping.get(text.lower(), text)
+        normalized.append(mapped)
+    return _unique_texts(normalized)
+
+
 def _tokenize_goal_text(*values: Any) -> set[str]:
     text = " ".join(_safe_text(value) for value in values if _safe_text(value))
     raw = re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]{2,}", text.lower())
@@ -290,7 +321,7 @@ def normalize_profile_summary(profile: dict | None) -> dict:
             or source.get("target_goal")
         ),
         "weak_points": _unique_texts(weak_points),
-        "preferred_formats": _unique_texts(_list_from_any(preferred_formats)),
+        "preferred_formats": _normalize_resource_preferences(_list_from_any(preferred_formats)),
         "risk_level": _safe_text(source.get("risk_level") or source.get("risk") or source.get("dropout_risk")),
         "time_budget": time_budget,
         "updated_at": source.get("updated_at") or source.get("saved_at"),

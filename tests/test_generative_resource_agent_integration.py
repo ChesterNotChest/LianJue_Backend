@@ -291,8 +291,6 @@ def _build_real_search_all_resource_payload():
     payload = _build_real_search_payload()
     payload["resource_types"] = ["documents", "mindmap", "quiz", "coding_practice", "ppt"]
     payload["generation_requirements"] = {
-        "model_tier": os.getenv("GENERATIVE_TEST_MODEL_TIER") or "cheap",
-        "ppt_model_tier": os.getenv("GENERATIVE_TEST_PPT_MODEL_TIER") or "standard",
         "slide_count_target": int(os.getenv("GENERATIVE_TEST_PPT_SLIDE_COUNT") or 8),
         "theme": "academic-rich",
         "style": "study-review",
@@ -362,85 +360,30 @@ def _assert_real_ppt_resource(tmp_path, resource, expected_min_slides=6):
     return ppt_json, ppt_md
 
 
-def test_ppt_generation_prefers_ppt_specific_model_key(monkeypatch):
-    monkeypatch.setattr(
-        gt,
-        "LITELLM_MODEL_CONFIGS",
-        {
-            "text": {"model_name": "baseline"},
-            "ppt_text": {"model_name": "ppt-strong"},
-            "text_cheap": {"model_name": "deepseek-chat"},
-        },
+def test_resource_content_generation_no_longer_exposes_litellm_model_selection():
+    assert not hasattr(gt, "LITELLM_MODEL_CONFIGS")
+    with pytest.raises(ValueError, match="LiteLLM-style model injection"):
+        gt.LLMResourceGenerationAgent(model=object())
+
+
+def test_resource_content_agent_result_accepts_common_provider_json_shapes():
+    direct = gt._generation_impl.ResourceContentAgentResult.model_validate(
+        {"title": "RowKey 热点文档", "sections": []}
     )
-    agent = gt.LLMResourceGenerationAgent(model=object())
-
-    selected = agent._resolve_model_key(
-        "ppt",
-        {"generation_requirements": {}},
+    wrapped = gt._generation_impl.ResourceContentAgentResult.model_validate(
+        {"content": {"title": "RowKey 热点文档", "sections": []}}
     )
-
-    assert selected == "ppt_text"
-
-
-def test_default_generation_prefers_cheap_tier_model(monkeypatch):
-    monkeypatch.setattr(
-        gt,
-        "LITELLM_MODEL_CONFIGS",
-        {
-            "text": {"model_name": "baseline"},
-            "text_cheap": {"model_name": "deepseek-chat"},
-            "text_strong": {"model_name": "qwen-max"},
-        },
+    stringified = gt._generation_impl.ResourceContentAgentResult.model_validate(
+        json.dumps({"title": "RowKey 热点文档", "sections": []}, ensure_ascii=False)
     )
-    agent = gt.LLMResourceGenerationAgent(model=object())
-
-    selected = agent._resolve_model_key(
-        "documents",
-        {"generation_requirements": {}},
+    stringified_content = gt._generation_impl.ResourceContentAgentResult.model_validate(
+        {"content": json.dumps({"title": "RowKey 热点文档", "sections": []}, ensure_ascii=False)}
     )
 
-    assert selected == "text_cheap"
-
-
-def test_ppt_generation_honors_explicit_model_key(monkeypatch):
-    monkeypatch.setattr(
-        gt,
-        "LITELLM_MODEL_CONFIGS",
-        {
-            "text": {"model_name": "baseline"},
-            "ppt_text": {"model_name": "ppt-strong"},
-            "text_strong": {"model_name": "general-strong"},
-        },
-    )
-    agent = gt.LLMResourceGenerationAgent(model=object())
-
-    selected = agent._resolve_model_key(
-        "ppt",
-        {"generation_requirements": {"model_key": "text_strong"}},
-    )
-
-    assert selected == "text_strong"
-
-
-def test_generation_honors_explicit_model_tier(monkeypatch):
-    monkeypatch.setattr(
-        gt,
-        "LITELLM_MODEL_CONFIGS",
-        {
-            "text": {"model_name": "baseline"},
-            "text_cheap": {"model_name": "deepseek-chat"},
-            "text_standard": {"model_name": "qwen-plus"},
-            "text_strong": {"model_name": "qwen-max"},
-        },
-    )
-    agent = gt.LLMResourceGenerationAgent(model=object())
-
-    selected = agent._resolve_model_key(
-        "documents",
-        {"generation_requirements": {"model_tier": "strong"}},
-    )
-
-    assert selected == "text_strong"
+    assert direct.content["title"] == "RowKey 热点文档"
+    assert wrapped.content["title"] == "RowKey 热点文档"
+    assert stringified.content["title"] == "RowKey 热点文档"
+    assert stringified_content.content["title"] == "RowKey 热点文档"
 
 
 def test_resource_planning_agent_runs_atomic_tools_in_order():
@@ -661,6 +604,35 @@ def test_resource_generation_agent_full_chain_persists_all_requested_resources(m
     for entry in manifest["resources"]:
         for path_value in entry["main_files"].values():
             assert (tmp_path / path_value).exists()
+
+
+def test_resource_generation_agent_injected_generator_receives_compact_generation_context(monkeypatch, tmp_path):
+    monkeypatch.setattr(generative_storage, "_get_backend_root", lambda: tmp_path)
+
+    long_paragraph = "RowKey 热点说明 " + ("需要被压缩的检索原文。" * 80)
+    payload = dict(FIXED_PAYLOAD)
+    payload["resource_types"] = ["ppt"]
+    payload["retrieval_context"] = {
+        "success": True,
+        "result_count": 1,
+        "paragraphs": [long_paragraph],
+        "reasoning_paths": ["HBase -> RowKey -> 热点 -> 预分区"],
+    }
+    recorder = RecordingGenerationAgent()
+    planner = gt.ResourcePlanningAgent(search_fn=lambda *args, **kwargs: payload["retrieval_context"])
+
+    result = gt.run_resource_generation_agent(
+        payload,
+        generation_agent=recorder,
+        planning_agent=planner,
+    )
+
+    assert result["success"] is True
+    generation_bundle = recorder.calls[0]["planning_bundle"]
+    assert "paragraphs" not in generation_bundle["retrieval_context"]
+    serialized_bundle = json.dumps(generation_bundle, ensure_ascii=False)
+    assert long_paragraph not in serialized_bundle
+    assert serialized_bundle.count("需要被压缩的检索原文。") < 12
 
 
 def test_resource_generation_agent_keeps_partial_success_when_one_resource_fails(monkeypatch, tmp_path):

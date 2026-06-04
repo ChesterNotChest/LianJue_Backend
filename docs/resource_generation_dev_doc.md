@@ -24,9 +24,7 @@
 资源生成 agent 内部固定常量位于 `tasks/generative/resource_generation_agent.py`：
 
 - `DEFAULT_RESOURCE_TYPES = ("documents", "mindmap", "quiz")`
-- `MODEL_TIERS = ("cheap", "standard", "strong")`
-- `GENERAL_MODEL_KEYS_BY_TIER`
-- `PPT_MODEL_KEYS_BY_TIER`
+- 资源内容生成统一通过 OpenAI-compatible/pydantic-ai 内容 Agent，不再暴露 LiteLLM model tier / model key 路由常量。
 
 工具型资源 Agent 契约常量位于 `tasks/generative/resource_agent_contracts.py`：
 
@@ -48,7 +46,7 @@
   - 模块间统一入口和兼容包装层。
   - 生成资源 manifest 列表、分组和 detail 包装入口。
 - `tasks/generative/resource_generation_agent.py`
-  - 资源生成外层聚合、输入归一化和旧内容生成兼容层。
+  - 资源生成外层聚合、输入归一化和 OpenAI-compatible 内容 Agent。
   - 输入归一化。
   - 单资源生成。
   - 多资源聚合。
@@ -143,7 +141,6 @@ get_generated_resource_detail(...)
     "paragraphs": []
   },
   "generation_requirements": {
-    "model_tier": "cheap",
     "slide_count_target": 8
   }
 }
@@ -538,7 +535,7 @@ tests/artifacts/resources_generative_real_search_real_llm_workspace/
 - `weak_points`
 - `learning_goal`
 - `retrieval_context`
-- `generation_requirements`
+- `generation_requirements`：只表达资源结构约束，例如 `slide_count_target`、`quiz_count`、`theme`、`style`；不再表达模型路由。
 
 这一层的原则是：
 
@@ -553,8 +550,8 @@ tests/artifacts/resources_generative_real_search_real_llm_workspace/
 
 1. 把资源编排 agent 的 tool 调用形式继续显式化。
 2. 再决定是否接审核 agent。
-3. 再补真实 LLM / 真实 search 集成测试。
-4. 最后再接总 Agent。
+3. 扩展真实 LLM / 真实 search 集成测试中的资源质量审查维度。
+4. 继续接总 Agent 和前端工具状态展示。
 
 不建议当前阶段做的事：
 

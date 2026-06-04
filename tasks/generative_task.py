@@ -42,7 +42,7 @@ from tasks.generative.resource_persistence import (
 # 生成 Agent 实现：门面保留可 monkeypatch 的兼容 wrapper，真实逻辑在包内。
 from tasks.generative import resource_generation_agent as _generation_impl
 from tasks.generative.resource_generation_agent import (
-    LLMResourceGenerationAgent as _BaseLLMResourceGenerationAgent,
+    LLMResourceGenerationAgent,
     build_single_resource_payload,
     normalize_generation_request,
 )
@@ -94,17 +94,6 @@ from tasks.generative.validation import (
     validate_ppt_payload,
     validate_quiz_payload,
 )
-
-
-LITELLM_MODEL_CONFIGS = _generation_impl.LITELLM_MODEL_CONFIGS
-
-
-class LLMResourceGenerationAgent(_BaseLLMResourceGenerationAgent):
-    """Compatibility wrapper preserving task-level monkeypatch points."""
-
-    def __init__(self, model=None) -> None:
-        _generation_impl.LITELLM_MODEL_CONFIGS = LITELLM_MODEL_CONFIGS
-        super().__init__(model=model)
 
 
 _TaskLLMResourceGenerationAgent = LLMResourceGenerationAgent
@@ -315,7 +304,6 @@ __all__ = [
     "GENERATIVE_PPT_SCHEMA_VERSION",
     "GENERATIVE_QUIZ_SCHEMA_VERSION",
     "GENERATIVE_RESOURCE_TYPES",
-    "LITELLM_MODEL_CONFIGS",
     "LLMResourceGenerationAgent",
     "MINDMAP_ALLOWED_DIAGRAM_PREFIXES",
     "RESOURCE_AGENT_SCHEMA_VERSION",

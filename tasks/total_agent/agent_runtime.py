@@ -12,6 +12,11 @@ from tasks.total_agent.agent_contracts import (
     ACTION_GENERATE_CURRENT_STEP_RESOURCE,
     ACTION_RECORD_LEARNING_FEEDBACK,
     ACTION_WAIT_USER_ACCEPTANCE,
+    INTENT_ACCEPT_RECOMMENDATION,
+    INTENT_GENERATE_CURRENT_STEP_RESOURCE,
+    INTENT_RECORD_LEARNING_FEEDBACK,
+    INTENT_RECOMMEND_LEARNING_PATH,
+    INTENT_SKIP_CURRENT_STEP,
     TOOL_ACCEPT_LEARNING_PLAN,
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
     TOOL_GET_NEXT_LEARNING_TASK,
@@ -68,8 +73,8 @@ def get_total_agent() -> Agent:
             "normalize_learning_goal_for_recommendation. "
             "For accept_recommendation, call accept_learning_plan. "
             "For generate_current_step_resource, call get_next_learning_task then generate_current_step_resource. "
-            "For record_learning_feedback, call record_learning_feedback then get_next_learning_task. "
-            "For skip_current_step, call skip_current_step then get_next_learning_task. "
+            "For record_learning_feedback, call record_learning_feedback then get_next_learning_task; do not generate resources in the same turn. "
+            "For skip_current_step, call skip_current_step then get_next_learning_task; do not generate resources in the same turn. "
             "Do not invent learning plans, recommendation paths, resources, or study graph changes yourself. "
             "Return a JSON object matching TotalAgentResult."
         ),
@@ -110,6 +115,12 @@ def get_total_agent() -> Agent:
 
     @agent.tool(sequential=True)
     def generate_current_step_resource(ctx: RunContext[TotalAgentDeps]) -> dict:
+        if ctx.deps.state.get("intent") != INTENT_GENERATE_CURRENT_STEP_RESOURCE:
+            raise ModelRetry(
+                "generate_current_step_resource is only allowed when inferred intent is "
+                "generate_current_step_resource. For feedback or skip turns, return after recording "
+                "the update and reading get_next_learning_task."
+            )
         return _remember_terminal(ctx, TOOL_GENERATE_CURRENT_STEP_RESOURCE, tool_generate_current_step_resource(ctx.deps.state))
 
     @agent.tool(sequential=True)
@@ -157,31 +168,82 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
 
     suggested = getattr(model_output, "suggested_next_action", "") if model_output else ""
     success = bool(terminal.get("success", True))
+    context_result = state.get("total_context") if isinstance(state.get("total_context"), dict) else {}
     result: dict[str, Any] = {
+        "context": context_result,
         "intent": state.get("intent_result") or {},
         "terminal_tool": terminal,
     }
     error_code = str(terminal.get("error_code") or "")
     error_message = str(terminal.get("error_message") or "")
+    recommendation_terminal = (
+        terminal
+        if terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION
+        else state.get("recommendation_result")
+        if isinstance(state.get("recommendation_result"), dict)
+        else {}
+    )
+    normalization_terminal = (
+        terminal
+        if terminal_tool == TOOL_NORMALIZE_LEARNING_GOAL
+        else state.get("goal_normalization_result")
+        if isinstance(state.get("goal_normalization_result"), dict)
+        else {}
+    )
+    accept_terminal = (
+        terminal
+        if terminal_tool == TOOL_ACCEPT_LEARNING_PLAN
+        else state.get("accept_learning_plan_result")
+        if isinstance(state.get("accept_learning_plan_result"), dict)
+        else {}
+    )
+    resource_terminal = (
+        terminal
+        if terminal_tool == TOOL_GENERATE_CURRENT_STEP_RESOURCE
+        else state.get("resource_generation_result")
+        if isinstance(state.get("resource_generation_result"), dict)
+        else {}
+    )
+    feedback_terminal = (
+        terminal
+        if terminal_tool == TOOL_RECORD_LEARNING_FEEDBACK
+        else state.get("record_learning_feedback_result")
+        if isinstance(state.get("record_learning_feedback_result"), dict)
+        else {}
+    )
+    skip_terminal = (
+        terminal
+        if terminal_tool == TOOL_SKIP_CURRENT_STEP
+        else state.get("skip_current_step_result")
+        if isinstance(state.get("skip_current_step_result"), dict)
+        else {}
+    )
 
-    if terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION:
-        result["recommendation"] = terminal
-        suggested = terminal.get("suggested_next_action") or ACTION_WAIT_USER_ACCEPTANCE
+    if recommendation_terminal:
+        result["recommendation"] = recommendation_terminal
+    if normalization_terminal:
+        result["goal_normalization"] = normalization_terminal
+    if accept_terminal:
+        result["accept_learning_plan"] = accept_terminal
+    if resource_terminal:
+        result["resource_generation"] = resource_terminal
+    if feedback_terminal:
+        result["record_learning_feedback"] = feedback_terminal
+    if skip_terminal:
+        result["skip_current_step"] = skip_terminal
+
+    if intent == INTENT_RECOMMEND_LEARNING_PATH or terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION:
+        suggested = recommendation_terminal.get("suggested_next_action") or ACTION_WAIT_USER_ACCEPTANCE
     elif terminal_tool == TOOL_NORMALIZE_LEARNING_GOAL:
-        result["goal_normalization"] = terminal
-        suggested = terminal.get("suggested_next_action") or ACTION_ASK_GOAL_CLARIFICATION
-    elif terminal_tool == TOOL_ACCEPT_LEARNING_PLAN:
-        result["accept_learning_plan"] = terminal
-        suggested = terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
-    elif terminal_tool == TOOL_GENERATE_CURRENT_STEP_RESOURCE:
-        result["resource_generation"] = terminal
-        suggested = terminal.get("suggested_next_action") or ACTION_RECORD_LEARNING_FEEDBACK
-    elif terminal_tool == TOOL_RECORD_LEARNING_FEEDBACK:
-        result["record_learning_feedback"] = terminal
-        suggested = terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
-    elif terminal_tool == TOOL_SKIP_CURRENT_STEP:
-        result["skip_current_step"] = terminal
-        suggested = terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+        suggested = normalization_terminal.get("suggested_next_action") or ACTION_ASK_GOAL_CLARIFICATION
+    elif intent == INTENT_ACCEPT_RECOMMENDATION or terminal_tool == TOOL_ACCEPT_LEARNING_PLAN:
+        suggested = accept_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif intent == INTENT_GENERATE_CURRENT_STEP_RESOURCE or terminal_tool == TOOL_GENERATE_CURRENT_STEP_RESOURCE:
+        suggested = resource_terminal.get("suggested_next_action") or ACTION_RECORD_LEARNING_FEEDBACK
+    elif intent == INTENT_RECORD_LEARNING_FEEDBACK or terminal_tool == TOOL_RECORD_LEARNING_FEEDBACK:
+        suggested = feedback_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif intent == INTENT_SKIP_CURRENT_STEP or terminal_tool == TOOL_SKIP_CURRENT_STEP:
+        suggested = skip_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
 
     return build_total_agent_result(
         state,

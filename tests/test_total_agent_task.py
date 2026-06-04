@@ -8,6 +8,7 @@ from tasks import total_agent_task as tat
 from tasks import learning_profile_task as lpt
 from tasks.learning_profile import storage as profile_storage
 from tasks.total_agent import agent_contracts as tac
+from tasks.total_agent import agent_runtime as tar
 from tasks.total_agent import agent_tools as tagt
 
 
@@ -90,6 +91,58 @@ def test_total_agent_returns_structured_error_for_missing_user_id():
     assert result["schema_version"] == tac.TOTAL_AGENT_SCHEMA_VERSION
     assert result["error_code"] == "missing_user_id"
     assert result["tool_trace"] == [tac.TOOL_LOAD_TOTAL_CONTEXT]
+
+
+def test_total_agent_agent_final_result_includes_loaded_context():
+    context = {
+        "success": True,
+        "profile_summary": {
+            "profile_source": tac.PROFILE_SOURCE_PERSISTED,
+            "preferred_formats": ["documents", "quiz"],
+        },
+        "study_graph_state": {"weak_node_ids": ["hbase_intro"]},
+    }
+    state = {
+        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_INFER_USER_INTENT, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
+        "intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE,
+        "intent_result": {"intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE},
+        "total_context": context,
+        "terminal_tool_result": {
+            "tool": tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+            "success": True,
+            "resource_strategy": {"profile_source": tac.PROFILE_SOURCE_PERSISTED},
+        },
+    }
+
+    result = tar._build_agent_final_result(state)
+
+    assert result["success"] is True
+    assert result["result"]["context"]["profile_summary"]["profile_source"] == tac.PROFILE_SOURCE_PERSISTED
+    assert result["result"]["resource_generation"]["resource_strategy"]["profile_source"] == tac.PROFILE_SOURCE_PERSISTED
+
+
+def test_total_agent_agent_final_result_uses_record_feedback_state_fallback():
+    state = {
+        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_INFER_USER_INTENT, tac.TOOL_RECORD_LEARNING_FEEDBACK],
+        "intent": tac.INTENT_RECORD_LEARNING_FEEDBACK,
+        "intent_result": {"intent": tac.INTENT_RECORD_LEARNING_FEEDBACK},
+        "total_context": {"profile_summary": {"profile_source": tac.PROFILE_SOURCE_PERSISTED}},
+        "terminal_tool_result": {},
+        "record_learning_feedback_result": {
+            "tool": tac.TOOL_RECORD_LEARNING_FEEDBACK,
+            "success": True,
+            "updated_step": {"status": prt.LEARNING_PLAN_STEP_STATUS_COMPLETED},
+            "activated_step": {"status": prt.LEARNING_PLAN_STEP_STATUS_ACTIVE},
+            "suggested_next_action": tac.ACTION_GENERATE_CURRENT_STEP_RESOURCE,
+        },
+    }
+
+    result = tar._build_agent_final_result(state)
+
+    assert result["success"] is True
+    assert result["intent"] == tac.INTENT_RECORD_LEARNING_FEEDBACK
+    assert result["suggested_next_action"] == tac.ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    assert result["result"]["record_learning_feedback"]["updated_step"]["status"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
 
 
 def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_path):
@@ -342,6 +395,30 @@ def test_total_agent_load_profile_summary_reads_persisted_profile(monkeypatch):
     assert summary["profile_source"] == tac.PROFILE_SOURCE_PERSISTED
     assert summary["preferred_formats"] == ["documents", "quiz"]
     assert result["profile"]["weak_points"] == ["RowKey 热点"]
+
+
+def test_total_agent_profile_summary_aligns_with_real_profile_agent_output():
+    summary = tagt.normalize_profile_summary(
+        {
+            "profile_source": tac.PROFILE_SOURCE_PERSISTED,
+            "learning_goal": "掌握 HBase RowKey 热点规避和预分区策略",
+            "concept_gaps": ["RowKey 热点", "预分区"],
+            "bottleneck_topics": ["Region 划分"],
+            "resource_preference": ["practice", "theory", "visual", "code"],
+            "knowledge_mastery": {
+                "knowledge_point_details": {
+                    "HBase 数据模型": {"score": 1.0, "level": "high"},
+                    "加盐前缀": {"score": 0.0, "level": "low"},
+                }
+            },
+            "dropout_risk": "low",
+        }
+    )
+
+    assert summary["profile_source"] == tac.PROFILE_SOURCE_PERSISTED
+    assert summary["weak_points"] == ["RowKey 热点", "预分区", "加盐前缀"]
+    assert summary["preferred_formats"] == ["quiz", "documents", "mindmap", "coding_practice"]
+    assert summary["risk_level"] == "low"
 
 
 def test_total_agent_reads_profile_saved_by_profile_storage(monkeypatch, tmp_path):
