@@ -744,6 +744,28 @@ RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py::test
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" -rs
 ```
 
+可拆分复现：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db -m "llm and search and mysql" -rs
+```
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph -m "llm and search and mysql" -rs
+```
+
+E2E amend 默认场景：
+
+```bash
+python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py -m "not llm and not mysql"
+```
+
+E2E amend 真实 Profile Agent 状态夹具 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py::test_e2e_state_fixture_real_profile_agent_optional -m "llm and mysql"
+```
+
 可选探究用例：
 
 ```bash
@@ -762,6 +784,20 @@ tests/artifacts/total_agent/agent_choice_continue/agent_choice_continue_result.j
 tests/artifacts/total_agent/real_profile_to_total_agent/real_profile_to_total_agent_result.json
 tests/artifacts/total_agent/process_contract/
 tests/artifacts/total_agent/e2e/
+tests/artifacts/total_agent/e2e_amend/
 ```
 
 `real_profile_to_total_agent_result.json` 是窄集成产物：先用真实 Profile Agent 生成并持久化画像，再让正式 Total Agent 读取该画像并构建资源策略。该测试仍通过 monkeypatch 隔离真实资源生成，避免把资源质量问题混入画像读取验证。
+
+`e2e_amend/` 是 Total Agent 黑盒补充验收产物目录，覆盖深学生状态夹具、profile-driven continue、study graph weak/stale continue、feedback 推进 plan + study graph、以及 no-force clarification 场景。默认 amend 场景不访问真实 LLM/RAG/DB，但状态不是浅 mock：画像由 `learning_profile` 真实工具链根据 `dialogue_text / learning_records / answer_records / resource_usage` 生成并持久化，学习记录树由 `study_graph_task.submit_learning_tree_changes` 多批次写入形成 10+ 节点、6+ 边和 weak/mastered/recent/stale 状态分布，学习计划通过推荐路径 accept 生成。artifact 同时保留原始画像输入记录、最终 persisted profile、learning plan manifest、study graph manifest/change log、当前资源和 Total Agent 决策结果，便于检查“真实格式状态 -> 总 Agent 决策”的闭环。
+
+E2E amend 的稳定场景输入固化在 `tests/fixtures/total_agent/deep_student_state.json`。该 fixture 只保存测试语料和场景定义，包括 profile 原始输入记录、study graph change batches、推荐路径、当前资源模板和学生消息；不保存运行后生成的 persisted profile、learning plan manifest、study graph manifest/change log 或 Total Agent result。运行产物仍写入 `tests/artifacts/` 并由 `.gitignore` 豁免。
+
+Total Agent E2E 收口矩阵：
+
+- `tests/total_agent/test_total_agent_e2e_amend.py` 默认场景回答“深画像、深学习记录树、active plan 和当前资源进入 Total Agent 后，是否能影响上下文、资源策略、反馈推进和 no-force 决策”。它不访问真实 LLM/RAG/DB，适合稳定审查深学生状态。
+- `test_e2e_state_fixture_real_profile_agent_optional` 回答“真实 Profile Agent 生成的画像是否能作为 E2E 状态夹具被保存和读取”。它不替代全链路资源生成。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db` 回答“真实 DB、真实 Profile Agent、真实推荐 Agent/RAG、真实资源生成和 study graph sync 是否能完成端到端闭环”。该场景更偏全链路可用性。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph` 回答“在语义对齐的推荐图下，真实 LLM/RAG/资源生成链路是否能稳定走到 resource generation 和 feedback/study graph”。该场景用于降低自然语言目标不命中 syllabus 节点导致的偶然失败。
+
+后续如果要做“深状态 + 全真实 Agents”的单一大型 opt-in，应新建独立用例，而不是替换 amend 默认场景：先用真实 Profile Agent 生成深画像，再准备真实或可审查的深 study graph，随后让 Total Agent 真实调用推荐/RAG、资源生成和 study graph sync。该用例成本高、外部波动大，适合作为最终发布前验收，不适合默认 CI。

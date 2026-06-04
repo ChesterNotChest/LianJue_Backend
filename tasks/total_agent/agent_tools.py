@@ -262,22 +262,36 @@ def normalize_profile_summary(profile: dict | None) -> dict:
         or preferences.get("resource_types")
         or source.get("resource_preferences")
         or source.get("preferred_resource_types")
+        or source.get("resource_preference")
     )
+    weak_points = _list_from_any(
+        source.get("weak_points")
+        or source.get("weaknesses")
+        or source.get("knowledge_weaknesses")
+        or source.get("concept_gaps")
+        or source.get("bottleneck_topics")
+    )
+    mastery = _safe_dict(source.get("knowledge_mastery"))
+    details = _safe_dict(mastery.get("knowledge_point_details"))
+    for title, detail in details.items():
+        if not isinstance(detail, dict):
+            continue
+        level = _safe_text(detail.get("level") or detail.get("mastery") or detail.get("label"))
+        try:
+            score = float(detail.get("score") or 0.0)
+        except Exception:
+            score = 0.0
+        if level in {"low", "weak"} or score < 0.5:
+            weak_points.append(title)
     return {
         "learning_goal": _safe_text(
             source.get("learning_goal")
             or source.get("goal")
             or source.get("target_goal")
         ),
-        "weak_points": _unique_texts(
-            _list_from_any(
-                source.get("weak_points")
-                or source.get("weaknesses")
-                or source.get("knowledge_weaknesses")
-            )
-        ),
+        "weak_points": _unique_texts(weak_points),
         "preferred_formats": _unique_texts(_list_from_any(preferred_formats)),
-        "risk_level": _safe_text(source.get("risk_level") or source.get("risk")),
+        "risk_level": _safe_text(source.get("risk_level") or source.get("risk") or source.get("dropout_risk")),
         "time_budget": time_budget,
         "updated_at": source.get("updated_at") or source.get("saved_at"),
         "profile_source": _safe_text(source.get("profile_source") or profile_source) or PROFILE_SOURCE_NONE,
@@ -298,16 +312,20 @@ def normalize_study_graph_state(features: dict | None) -> dict:
     return {
         "current_node_id": _safe_text(source.get("current_node_id") or source.get("current_node")),
         "completed_node_ids": _unique_texts(
-            _list_from_any(source.get("completed_node_ids") or source.get("completed_nodes"))
+            _list_from_any(source.get("completed_node_ids") or source.get("completed_nodes") or source.get("learned_topics"))
         ),
-        "weak_node_ids": _unique_texts(_list_from_any(source.get("weak_node_ids") or source.get("weak_nodes"))),
+        "weak_node_ids": _unique_texts(
+            _list_from_any(source.get("weak_node_ids") or source.get("weak_nodes") or source.get("weak_topics"))
+        ),
         "mastered_node_ids": _unique_texts(
-            _list_from_any(source.get("mastered_node_ids") or source.get("mastered_nodes"))
+            _list_from_any(source.get("mastered_node_ids") or source.get("mastered_nodes") or source.get("mastered_topics"))
         ),
         "recent_node_ids": _unique_texts(
-            _list_from_any(source.get("recent_node_ids") or source.get("recent_nodes"))
+            _list_from_any(source.get("recent_node_ids") or source.get("recent_nodes") or source.get("recently_grown"))
         ),
-        "stale_node_ids": _unique_texts(_list_from_any(source.get("stale_node_ids") or source.get("stale_nodes"))),
+        "stale_node_ids": _unique_texts(
+            _list_from_any(source.get("stale_node_ids") or source.get("stale_nodes") or source.get("stale_topics"))
+        ),
         "blocked_node_ids": _unique_texts(
             _list_from_any(source.get("blocked_node_ids") or source.get("blocked_nodes"))
         ),
@@ -414,11 +432,17 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     preferred_formats = _list_from_any(profile.get("preferred_formats"))
     weak_node_ids = set(_unique_texts(_list_from_any(study_graph_state.get("weak_node_ids"))))
     next_node_id = _safe_text(next_task.get("node_id") or next_task.get("id"))
+    next_title = _safe_text(next_task.get("title"))
+    next_outcomes = set(_unique_texts(outcomes))
 
     message_requests_practice = _message_has_any(message, ("练习", "practice", "exercise", "quiz", "题"))
     message_requests_coding = _message_has_any(message, ("代码", "coding", "code", "编程"))
     message_requests_review = _message_has_any(message, ("复习", "总结", "梳理", "review", "summary"))
-    matched_study_graph_weak_node = bool(next_node_id and next_node_id in weak_node_ids)
+    matched_study_graph_weak_node = bool(
+        (next_node_id and next_node_id in weak_node_ids)
+        or (next_title and next_title in weak_node_ids)
+        or bool(next_outcomes & weak_node_ids)
+    )
     matched_profile_weak_point = bool(_unique_texts(weak_points))
 
     if explicit_resource_types:
