@@ -673,3 +673,81 @@ def test_e2e_state_fixture_real_profile_agent_optional(monkeypatch, tmp_path):
             if created_syllabus:
                 Syllabus.query.filter_by(syllabus_id=syllabus.syllabus_id).delete()
             db.session.commit()
+def test_total_agent_e2e_answer_learning_question_learning_strategy(monkeypatch, tmp_path):
+    artifact_root = tmp_path / "e2e_amend_answer_strategy"
+    workspace = artifact_root / "workspace"
+
+    user_id = 73
+    syllabus_id = 29
+    recommendation = _recommendation_fixture()
+    accept_result = prt.accept_recommendation_path(user_id, syllabus_id, recommendation, candidate_index=0)
+    plan = accept_result["plan"]
+    monkeypatch.setattr(prt, "get_active_learning_plan", lambda loaded_user_id, loaded_syllabus_id=None: plan)
+    monkeypatch.setattr(tagt.prt, "get_active_learning_plan", lambda loaded_user_id, loaded_syllabus_id=None: plan)
+
+    monkeypatch.setattr(
+        tagt,
+        "load_profile_summary",
+        lambda payload, status_state=None: {
+            "success": True,
+            "source": "persisted",
+            "profile": {
+                "learning_goal": "掌握 HBase RowKey 热点规避",
+                "weak_points": [
+                    "RowKey 热点",
+                    "预分区",
+                    "大数据感知与获取涉及数据的来源与类型",
+                ],
+            },
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(
+        tagt,
+        "get_study_graph_features",
+        lambda user_id, syllabus_id, status_state=None: {
+            "weak_node_ids": ["RowKey 热点", "Region 划分"],
+            "mastered_node_ids": [],
+        },
+    )
+
+    result = tat.run_total_agent(
+        {
+            "user_id": user_id,
+            "syllabus_id": syllabus_id,
+            "message": "我下一步应该怎么学习 HBase RowKey 热点规避？",
+            "mock_evidence": [
+                {
+                    "title": "HBase RowKey 热点",
+                    "summary": "单调递增 RowKey 会让写入集中到少数 Region。",
+                    "source": "RAG",
+                    "score": 0.9,
+                }
+            ],
+            "conversation_history": [
+                {"role": "user", "content": "我在看 HBase RowKey 设计。"},
+                {"role": "assistant", "content": "当前建议先完成 HBase 基础。"},
+            ],
+            "workspace_root": str(workspace),
+        }
+    )
+    answer_result = result["result"]["answer_learning_question"]
+    answer = answer_result["answer"]
+
+    assert result["success"] is True
+    assert result["intent"] == tac.INTENT_ANSWER_LEARNING_QUESTION
+    assert answer["question_type"] == "learning_strategy"
+    assert "HBase 基础" in answer["text"]
+    assert "RowKey 热点" in answer["relevant_weak_points"]
+    assert "大数据感知与获取涉及数据的来源与类型" in answer["filtered_weak_points"]
+    assert answer["session_context_used"] is True
+    assert answer_result["plan_mutation"] is False
+    assert answer_result["resource_generation"] is False
+
+    plan_after = prt.get_active_learning_plan(user_id, syllabus_id)
+    assert not plan_after.get("events")
+    _write_artifact(
+        artifact_root / "answer_learning_question_strategy",
+        "answer_learning_question_strategy_result.json",
+        result,
+    )

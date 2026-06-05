@@ -53,6 +53,23 @@ from tasks.total_agent.agent_contracts import (
     QA_LEVEL_ASYNC_RESOURCE,
     QA_LEVEL_CONTEXTUAL,
     QA_LEVEL_FAST,
+    QA_ANSWER_STYLE_CONCISE,
+    QA_ANSWER_STYLE_DETAILED,
+    QA_ANSWER_STYLE_NORMAL,
+    QA_CONTEXT_SESSION_WINDOW_TURNS,
+    QA_NEXT_ACTION_CLARIFY_GOAL,
+    QA_NEXT_ACTION_CONTINUE_CURRENT_STEP,
+    QA_NEXT_ACTION_OFFER_PRACTICE,
+    QA_NEXT_ACTION_OFFER_RESOURCE,
+    QA_QUESTION_TYPE_CONCEPT,
+    QA_QUESTION_TYPE_EXERCISE_HELP,
+    QA_QUESTION_TYPE_LEARNING_STRATEGY,
+    QA_QUESTION_TYPE_UNKNOWN,
+    QA_TONE_ENCOURAGING,
+    QA_TONE_FRIENDLY_PRAGMATIC,
+    QA_TONE_PRAGMATIC,
+    QA_WARNING_LOW_RELEVANCE_EVIDENCE,
+    QA_WARNING_PROFILE_WEAK_POINTS_FILTERED,
     RESOURCE_FEEDBACK_ACCEPTED,
     RESOURCE_FEEDBACK_DISLIKED,
     RESOURCE_FEEDBACK_REJECTED,
@@ -301,11 +318,7 @@ def _normalize_resource_preferences(items: Iterable[Any]) -> list[str]:
 def _tokenize_goal_text(*values: Any) -> set[str]:
     text = " ".join(_safe_text(value) for value in values if _safe_text(value))
     raw = re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]{2,}", text.lower())
-    tokens = {item for item in raw if len(item) >= 2}
-    for word in ("rowkey", "hbase", "region", "热点", "规避", "预分区"):
-        if word.lower() in text.lower():
-            tokens.add(word.lower())
-    return tokens
+    return {item for item in raw if len(item) >= 2 and item not in _TOPIC_HINT_STOPWORDS}
 
 
 def _extract_graph_nodes(recommendation: dict) -> list[dict]:
@@ -714,6 +727,235 @@ def _compact_search_evidence(raw_result: Any, *, limit: int = 3) -> list[dict]:
     return evidence
 
 
+def classify_learning_question(message: str) -> dict:
+    text = _safe_text(message)
+    lowered = text.lower()
+    reason_codes: list[str] = []
+    question_type = QA_QUESTION_TYPE_UNKNOWN
+    confidence = 0.45
+    if _message_has_any(lowered, ("下一步", "怎么学", "学习路线", "学习计划", "计划", "先学什么", "next step", "how should i learn")):
+        question_type = QA_QUESTION_TYPE_LEARNING_STRATEGY
+        confidence = 0.86
+        reason_codes.extend(["asks_next_step", "asks_how_to_learn"])
+    elif _message_has_any(lowered, ("这题", "答案", "错题", "选项", "为什么错", "practice", "exercise")):
+        question_type = QA_QUESTION_TYPE_EXERCISE_HELP
+        confidence = 0.78
+        reason_codes.append("asks_exercise_help")
+    elif _message_has_any(lowered, ("为什么", "为啥", "是什么", "解释", "区别", "关系", "原理", "why", "what is", "explain")):
+        question_type = QA_QUESTION_TYPE_CONCEPT
+        confidence = 0.82
+        reason_codes.append("asks_concept_explanation")
+    return {"question_type": question_type, "confidence": confidence, "reason_codes": _unique_texts(reason_codes)}
+
+
+def _normalize_turn(item: Any) -> dict:
+    if isinstance(item, str):
+        return {"role": "user", "content": item[:300]}
+    if not isinstance(item, dict):
+        return {}
+    role = _safe_text(item.get("role") or item.get("speaker") or "user") or "user"
+    content = _safe_text(item.get("content") or item.get("text") or item.get("message"))
+    if not content:
+        return {}
+    return {"role": role, "content": content[:300]}
+
+
+_TOPIC_HINT_STOPWORDS = {
+    "我",
+    "你",
+    "我们",
+    "这个",
+    "那个",
+    "这些",
+    "那些",
+    "为什么",
+    "为啥",
+    "怎么",
+    "怎样",
+    "如何",
+    "下一步",
+    "应该",
+    "可以",
+    "需要",
+    "学习",
+    "理解",
+    "解释",
+    "讲讲",
+    "说说",
+    "当前",
+    "建议",
+    "先",
+    "再",
+    "会",
+    "是",
+    "的",
+    "了",
+    "吗",
+    "呢",
+    "和",
+    "与",
+    "或",
+    "在",
+    "看",
+    "一下",
+}
+
+
+def _extract_topic_hints(*values: Any) -> list[str]:
+    text = " ".join(_safe_text(value) for value in values if _safe_text(value))
+    if not text:
+        return []
+    hints: list[str] = []
+    for match in re.finditer(r"[A-Za-z][A-Za-z0-9_+-]{1,}", text):
+        hints.append(match.group(0))
+
+    chinese_text = re.sub(r"[^\u4e00-\u9fff]+", " ", text)
+    for stopword in sorted(_TOPIC_HINT_STOPWORDS, key=len, reverse=True):
+        chinese_text = chinese_text.replace(stopword, " ")
+    for chunk in re.findall(r"[\u4e00-\u9fff]{2,12}", chinese_text):
+        chunk = chunk.strip()
+        if chunk and chunk not in _TOPIC_HINT_STOPWORDS:
+            hints.append(chunk)
+    return _unique_texts(hints)[:8]
+
+
+def build_session_context(payload: dict, limit: int = QA_CONTEXT_SESSION_WINDOW_TURNS) -> dict:
+    payload = _safe_dict(payload)
+    context = _safe_dict(payload.get("context"))
+    raw_history = (
+        payload.get("conversation_history")
+        or payload.get("dialogue_history")
+        or payload.get("messages")
+        or context.get("conversation_history")
+        or context.get("session_history")
+        or []
+    )
+    if isinstance(raw_history, dict):
+        raw_history = raw_history.get("dialogue_history") or raw_history.get("follow_up") or raw_history.get("items") or []
+    if not isinstance(raw_history, list):
+        raw_history = [raw_history] if raw_history else []
+    recent_turns = [_normalize_turn(item) for item in raw_history[-max(1, int(limit)):]]
+    recent_turns = [item for item in recent_turns if item]
+    message = _safe_text(payload.get("message") or payload.get("question"))
+    if message and (not recent_turns or recent_turns[-1].get("content") != message):
+        recent_turns.append({"role": "user", "content": message[:300]})
+        recent_turns = recent_turns[-max(1, int(limit)):]
+    topic_hints = _extract_topic_hints(*[turn.get("content") for turn in recent_turns])
+    return {
+        "session_id": _safe_text(payload.get("session_id") or context.get("session_id")),
+        "recent_turns": recent_turns,
+        "last_user_message": next((turn["content"] for turn in reversed(recent_turns) if turn.get("role") == "user"), ""),
+        "topic_hints": topic_hints,
+        "warnings": [],
+    }
+
+
+def _answer_tone(payload: dict) -> dict:
+    context = _safe_dict(_safe_dict(payload).get("context"))
+    tone = _safe_text(payload.get("tone_style") or context.get("tone_style")) or QA_TONE_FRIENDLY_PRAGMATIC
+    style = _safe_text(payload.get("answer_style") or context.get("answer_style")) or QA_ANSWER_STYLE_NORMAL
+    if tone not in {QA_TONE_PRAGMATIC, QA_TONE_FRIENDLY_PRAGMATIC, QA_TONE_ENCOURAGING}:
+        tone = QA_TONE_FRIENDLY_PRAGMATIC
+    if style not in {QA_ANSWER_STYLE_CONCISE, QA_ANSWER_STYLE_NORMAL, QA_ANSWER_STYLE_DETAILED}:
+        style = QA_ANSWER_STYLE_NORMAL
+    return {"tone_style": tone, "answer_style": style}
+
+
+def _short_knowledge_item(value: Any) -> bool:
+    text = _safe_text(value)
+    if not text:
+        return False
+    if len(text) > 28:
+        return False
+    if text in _TOPIC_HINT_STOPWORDS:
+        return False
+    if re.search(r"[，。；、,.!?！？]", text):
+        return False
+    return bool(re.search(r"[A-Za-z0-9\u4e00-\u9fff]", text))
+
+
+def filter_relevant_weak_points(question: str, context: dict, limit: int = 5) -> tuple[list[str], list[str]]:
+    context = _safe_dict(context)
+    profile = normalize_profile_summary(context.get("profile_summary"))
+    study_graph = normalize_study_graph_state(context.get("study_graph_state"))
+    next_task = _safe_dict(context.get("next_task"))
+    session_context = _safe_dict(context.get("session_context"))
+    weak_points = _unique_texts(_list_from_any(profile.get("weak_points")))
+    anchors = _unique_texts(
+        [
+            question,
+            next_task.get("title"),
+            next_task.get("node_id"),
+            *(_safe_list(next_task.get("outcomes"))),
+            *(_safe_list(study_graph.get("weak_node_ids"))),
+            *(_safe_list(session_context.get("topic_hints"))),
+        ]
+    )
+    anchor_text = " ".join(anchors).lower()
+    kept: list[str] = []
+    filtered: list[str] = []
+    for item in weak_points:
+        text = _safe_text(item)
+        if not text:
+            continue
+        explicit_hit = text.lower() in anchor_text or any(token.lower() in anchor_text for token in _extract_topic_hints(text))
+        if _short_knowledge_item(text) and explicit_hit:
+            kept.append(text)
+        else:
+            filtered.append(text)
+    if not kept:
+        for item in _safe_list(study_graph.get("weak_node_ids")):
+            text = _safe_text(item)
+            if _short_knowledge_item(text) and (text.lower() in anchor_text or not anchor_text):
+                kept.append(text)
+    return _unique_texts(kept)[:limit], _unique_texts(filtered)
+
+
+def _evidence_query_terms(question: str, context: dict) -> list[str]:
+    context = _safe_dict(context)
+    next_task = _safe_dict(context.get("next_task"))
+    profile = normalize_profile_summary(context.get("profile_summary"))
+    study_graph = normalize_study_graph_state(context.get("study_graph_state"))
+    session_context = _safe_dict(context.get("session_context"))
+    relevant_weak, _ = filter_relevant_weak_points(question, context, limit=5)
+    learning_goal = _safe_text(profile.get("learning_goal"))
+    if len(learning_goal) > 40:
+        learning_goal = ""
+    return _unique_texts(
+        [
+            *_extract_topic_hints(question),
+            *(_safe_list(session_context.get("topic_hints"))),
+            learning_goal,
+            next_task.get("title"),
+            next_task.get("node_id"),
+            *(_safe_list(next_task.get("outcomes"))),
+            *relevant_weak,
+            *(_safe_list(study_graph.get("weak_node_ids"))[:5]),
+        ]
+    )
+
+
+def _build_evidence_query(message: str, context: dict) -> str:
+    terms = _evidence_query_terms(message, context)
+    query = " ".join(_unique_texts([message, *terms]))
+    return query[:180]
+
+
+def score_evidence_relevance(evidence: list[dict], query_terms: list[str]) -> list[dict]:
+    terms = [term.lower() for term in _unique_texts(query_terms) if len(term) >= 2]
+    scored = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        text = f"{_safe_text(item.get('title'))} {_safe_text(item.get('summary'))}".lower()
+        hits = sum(1 for term in terms if term and term in text)
+        payload = dict(item)
+        payload["relevance_score"] = round(min(1.0, hits / max(1, min(len(terms), 5))), 4)
+        payload["relevance"] = "high" if hits >= 3 else "medium" if hits >= 1 else "low"
+        scored.append(payload)
+    return scored
+
+
 def retrieve_learning_evidence(state: Dict[str, Any]) -> dict:
     _append_trace(state, TOOL_RETRIEVE_LEARNING_EVIDENCE)
     payload = _safe_dict(state.get("payload"))
@@ -725,18 +967,24 @@ def retrieve_learning_evidence(state: Dict[str, Any]) -> dict:
     evidence = [dict(item) for item in _safe_list(payload.get("evidence_summary") or payload.get("mock_evidence")) if isinstance(item, dict)]
     warnings: list[str] = []
 
+    query = _build_evidence_query(message, context)
+    query_terms = _evidence_query_terms(message, context)
+
     if not evidence and graph_name and message and qa_level != QA_LEVEL_ASYNC_RESOURCE:
         try:
             raw_result = emit_status_pair(
                 state,
                 agent=TOTAL_AGENT_STATUS_AGENT,
                 stage=TOOL_RETRIEVE_LEARNING_EVIDENCE,
-                fn=lambda: search_tool(message, graph_name=graph_name, top_k=top_k),
-                payload={"graph_name": graph_name, "top_k": top_k},
+                fn=lambda: search_tool(query or message, graph_name=graph_name, top_k=top_k),
+                payload={"graph_name": graph_name, "top_k": top_k, "query": query or message},
             )
             evidence = _compact_search_evidence(raw_result, limit=top_k)
         except Exception as exc:
             warnings.extend(["rag_retrieval_failed", _safe_text(exc)])
+    evidence = score_evidence_relevance(evidence, query_terms)
+    if evidence and all(_safe_text(item.get("relevance")) == "low" for item in evidence):
+        warnings.append(QA_WARNING_LOW_RELEVANCE_EVIDENCE)
     if not evidence:
         warnings.append("no_rag_evidence")
 
@@ -745,6 +993,8 @@ def retrieve_learning_evidence(state: Dict[str, Any]) -> dict:
         True,
         state=state,
         qa_level=qa_level,
+        retrieval_query=query or message,
+        query_terms=query_terms,
         evidence_summary=evidence,
         context_used={
             "profile": qa_level == QA_LEVEL_CONTEXTUAL,
@@ -756,6 +1006,57 @@ def retrieve_learning_evidence(state: Dict[str, Any]) -> dict:
     )
     state["learning_evidence_result"] = result
     return result
+
+
+def normalize_answer_payload(payload: dict) -> dict:
+    payload = dict(payload or {})
+    warnings = _unique_texts(_list_from_any(payload.get("warnings")))
+    question_type = _safe_text(payload.get("question_type")) or QA_QUESTION_TYPE_UNKNOWN
+    if question_type not in {
+        QA_QUESTION_TYPE_CONCEPT,
+        QA_QUESTION_TYPE_LEARNING_STRATEGY,
+        QA_QUESTION_TYPE_EXERCISE_HELP,
+        QA_QUESTION_TYPE_UNKNOWN,
+    }:
+        question_type = QA_QUESTION_TYPE_UNKNOWN
+        warnings.append("invalid_question_type")
+    text = _safe_text(payload.get("text"))
+    key_points = _unique_texts(_list_from_any(payload.get("key_points")))
+    if not key_points and text:
+        key_points = [text[:120]]
+    try:
+        confidence = float(payload.get("confidence"))
+    except Exception:
+        confidence = 0.5
+    confidence = max(0.0, min(1.0, confidence))
+    tone = _safe_dict(payload.get("tone"))
+    tone_style = _safe_text(tone.get("tone_style")) or QA_TONE_FRIENDLY_PRAGMATIC
+    answer_style = _safe_text(tone.get("answer_style")) or QA_ANSWER_STYLE_NORMAL
+    if tone_style not in {QA_TONE_PRAGMATIC, QA_TONE_FRIENDLY_PRAGMATIC, QA_TONE_ENCOURAGING}:
+        tone_style = QA_TONE_FRIENDLY_PRAGMATIC
+        warnings.append("invalid_tone_style")
+    if answer_style not in {QA_ANSWER_STYLE_CONCISE, QA_ANSWER_STYLE_NORMAL, QA_ANSWER_STYLE_DETAILED}:
+        answer_style = QA_ANSWER_STYLE_NORMAL
+        warnings.append("invalid_answer_style")
+    return {
+        "question_type": question_type,
+        "text": text,
+        "key_points": key_points[:6],
+        "evidence_used": _safe_list(payload.get("evidence_used")),
+        "plan_reference": _safe_dict(payload.get("plan_reference")),
+        "relevant_weak_points": _safe_list(payload.get("relevant_weak_points")),
+        "filtered_weak_points": _safe_list(payload.get("filtered_weak_points")),
+        "next_actions": _safe_list(payload.get("next_actions")),
+        "session_context_used": bool(payload.get("session_context_used")),
+        "confidence": round(confidence, 4),
+        "tone": {"tone_style": tone_style, "answer_style": answer_style},
+        "warnings": warnings,
+    }
+
+
+def validate_answer_payload(payload: dict) -> dict:
+    normalized = normalize_answer_payload(payload)
+    return {"success": bool(normalized.get("text")), "answer": normalized, "error_code": "" if normalized.get("text") else "missing_answer_text"}
 
 
 def _answer_key_points(question: str, evidence: list[dict], context: dict) -> list[str]:
@@ -771,10 +1072,153 @@ def _answer_key_points(question: str, evidence: list[dict], context: dict) -> li
         )
     elif evidence:
         points.extend(_safe_text(item.get("summary"))[:120] for item in evidence[:3] if isinstance(item, dict))
-    weak_points = _safe_list(_safe_dict(context.get("profile_summary")).get("weak_points"))
+    weak_points, _ = filter_relevant_weak_points(question, context, limit=3)
     if weak_points:
         points.append(f"结合你的画像，当前可以优先补：{', '.join(_safe_text(item) for item in weak_points[:3])}。")
     return _unique_texts(points)[:5]
+
+
+def _plan_reference(context: dict) -> dict:
+    plan = _safe_dict(context.get("active_plan"))
+    next_task = _safe_dict(context.get("next_task"))
+    return {
+        "plan_id": _safe_text(plan.get("plan_id")),
+        "current_step_id": _safe_text(next_task.get("step_id")),
+        "current_step_title": _safe_text(next_task.get("title")),
+        "current_step_status": _safe_text(next_task.get("status")),
+    } if plan or next_task else {}
+
+
+def _next_action(action: str, resource_type: str = "") -> dict:
+    return {
+        "action": action,
+        "label_key": f"agent.answer.next_action.{action}",
+        "resource_type": resource_type,
+    }
+
+
+def _render_text(key_points: list[str], tone: dict, question_type: str = QA_QUESTION_TYPE_CONCEPT) -> str:
+    style = tone.get("answer_style")
+    points = key_points[:3 if style == QA_ANSWER_STYLE_CONCISE else 6 if style == QA_ANSWER_STYLE_DETAILED else 4]
+    text = " ".join(points)
+    if tone.get("tone_style") == QA_TONE_ENCOURAGING and text:
+        if question_type == QA_QUESTION_TYPE_LEARNING_STRATEGY:
+            return f"可以的，按这个节奏推进会更稳。{text}"
+        if question_type == QA_QUESTION_TYPE_EXERCISE_HELP:
+            return f"可以的，这题先拆开看。{text}"
+        return f"可以的，先抓住主线。{text}"
+    if tone.get("tone_style") == QA_TONE_FRIENDLY_PRAGMATIC and text:
+        if question_type == QA_QUESTION_TYPE_LEARNING_STRATEGY:
+            return f"你现在可以这样走：{text}"
+        if question_type == QA_QUESTION_TYPE_EXERCISE_HELP:
+            return f"这题可以这样拆：{text}"
+        return f"可以先这样理解：{text}"
+    return text
+
+
+def build_learning_strategy_answer(state: dict, evidence: list[dict]) -> dict:
+    payload = _safe_dict(state.get("payload"))
+    context = _safe_dict(state.get("total_context"))
+    question = _safe_text(payload.get("question") or payload.get("message"))
+    tone = _answer_tone(payload)
+    next_task = _safe_dict(context.get("next_task"))
+    active_plan = _safe_dict(context.get("active_plan"))
+    relevant_weak, filtered_weak = filter_relevant_weak_points(question, context, limit=5)
+    key_points: list[str] = []
+    next_actions: list[dict] = []
+    if next_task:
+        title = _safe_text(next_task.get("title") or next_task.get("node_id"))
+        key_points.append(f"当前步骤：{title}。")
+        focus_terms = _unique_texts(
+            [
+                *relevant_weak[:3],
+                *(_safe_list(_safe_dict(context.get("session_context")).get("topic_hints"))[:3]),
+                *(_safe_list(next_task.get("outcomes"))[:3]),
+            ]
+        )
+        if focus_terms:
+            key_points.append(f"先完成当前 step，再围绕 {', '.join(focus_terms[:3])} 做针对练习。")
+        else:
+            key_points.append("先完成当前 step，再进入后续知识点。")
+        next_actions.append(_next_action(QA_NEXT_ACTION_CONTINUE_CURRENT_STEP, "documents"))
+    elif active_plan:
+        key_points.append("已有学习计划，但当前没有明确 active step，建议先读取下一步任务。")
+        next_actions.append(_next_action(QA_NEXT_ACTION_CONTINUE_CURRENT_STEP))
+    else:
+        key_points.append("当前还没有 active plan，建议先确认学习目标并生成学习路径。")
+        next_actions.append(_next_action(QA_NEXT_ACTION_CLARIFY_GOAL))
+    if relevant_weak:
+        key_points.append(f"重点补：{', '.join(relevant_weak[:3])}。")
+    if relevant_weak:
+        key_points.append("下一份资源建议用短文档打底，再接 targeted quiz 检查薄弱点。")
+    else:
+        key_points.append("下一份资源建议用短文档打底，再接一个小测确认是否可以推进。")
+    next_actions.append(_next_action(QA_NEXT_ACTION_OFFER_PRACTICE, "quiz"))
+    answer = normalize_answer_payload(
+        {
+            "question_type": QA_QUESTION_TYPE_LEARNING_STRATEGY,
+            "text": _render_text(key_points, tone, QA_QUESTION_TYPE_LEARNING_STRATEGY),
+            "key_points": key_points,
+            "evidence_used": [_safe_dict(item) for item in evidence[:2]],
+            "plan_reference": _plan_reference(context),
+            "relevant_weak_points": relevant_weak,
+            "filtered_weak_points": filtered_weak,
+            "next_actions": next_actions,
+            "session_context_used": bool(_safe_dict(context.get("session_context")).get("recent_turns")),
+            "confidence": 0.84 if next_task else 0.66,
+            "tone": tone,
+        }
+    )
+    if filtered_weak:
+        answer["warnings"] = _unique_texts([*answer.get("warnings", []), QA_WARNING_PROFILE_WEAK_POINTS_FILTERED])
+    return answer
+
+
+def build_concept_explanation_answer(state: dict, evidence: list[dict]) -> dict:
+    payload = _safe_dict(state.get("payload"))
+    context = _safe_dict(state.get("total_context"))
+    question = _safe_text(payload.get("question") or payload.get("message"))
+    tone = _answer_tone(payload)
+    relevant_weak, filtered_weak = filter_relevant_weak_points(question, context, limit=5)
+    key_points = _answer_key_points(question, evidence, context)
+    text = _render_text(key_points, tone, QA_QUESTION_TYPE_CONCEPT) if key_points else "当前证据不足，我先给一个简短解释，后续建议补一份资料或练习。"
+    answer = normalize_answer_payload(
+        {
+            "question_type": QA_QUESTION_TYPE_CONCEPT,
+            "text": text,
+            "key_points": key_points,
+            "evidence_used": [_safe_dict(item) for item in evidence[:3]],
+            "plan_reference": _plan_reference(context),
+            "relevant_weak_points": relevant_weak,
+            "filtered_weak_points": filtered_weak,
+            "next_actions": [_next_action(QA_NEXT_ACTION_OFFER_RESOURCE, "documents")],
+            "session_context_used": bool(_safe_dict(context.get("session_context")).get("recent_turns")),
+            "confidence": 0.82 if evidence else 0.48,
+            "tone": tone,
+        }
+    )
+    if filtered_weak:
+        answer["warnings"] = _unique_texts([*answer.get("warnings", []), QA_WARNING_PROFILE_WEAK_POINTS_FILTERED])
+    return answer
+
+
+def build_exercise_help_answer(state: dict, evidence: list[dict]) -> dict:
+    payload = _safe_dict(state.get("payload"))
+    tone = _answer_tone(payload)
+    points = ["先定位题目考查的知识点，再对照 RowKey 排序、Region 边界和热点成因逐项排除。", "如果是热点规避题，优先判断写入是否集中、前缀是否能打散、预分区边界是否合理。"]
+    return normalize_answer_payload(
+        {
+            "question_type": QA_QUESTION_TYPE_EXERCISE_HELP,
+            "text": _render_text(points, tone, QA_QUESTION_TYPE_EXERCISE_HELP),
+            "key_points": points,
+            "evidence_used": [_safe_dict(item) for item in evidence[:2]],
+            "plan_reference": _plan_reference(_safe_dict(state.get("total_context"))),
+            "next_actions": [_next_action(QA_NEXT_ACTION_OFFER_PRACTICE, "quiz")],
+            "session_context_used": bool(_safe_dict(_safe_dict(state.get("total_context")).get("session_context")).get("recent_turns")),
+            "confidence": 0.72,
+            "tone": tone,
+        }
+    )
 
 
 def answer_learning_question(state: Dict[str, Any]) -> dict:
@@ -785,25 +1229,46 @@ def answer_learning_question(state: Dict[str, Any]) -> dict:
     question = _safe_text(payload.get("question") or payload.get("message"))
     qa_level = _safe_text(evidence_result.get("qa_level") or payload.get("qa_level")) or QA_LEVEL_FAST
     evidence = _safe_list(evidence_result.get("evidence_summary"))
-    key_points = _answer_key_points(question, evidence, context)
+    question_profile = classify_learning_question(_safe_text(payload.get("question_type_hint")) if _safe_text(payload.get("question_type_hint")) not in {"", "auto"} else question)
+    question_type_hint = _safe_text(payload.get("question_type_hint"))
+    if question_type_hint in {QA_QUESTION_TYPE_CONCEPT, QA_QUESTION_TYPE_LEARNING_STRATEGY, QA_QUESTION_TYPE_EXERCISE_HELP}:
+        question_profile = {"question_type": question_type_hint, "confidence": 1.0, "reason_codes": ["explicit_hint"]}
 
     if qa_level == QA_LEVEL_ASYNC_RESOURCE:
-        text = "这个问题更适合生成专题资料或练习来系统处理。"
+        answer_payload = normalize_answer_payload(
+            {
+                "question_type": question_profile.get("question_type") or QA_QUESTION_TYPE_UNKNOWN,
+                "text": "这个问题更适合生成专题资料或练习来系统处理。",
+                "key_points": ["这个问题更适合生成专题资料或练习来系统处理。"],
+                "next_actions": [_next_action(QA_NEXT_ACTION_OFFER_RESOURCE)],
+                "confidence": 0.7,
+                "tone": _answer_tone(payload),
+            }
+        )
         suggested = ACTION_GENERATE_CURRENT_STEP_RESOURCE
-    else:
-        text = " ".join(key_points) if key_points else "我可以先给出一个简短解释，但当前没有检索到足够的课程证据，建议后续补一份资料或练习。"
+    elif question_profile.get("question_type") == QA_QUESTION_TYPE_LEARNING_STRATEGY:
+        answer_payload = build_learning_strategy_answer(state, evidence)
         suggested = ACTION_OFFER_PRACTICE_OR_RESOURCE
+    elif question_profile.get("question_type") == QA_QUESTION_TYPE_EXERCISE_HELP:
+        answer_payload = build_exercise_help_answer(state, evidence)
+        suggested = ACTION_OFFER_PRACTICE_OR_RESOURCE
+    else:
+        answer_payload = build_concept_explanation_answer(state, evidence)
+        suggested = ACTION_OFFER_PRACTICE_OR_RESOURCE
+    warnings = _unique_texts([*(_safe_list(evidence_result.get("warnings"))), *(_safe_list(answer_payload.get("warnings")))])
+    answer_payload["warnings"] = warnings
 
     result = _tool_result(
         TOOL_ANSWER_LEARNING_QUESTION,
         True,
         state=state,
-        answer={"text": text, "key_points": key_points, "confidence": 0.82 if evidence else 0.48},
+        answer=answer_payload,
+        question_profile=question_profile,
         evidence_summary=evidence,
         suggested_next_action=suggested,
         plan_mutation=False,
         resource_generation=False,
-        warnings=evidence_result.get("warnings") or [],
+        warnings=warnings,
     )
     state["answer_learning_question_result"] = result
     return result
@@ -1151,6 +1616,8 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
             warnings.append(f"course_learning_tree_summary_failed:{exc}")
             course_learning_tree_summary = {}
 
+    session_context = build_session_context(payload)
+
     total_context = {
         "user_id": user_id,
         "syllabus_id": syllabus_id,
@@ -1161,6 +1628,7 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
         "recent_resource_ids": list(_safe_list(context.get("recent_resource_ids"))),
         "study_graph_state": study_graph_state,
         "course_learning_tree_summary": course_learning_tree_summary,
+        "session_context": session_context,
         "warnings": warnings,
     }
     state["total_context"] = total_context
@@ -1177,6 +1645,7 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
         profile_summary=profile_summary,
         current_resource_id=total_context["current_resource_id"],
         study_graph_state=study_graph_state,
+        session_context=session_context,
         warnings=warnings,
     )
 
@@ -1206,6 +1675,10 @@ def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
         intent = INTENT_SKIP_CURRENT_STEP
         confidence = 0.84
         reason = "message asks to skip or replace current step"
+    elif active_plan and _message_has_any(message, ("下一步", "怎么学", "怎么学习", "先学什么", "next step", "how should i learn")) and not _message_has_any(message, ("推荐", "路径", "规划", "recommend", "path", "route")):
+        intent = INTENT_ANSWER_LEARNING_QUESTION
+        confidence = 0.85
+        reason = "message asks for learning strategy within current active plan"
     elif _message_has_any(message, ("推荐", "路径", "学什么", "怎么学", "规划", "recommend", "path", "route")):
         intent = INTENT_RECOMMEND_LEARNING_PATH
         confidence = 0.82
@@ -1776,10 +2249,16 @@ __all__ = [
     "TOTAL_AGENT_TOOL_ORDER",
     "answer_learning_question",
     "apply_learning_effect_signal",
+    "build_concept_explanation_answer",
     "build_current_step_resource_strategy",
+    "build_exercise_help_answer",
+    "build_learning_strategy_answer",
+    "build_session_context",
     "build_total_agent_result",
+    "classify_learning_question",
     "decide_resource_reuse",
     "deterministic_run_total_agent",
+    "filter_relevant_weak_points",
     "find_personal_resources",
     "get_study_graph_features",
     "get_course_learning_tree_summary",
@@ -1787,7 +2266,9 @@ __all__ = [
     "load_profile_summary",
     "normalize_profile_summary",
     "normalize_study_graph_state",
+    "normalize_answer_payload",
     "retrieve_learning_evidence",
+    "score_evidence_relevance",
     "tool_accept_learning_plan",
     "tool_generate_current_step_resource",
     "tool_get_next_learning_task",

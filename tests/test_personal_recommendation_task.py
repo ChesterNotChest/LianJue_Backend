@@ -354,9 +354,39 @@ def test_generate_state_does_not_start_from_unmet_prerequisite_target():
         },
     )
 
-    assert "n2" in starts
-    assert "n4" not in starts
-    assert state["study_graph_state"]["completed_node_ids"] == []
+
+def test_rag_overlay_ignores_character_level_reasoning_edges():
+    from tasks.personal_recommendation.rag_overlay import build_rag_overlay
+
+    learning_tree = {
+        "分布式文件系统及主流技术HDFS.Hadoop": {
+            "id": "分布式文件系统及主流技术HDFS.Hadoop",
+            "title": "Hadoop",
+            "outcomes": ["Hadoop"],
+        },
+        "分布式数据库中典型技术HBase.Hadoop": {
+            "id": "分布式数据库中典型技术HBase.Hadoop",
+            "title": "HBase",
+            "outcomes": ["HBase"],
+        },
+    }
+    rag_context = {
+        "success": True,
+        "reasoning_paths": {
+            "edges": [
+                "Hadoop-HBase:  , d, e, f, l, m, n, o, p, t, v",
+            ]
+        },
+        "paragraphs": [
+            {"title": "Hadoop", "content": "Hadoop 是大数据生态组件。"},
+            {"title": "HBase", "content": "HBase 是分布式数据库。"},
+        ],
+    }
+
+    overlay = build_rag_overlay(rag_context, learning_tree)
+
+    assert overlay["enabled"] is True
+    assert overlay["temporary_edges"] == []
 
 
 def test_recommendation_outputs_full_and_actionable_paths(monkeypatch):

@@ -23,7 +23,7 @@ from tasks.learning_profile import storage as profile_storage
 from tasks.study_graph import storage as study_graph_storage
 from tasks.total_agent import agent_contracts as tac
 from tasks.total_agent import agent_runtime as total_runtime
-from tests.total_agent.test_total_agent_e2e_amend import (
+from tests.total_agent.e2e_cases_amend import (
     DEEP_STUDENT_STATE_FIXTURE_PATH,
     _build_profile_input_records,
     _recommendation_fixture,

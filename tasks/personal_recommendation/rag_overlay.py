@@ -19,12 +19,44 @@ def _normalize_text(value: Any) -> str:
     return "".join(re.findall(r"[\w\u4e00-\u9fff]+", text, flags=re.UNICODE))
 
 
+_TOKEN_STOPWORDS = {
+    "的",
+    "是",
+    "和",
+    "与",
+    "及",
+    "中",
+    "在",
+    "为",
+    "了",
+    "有",
+    "this",
+    "that",
+    "with",
+    "from",
+    "the",
+    "and",
+    "for",
+}
+
+
+def _is_quality_token(token: str) -> bool:
+    token = _safe_text(token).lower()
+    if not token or token in _TOKEN_STOPWORDS:
+        return False
+    if re.fullmatch(r"[a-z0-9]+", token):
+        return len(token) >= 3
+    if re.fullmatch(r"[\u4e00-\u9fff]+", token):
+        return len(token) >= 2
+    return len(token) >= 3
+
+
 def _tokenize(value: Any) -> set[str]:
     text = _safe_text(value).lower()
     return {
         token
         for token in re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]+", text, flags=re.UNICODE)
-        if len(token) > 1
+        if _is_quality_token(token)
     }
 
 
@@ -37,6 +69,34 @@ def _parse_jsonish(value: Any) -> Any:
     return value
 
 
+def _edge_text(value: Any) -> str:
+    parsed = _parse_jsonish(value)
+    if isinstance(parsed, dict):
+        parts = [
+            parsed.get("source"),
+            parsed.get("target"),
+            parsed.get("relation"),
+            parsed.get("reason"),
+            parsed.get("title"),
+        ]
+        return " ".join(_safe_text(item) for item in parts if _safe_text(item))
+    return _safe_text(parsed)
+
+
+def _is_quality_edge_text(value: Any) -> bool:
+    text = _safe_text(value)
+    if not text:
+        return False
+    relation_text = text.split(":", 1)[1] if ":" in text else text
+    quality_tokens = _tokenize(relation_text)
+    single_char_items = re.findall(r"(?:^|[,，\s])([a-zA-Z\u4e00-\u9fff])(?:$|[,，\s])", relation_text)
+    if ":" in text and len(quality_tokens) < 2:
+        return False
+    if single_char_items and len(single_char_items) > max(3, len(quality_tokens) * 2):
+        return False
+    return True
+
+
 def _collect_rag_evidence(rag_context: Dict[str, Any]) -> Dict[str, Any]:
     reasoning_paths = rag_context.get("reasoning_paths") if isinstance(rag_context, dict) else None
     evidence_texts: List[str] = []
@@ -45,7 +105,7 @@ def _collect_rag_evidence(rag_context: Dict[str, Any]) -> Dict[str, Any]:
 
     if isinstance(reasoning_paths, dict):
         for edge in reasoning_paths.get("edges") or []:
-            text = _safe_text(edge)
+            text = _edge_text(edge)
             if text:
                 edges.append(text)
                 evidence_texts.append(text)
@@ -56,7 +116,10 @@ def _collect_rag_evidence(rag_context: Dict[str, Any]) -> Dict[str, Any]:
                 entities.extend(str(key) for key in parsed.keys())
     elif isinstance(reasoning_paths, list):
         for item in reasoning_paths:
-            evidence_texts.append(_safe_text(item))
+            text = _edge_text(item)
+            if text:
+                evidence_texts.append(text)
+                edges.append(text)
             if isinstance(item, dict):
                 entities.extend(str(key) for key in item.keys() if key in ("title", "entity", "topic"))
     elif reasoning_paths:
@@ -117,7 +180,7 @@ def build_rag_overlay(rag_context: Any, learning_tree: Dict[str, Any]) -> Dict[s
             alias_tokens = _tokenize(alias)
             if alias_tokens:
                 overlap = len(alias_tokens & evidence_tokens) / max(len(alias_tokens), 1)
-                if overlap > 0:
+                if overlap >= 0.5 or len(alias_tokens & evidence_tokens) >= 2:
                     best_score = max(best_score, min(0.85, overlap))
                     matched_by.append(str(alias))
 
@@ -136,12 +199,18 @@ def build_rag_overlay(rag_context: Any, learning_tree: Dict[str, Any]) -> Dict[s
 
     temporary_edges = []
     for edge in evidence["edges"]:
+        if not _is_quality_edge_text(edge):
+            continue
         source = None
         target = None
         edge_norm = _normalize_text(edge)
+        edge_tokens = _tokenize(edge)
         for matched in matched_nodes:
             title_norm = _normalize_text(matched["title"])
-            if title_norm and title_norm in edge_norm:
+            title_tokens = _tokenize(matched["title"])
+            strong_title_match = bool(title_norm and title_norm in edge_norm)
+            strong_token_match = bool(title_tokens and (len(title_tokens & edge_tokens) >= max(1, min(2, len(title_tokens)))))
+            if strong_title_match or strong_token_match:
                 if source is None:
                     source = matched["node_id"]
                 elif target is None and matched["node_id"] != source:

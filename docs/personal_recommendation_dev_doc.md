@@ -33,6 +33,34 @@ recommendation result
   -> optional study_graph progress sync
 ```
 
+## 当前同步状态
+
+本模块当前仍是学习路径推荐的唯一 task 门户。Total Agent 通过 `run_recommendation_route_from_payload` 触发推荐，通过 `accept_recommendation_path` 创建 active learning plan；推荐本身不直接写入 study graph，只有后续 plan step 状态更新时才由调用方显式同步学习成长树。
+
+系统职责按“画像描述状态、路径决定顺序、资源服务当前节点”分层：
+
+- 学习画像回答“学生当前是什么状态”，不直接决定下一步学什么。
+- 学习路径推荐回答“接下来按什么阶段、节点和优先级学习”，是个性化学习闭环的顺序决策层。
+- 资源生成回答“围绕当前路径节点给什么学习材料”，不自行决定学习顺序。
+- 资源展示/推送是路径当前节点的呈现动作，不是独立的推荐系统。
+- 学习反馈和 study graph 事件会影响后续画像、路径和资源策略，但推荐模块本身只生成候选路径，不直接写学习树。
+
+RAG 在本模块中是推荐图的软增强，不是确定性前置条件。`rag_overlay` 会尝试把检索结果转成临时节点、临时边和图结构提示，但不会修改原始 syllabus JSON。当前已补充质量门禁：字符级、停用词级、低质量 reason edge 不进入推荐图，避免出现 `Hadoop-HBase: d, e, f...` 这类噪声边把候选路径打散。
+
+每周知识点拆解优先使用 Agent/RAG concept decomposer；规则 fallback 只作为可诊断兜底，不作为通用学科拆解首选。fallback 输出必须带 `decomposition_method`、`fallback_tag` 和较低 confidence，方便上层识别低置信来源。
+
+Total Agent E2E 的推荐回归入口已统一到：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+推荐模块自身的噪声 RAG 回归可用：
+
+```bash
+python -m pytest -q tests/test_personal_recommendation_task.py::test_rag_overlay_ignores_character_level_reasoning_edges tests/test_personal_recommendation_task.py::test_personal_recommendation_mock_rag_route_graph_closes -rs
+```
+
 ## 0. 新增的常量定义
 
 本次迁移没有新增 `constant.py` 级别的全局常量。

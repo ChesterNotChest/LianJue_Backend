@@ -2,6 +2,31 @@
 
 本文档描述当前资源生成模块的最终实现边界。目标是说明输入输出契约、内部核心逻辑、测试构造和持久化内容，便于后续接入总 Agent、前端接口或继续扩展资源类型。
 
+## 当前同步状态
+
+资源生成模块当前承担“生成并持久化资源”的职责，不承担学习路径推荐、个人资源复用决策或即时答疑决策。Total Agent 会先在自身上下文中生成 `resource_strategy`，再调用 `generative_task.generate_resources_from_request`；资源模块只消费已经收口的 `resource_types`、`difficulty`、`knowledge_items`、`learning_goal`、`current_step` 和检索上下文。
+
+当前默认链路是工具型 Resource Generation Agent：
+
+```text
+read_generation_request
+-> read_generation_plan
+-> retrieve_generation_materials
+-> write_generation_draft
+-> generate_resource_payload
+-> persist_generated_resource
+```
+
+资源内容生成统一走 OpenAI-compatible / pydantic-ai 内容 Agent。旧 `LLMResourceGenerationAgent` 类名保留为兼容入口，但不再作为外部主控 Agent。当前真实支持的资源类型、落盘文件、校验字段和 detail 返回以 `tasks/generative/*` 实现为准，本 dev_doc 承载当前对外可依赖的实现边界；旧 small_plan / contract 只可作为历史参考。
+
+`tool_status_events` 已从资源工具层透出，并由 Total Agent 汇总到最终结果；这可作为前端展示“读取请求 / 检索材料 / 写草稿 / 生成 payload / 持久化”的状态样本，但正式 streaming/SSE 协议仍应单独设计。
+
+Total Agent 触发资源生成的统一 E2E 回归入口是：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
 ## 0. 新增的常量定义
 
 路径常量位于 `constant.py`：
@@ -10,7 +35,7 @@
 - `BasePath.PERSONAL_SYLLABUS_ROOT = "/schedule/student_alt"`
 - `BasePath.PERSONAL_PROFILE_ROOT = "/profiles"`
 
-资源契约常量位于 `tasks/generative/contracts.py`：
+资源类型常量位于 `tasks/generative/contracts.py`：
 
 - `GENERATIVE_RESOURCE_TYPES = ("documents", "mindmap", "quiz", "coding_practice", "ppt")`
 - `MINDMAP_ALLOWED_DIAGRAM_PREFIXES = ("mindmap", "flowchart", "graph")`
@@ -20,6 +45,64 @@
 - `GENERATIVE_DOCUMENT_SCHEMA_VERSION = "v1"`
 - `GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION = "v1"`
 - `GENERATIVE_PPT_SCHEMA_VERSION = "v1"`
+
+当前真实资源类型能力：
+
+| resource_type | 生成内容 | 落盘主文件 | detail render | 校验入口 |
+|---|---|---|---|---|
+| `documents` | 结构化短文档 | `document.json`、`document.md` | `markdown` | `validate_document_payload` |
+| `mindmap` | Mermaid mindmap | `mindmap.json`、`mindmap.mmd` | `mermaid` | `validate_mermaid_text` |
+| `quiz` | 诊断型题库 | `quiz.json`、`quiz.md` | `markdown` | `validate_quiz_payload` |
+| `coding_practice` | 最小可运行代码实操 | `practice.json`、`practice.md`、代码文件 | `markdown` | `validate_coding_practice_payload` |
+| `ppt` | 结构化课件 | `ppt.json`、`ppt.md`、`ppt.pptx` | `markdown` | `validate_ppt_payload` |
+
+`coding_practice` 当前会把 `code_files` 写入资源目录下的安全相对路径，并在 manifest `main_files.entry_file_path` 中记录入口文件；不提供真实沙箱执行。`quiz` 当前会生成可读 markdown，并在渲染层清理选项前缀，避免模型输出 `A. xxx` 时展示成 `A. A. xxx`。
+
+各类型真实 schema 摘要：
+
+```text
+documents
+  content: schema_version, title, topic, summary, sections, extension_reading
+  required: title, summary, non-empty sections
+  section required: heading, body
+  section optional list fields: key_points, examples, pitfalls, checklist, evidence
+  validation summary: valid, method, schema_version, section_count, errors, warnings
+  metadata: section_count, extension_count
+
+mindmap
+  content: title, topic, root, nodes, mermaid, knowledge_items, hierarchy
+  required: non-empty mermaid
+  validation: Mermaid text cleaned and checked against allowed prefixes
+  validation summary: valid, method, diagram_type, node_count, errors, warnings
+  metadata: knowledge_item_count
+
+quiz
+  content: schema_version, title, topic, questions
+  required: title, non-empty questions
+  question required: type, stem, answer, explanation
+  supported question types: single_choice, judge, short_answer
+  single_choice requires at least 2 options; judge answer must be boolean
+  validation summary: valid, method, schema_version, question_count, errors, warnings
+  metadata: question_count
+
+coding_practice
+  content: schema_version, title, topic, language, summary, learning_objectives, steps, code_files, run_guide
+  required: title, topic, language, summary, non-empty steps, non-empty code_files, run_guide.entry_file, run_guide.command
+  step required: title, instruction
+  code_files required: safe relative path, non-empty content
+  python validation: at least one .py file and AST syntax check
+  run_guide entry_file must reference a code_files path; python command must run the entry file
+  validation summary: valid, method=schema+python_syntax, schema_version, language, step_count, file_count, errors, warnings
+  metadata: language, file_count, step_count, entry_file
+
+ppt
+  content: schema_version, title, topic, summary, theme, slide_style, slides
+  required: title, topic, summary, non-empty slides
+  slide required: title, body, non-empty bullets
+  export: ppt.md + ppt.pptx
+  validation summary: valid, method, schema_version, slide_count, errors, warnings
+  metadata: slide_count, theme, slide_style
+```
 
 资源生成 agent 内部固定常量位于 `tasks/generative/resource_generation_agent.py`：
 
@@ -76,18 +159,14 @@
 - `tasks/generative/__init__.py`
   - 仅作为包说明，不作为外部业务入口。
 
-测试和文档：
+测试：
 
 - `tests/test_generative_resource_agent_integration.py`
 - `tests/test_generative_task.py`
 - `tests/test_generative_api.py`
 - `tests/TEST_REPORT.md`
-- `docs/resource_generation_agent_stage.md`
-- `docs/generative_documents_contract.md`
-- `docs/generative_mindmap_contract.md`
-- `docs/generative_quiz_contract.md`
-- `docs/generative_coding_practice_contract.md`
-- `docs/generative_ppt_contract.md`
+
+旧 `docs/generative_*_small_plan.md` / `docs/generative_*_contract.md` 不再作为当前实现依据；有效字段约束已经融合到本 dev_doc 和代码测试，不再维护平行契约。
 
 ## 2. 函数级收口的完整数据流
 
@@ -278,8 +357,41 @@ flowchart LR
 - `status`
 - `resource_dir`
 - `validation`
+- `metadata`
+- `main_files`
 - `planning_trace`
 - `tool_trace`
+
+manifest 和 detail 的稳定摘要字段由 `tasks/generative_task._resource_summary_from_entry` 统一包装：
+
+```json
+{
+  "resource_id": "quiz-xxx",
+  "resource_type": "quiz",
+  "title": "HBase RowKey 热点诊断题",
+  "topic": "HBase RowKey 设计",
+  "syllabus_id": 29,
+  "status": "ready",
+  "resource_dir": "generative/user_19/quiz/quiz-xxx",
+  "main_files": {
+    "json_path": ".../quiz.json",
+    "md_path": ".../quiz.md"
+  },
+  "validation": {
+    "valid": true,
+    "method": "local_schema"
+  },
+  "metadata": {},
+  "created_at": 1780640000,
+  "updated_at": 1780640000
+}
+```
+
+`get_generated_resource_detail(user_id, resource_id)` 会读取 `main_files.json_path` 作为 `content`，并按主文件补充 `render`：
+
+- 有 `md_path` 时返回 `render.markdown`。
+- 有 `mermaid_path` 时返回 `render.mermaid`。
+- `pptx_path` 和 `entry_file_path` 保留在 `main_files`，不直接内联文件正文。
 
 ## 3. 精确到输入输出的函数级收口
 
@@ -558,3 +670,14 @@ tests/artifacts/resources_generative_real_search_real_llm_workspace/
 - 让总 Agent 介入资源内部编排。
 - 一次性接入路径 agent、审核 agent、前端新页面。
 - 把资源生成链重新塞回旧学生端实验逻辑。
+
+## 8. 文档事实源
+
+`docs/resource_generation_dev_doc.md` 是资源生成模块唯一事实源。旧 `generative_*_small_plan.md` 和 `generative_*_contract.md` 的有效内容已经按真实代码实现融合进本文：
+
+- 资源类型：`documents`、`mindmap`、`quiz`、`coding_practice`、`ppt`。
+- 每类资源的 schema 摘要、校验入口、渲染入口、落盘文件和 manifest/detail 字段。
+- 工具型 Resource Generation Agent 的输入归一化、计划/检索/草稿/payload/持久化链路。
+- 旧静态资源阶段的文件系统边界和 manifest 定位。
+
+旧阶段文档可删除；如果后续发现旧文档仍有有效事实，应先融合进本文或测试，再删除旧文档。
