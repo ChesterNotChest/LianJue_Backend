@@ -6,6 +6,7 @@ import pytest
 from tasks import personal_recommendation_task as prt
 from tasks import total_agent_task as tat
 from tasks import learning_profile_task as lpt
+from tasks import study_graph_task as sgt
 from tasks.common import status_events
 from tasks.learning_profile import storage as profile_storage
 from tasks.total_agent import agent_contracts as tac
@@ -89,6 +90,39 @@ def _fake_generation(request_payload: dict) -> dict:
     }
 
 
+def _student_tree_summary(user_id: int, weak: list[str] | None = None, mastered: list[str] | None = None) -> dict:
+    nodes = []
+    now_ts = 1780650000
+    for index, title in enumerate(weak or []):
+        nodes.append(
+            {
+                "node_id": f"knowledge:{user_id}:20:weak_{index}",
+                "title": title,
+                "mastery": {"label": "weak", "score": 0.28},
+                "last_updated_at": now_ts,
+                "common_wrong_points": ["单调递增 RowKey"] if title == "RowKey 热点" else [],
+            }
+        )
+    for index, title in enumerate(mastered or []):
+        nodes.append(
+            {
+                "node_id": f"knowledge:{user_id}:20:mastered_{index}",
+                "title": title,
+                "mastery": {"label": "mastered", "score": 0.91},
+                "last_updated_at": now_ts,
+            }
+        )
+    return {
+        "user_id": user_id,
+        "tree": {
+            "tree_id": f"study_tree:{user_id}:20",
+            "user_id": user_id,
+            "syllabus_id": 20,
+            "nodes": nodes,
+        },
+    }
+
+
 def test_status_event_helper_builds_stable_keys():
     event = status_events.create_status_event(
         run_id="run_1",
@@ -100,6 +134,24 @@ def test_status_event_helper_builds_stable_keys():
     assert event["event_key"] == "resource_agent.generate_resource_payload.running"
     assert event["label_key"] == "agent.resource.generate_resource_payload.running"
     assert event["payload"] == {}
+
+
+def test_total_agent_next_closure_constants_are_registered_and_unique():
+    assert tac.INTENT_ANSWER_LEARNING_QUESTION in tac.TOTAL_AGENT_INTENTS
+    assert tac.TOTAL_AGENT_TOOL_ORDER[tac.INTENT_ANSWER_LEARNING_QUESTION] == [
+        tac.TOOL_LOAD_TOTAL_CONTEXT,
+        tac.TOOL_INFER_USER_INTENT,
+        tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
+        tac.TOOL_ANSWER_LEARNING_QUESTION,
+    ]
+    intents = list(tac.TOTAL_AGENT_INTENTS)
+    assert len(intents) == len(set(intents))
+    resource_modes = [
+        tac.RESOURCE_RECOMMENDATION_REUSE_EXISTING,
+        tac.RESOURCE_RECOMMENDATION_GENERATE_MISSING,
+        tac.RESOURCE_RECOMMENDATION_GENERATE_ALL,
+    ]
+    assert len(resource_modes) == len(set(resource_modes))
 
 
 def _write_artifact(name: str, payload: dict) -> None:
@@ -170,6 +222,63 @@ def test_total_agent_agent_final_result_uses_record_feedback_state_fallback():
     assert result["intent"] == tac.INTENT_RECORD_LEARNING_FEEDBACK
     assert result["suggested_next_action"] == tac.ACTION_GENERATE_CURRENT_STEP_RESOURCE
     assert result["result"]["record_learning_feedback"]["updated_step"]["status"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
+
+
+def test_total_agent_agent_final_result_uses_answer_state_fallback():
+    state = {
+        "tool_trace": [
+            tac.TOOL_LOAD_TOTAL_CONTEXT,
+            tac.TOOL_INFER_USER_INTENT,
+            tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
+            tac.TOOL_ANSWER_LEARNING_QUESTION,
+        ],
+        "intent": tac.INTENT_ANSWER_LEARNING_QUESTION,
+        "intent_result": {"intent": tac.INTENT_ANSWER_LEARNING_QUESTION},
+        "total_context": {"profile_summary": {"profile_source": tac.PROFILE_SOURCE_PERSISTED}},
+        "learning_evidence_result": {"tool": tac.TOOL_RETRIEVE_LEARNING_EVIDENCE, "success": True, "evidence_summary": []},
+        "answer_learning_question_result": {
+            "tool": tac.TOOL_ANSWER_LEARNING_QUESTION,
+            "success": True,
+            "answer": {"text": "RowKey hotspot answer"},
+            "suggested_next_action": tac.ACTION_OFFER_PRACTICE_OR_RESOURCE,
+        },
+    }
+
+    result = tar._build_agent_final_result(state)
+
+    assert result["success"] is True
+    assert result["intent"] == tac.INTENT_ANSWER_LEARNING_QUESTION
+    assert result["suggested_next_action"] == tac.ACTION_OFFER_PRACTICE_OR_RESOURCE
+    assert result["result"]["answer_learning_question"]["answer"]["text"] == "RowKey hotspot answer"
+    assert result["result"]["retrieve_learning_evidence"]["tool"] == tac.TOOL_RETRIEVE_LEARNING_EVIDENCE
+
+
+def test_total_agent_agent_final_result_includes_course_summary_tool_result():
+    state = {
+        "tool_trace": [
+            tac.TOOL_LOAD_TOTAL_CONTEXT,
+            tac.TOOL_INFER_USER_INTENT,
+            tac.TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
+            tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+        ],
+        "intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE,
+        "intent_result": {"intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE},
+        "total_context": {
+            "course_learning_tree_summary": {"success": True, "summary": {"weak_nodes": [{"title": "HBase Basics"}]}},
+        },
+        "course_learning_tree_summary_result": {"success": True, "summary": {"student_count": 5}},
+        "terminal_tool_result": {
+            "tool": tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+            "success": True,
+            "resource_strategy": {"strategy_signals": {"matched_course_global_weak_node": True}},
+        },
+    }
+
+    result = tar._build_agent_final_result(state)
+
+    assert tac.TOOL_GET_COURSE_LEARNING_TREE_SUMMARY in result["tool_trace"]
+    assert result["result"]["course_learning_tree_summary"]["summary"]["student_count"] == 5
+    assert result["result"]["context"]["course_learning_tree_summary"]["summary"]["weak_nodes"][0]["title"] == "HBase Basics"
 
 
 def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_path):
@@ -722,3 +831,274 @@ def test_total_agent_resource_strategy_respects_explicit_resource_types(monkeypa
     assert captured["request"]["resource_types"] == ["documents"]
     assert captured["request"]["strategy_signals"]["explicit_resource_types"] is True
     assert result["result"]["resource_generation"]["resource_strategy"]["reason"] == "user explicitly requested resource types"
+
+
+def test_total_agent_answer_learning_question_uses_mock_evidence_without_mutating_plan(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    plan_before = _accept_plan()
+    monkeypatch.setattr(tagt, "generate_resources_from_request", lambda payload: (_ for _ in ()).throw(AssertionError("must not generate resources")))
+
+    result = tat.run_total_agent(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "为什么 RowKey 会出现热点？",
+            "mock_evidence": [
+                {
+                    "title": "RowKey 热点",
+                    "summary": "单调递增 RowKey 会让写入集中到最后一个 Region。",
+                    "source": "RAG",
+                    "score": 0.9,
+                }
+            ],
+        }
+    )
+    plan_after = prt.get_active_learning_plan(8, 20)
+    answer = result["result"]["answer_learning_question"]
+
+    assert result["success"] is True
+    assert result["intent"] == tac.INTENT_ANSWER_LEARNING_QUESTION
+    assert result["suggested_next_action"] == tac.ACTION_OFFER_PRACTICE_OR_RESOURCE
+    assert answer["plan_mutation"] is False
+    assert answer["resource_generation"] is False
+    assert "Region" in answer["answer"]["text"]
+    assert plan_after["current_step_index"] == plan_before["current_step_index"]
+    assert result["tool_trace"] == [
+        tac.TOOL_LOAD_TOTAL_CONTEXT,
+        tac.TOOL_INFER_USER_INTENT,
+        tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
+        tac.TOOL_ANSWER_LEARNING_QUESTION,
+    ]
+
+
+def test_total_agent_answer_learning_question_no_evidence_returns_warning(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+
+    result = tat.run_total_agent(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "解释一下 Region 划分是什么？",
+        }
+    )
+    evidence = result["result"]["retrieve_learning_evidence"]
+    answer = result["result"]["answer_learning_question"]
+
+    assert result["success"] is True
+    assert evidence["warnings"] == ["no_rag_evidence"]
+    assert answer["answer"]["confidence"] == 0.48
+    assert answer["resource_generation"] is False
+
+
+def test_total_agent_resource_reuse_decision_skips_rejected_and_reuses_good_resource():
+    matches = tagt.find_personal_resources(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "node_id": "hbase_intro",
+            "knowledge_items": ["HBase 基础"],
+            "resource_types": ["documents", "quiz"],
+            "personal_resources": [
+                {
+                    "user_id": 8,
+                    "syllabus_id": 20,
+                    "resource_id": "documents-good",
+                    "resource_type": "documents",
+                    "node_id": "hbase_intro",
+                    "knowledge_items": ["HBase 基础"],
+                    "quality_state": tac.RESOURCE_QUALITY_USABLE,
+                    "freshness_state": tac.RESOURCE_FRESHNESS_FRESH,
+                    "student_feedback_state": tac.RESOURCE_FEEDBACK_ACCEPTED,
+                    "validation": {"valid": True},
+                },
+                {
+                    "user_id": 8,
+                    "syllabus_id": 20,
+                    "resource_id": "quiz-rejected",
+                    "resource_type": "quiz",
+                    "node_id": "hbase_intro",
+                    "knowledge_items": ["HBase 基础"],
+                    "quality_state": tac.RESOURCE_QUALITY_USABLE,
+                    "freshness_state": tac.RESOURCE_FRESHNESS_FRESH,
+                    "student_feedback_state": tac.RESOURCE_FEEDBACK_REJECTED,
+                    "validation": {"valid": True},
+                },
+            ],
+        }
+    )
+    decision = tagt.decide_resource_reuse(
+        {
+            "requested_resource_types": ["documents", "quiz"],
+            "matches": matches["matches"],
+            "learning_effect": {},
+        }
+    )
+
+    assert decision["resource_recommendation_mode"] == tac.RESOURCE_RECOMMENDATION_GENERATE_MISSING
+    assert decision["reusable_resources"][0]["resource_id"] == "documents-good"
+    assert decision["skipped_resources"][0]["skip_reason_codes"] == [tac.REUSE_REJECT_STUDENT_REJECTED]
+    assert decision["missing_resource_types"] == ["quiz"]
+
+
+def test_total_agent_learning_effect_low_score_marks_targeted_refresh():
+    signal = tagt.apply_learning_effect_signal(
+        {
+            "score": 0.43,
+            "wrong_knowledge_items": ["RowKey 热点", "预分区"],
+            "student_feedback": {"too_hard": True},
+        }
+    )
+
+    assert signal["learning_effect"]["mastery_signal"] == "struggled"
+    assert signal["learning_effect"]["weak_knowledge_items"] == ["RowKey 热点", "预分区"]
+    assert signal["learning_effect"]["resource_feedback_state"] == tac.RESOURCE_FEEDBACK_DISLIKED
+    assert signal["learning_effect"]["next_resource_strategy"] == tac.RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+    assert signal["profile_signal"]["refresh_recommended"] is True
+
+
+def test_course_learning_tree_summary_redacts_student_ids_and_aggregates_weak_nodes():
+    summary = sgt.get_course_learning_tree_summary(
+        {
+            "syllabus_id": 20,
+            "class_id": "class-rowkey",
+            "student_tree_summaries": [
+                _student_tree_summary(101, weak=["RowKey 热点"], mastered=["HDFS 基础"]),
+                _student_tree_summary(102, weak=["RowKey 热点"]),
+                _student_tree_summary(103, weak=["RowKey 热点", "预分区"]),
+                _student_tree_summary(104, weak=["RowKey 热点"]),
+                _student_tree_summary(105, weak=["HBase 基础"]),
+            ],
+        }
+    )
+
+    assert summary["success"] is True
+    assert summary["summary"]["student_count"] == 5
+    assert summary["privacy"]["student_ids_redacted"] is True
+    assert summary["summary"]["weak_nodes"][0]["title"] == "RowKey 热点"
+    assert summary["summary"]["weak_nodes"][0]["weak_student_count"] == 4
+    assert "101" not in json.dumps(summary, ensure_ascii=False)
+
+
+def test_course_learning_tree_summary_hides_small_sample_nodes():
+    summary = sgt.get_course_learning_tree_summary(
+        {
+            "syllabus_id": 20,
+            "student_tree_summaries": [
+                _student_tree_summary(101, weak=["RowKey 热点"]),
+                _student_tree_summary(102, weak=["RowKey 热点"]),
+                _student_tree_summary(103, weak=["预分区"]),
+                _student_tree_summary(104, weak=["HBase 基础"]),
+                _student_tree_summary(105, weak=["Region 划分"]),
+            ],
+        }
+    )
+
+    assert summary["summary"]["weak_nodes"] == []
+    assert "small_sample_nodes_redacted" in summary["warnings"]
+    assert summary["privacy"]["hidden_node_count"] >= 1
+
+
+def test_course_learning_tree_summary_hides_small_group():
+    summary = sgt.get_course_learning_tree_summary(
+        {
+            "syllabus_id": 20,
+            "student_tree_summaries": [
+                _student_tree_summary(101, weak=["RowKey 热点"]),
+                _student_tree_summary(102, weak=["RowKey 热点"]),
+            ],
+        }
+    )
+
+    assert summary["summary"]["weak_nodes"] == []
+    assert "course_summary_group_too_small" in summary["warnings"]
+
+
+def test_global_signal_personal_weak_class_weak_reinforces():
+    result = tagt.combine_global_and_personal_learning_signals(
+        {
+            "personal_signal": {"knowledge_item": "RowKey 热点", "mastery_label": "weak", "mastery_score": 0.22},
+            "course_signal": {"knowledge_item": "RowKey 热点", "is_class_weak": True, "average_mastery": 0.34},
+        }
+    )
+
+    signal = result["strategy_signal"]
+    assert signal["action"] == tac.GLOBAL_SIGNAL_REINFORCE_SHARED_WEAKNESS
+    assert signal["resource_strategy"] == tac.RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+
+
+def test_global_signal_personal_strong_class_weak_checkpoint_only():
+    result = tagt.combine_global_and_personal_learning_signals(
+        {
+            "personal_signal": {"knowledge_item": "RowKey 热点", "mastery_label": "mastered", "mastery_score": 0.92},
+            "course_signal": {"knowledge_item": "RowKey 热点", "is_class_weak": True, "average_mastery": 0.34},
+        }
+    )
+
+    signal = result["strategy_signal"]
+    assert signal["action"] == tac.GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE
+    assert signal["resource_strategy"] == tac.RESOURCE_STRATEGY_DIFFICULTY_REVIEW
+
+
+def test_global_signal_personal_weak_class_strong_individual_support():
+    result = tagt.combine_global_and_personal_learning_signals(
+        {
+            "personal_signal": {"knowledge_item": "RowKey 热点", "mastery_label": "weak", "mastery_score": 0.22},
+            "course_signal": {"knowledge_item": "RowKey 热点", "is_class_weak": False, "average_mastery": 0.82},
+        }
+    )
+
+    signal = result["strategy_signal"]
+    assert signal["action"] == tac.GLOBAL_SIGNAL_INDIVIDUAL_TARGETED_SUPPORT
+    assert signal["resource_strategy"] == tac.RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+
+
+def test_global_signal_personal_strong_class_strong_advances():
+    result = tagt.combine_global_and_personal_learning_signals(
+        {
+            "personal_signal": {"knowledge_item": "RowKey 热点", "mastery_label": "mastered", "mastery_score": 0.92},
+            "course_signal": {"knowledge_item": "RowKey 热点", "is_class_weak": False, "average_mastery": 0.82},
+        }
+    )
+
+    signal = result["strategy_signal"]
+    assert signal["action"] == tac.GLOBAL_SIGNAL_ADVANCE_OR_ENRICH
+    assert signal["resource_strategy"] == tac.RESOURCE_STRATEGY_DIFFICULTY_STANDARD
+
+
+def test_total_agent_resource_strategy_uses_course_global_signal_checkpoint(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    _accept_plan()
+    monkeypatch.setattr(
+        tagt,
+        "load_profile_summary",
+        lambda payload, status_state=None: {"success": True, "profile": {}, "source": "none", "warnings": []},
+    )
+    monkeypatch.setattr(
+        tagt,
+        "get_study_graph_features",
+        lambda user_id, syllabus_id, status_state=None: {"mastered_topics": ["HBase Basics"], "weak_topics": []},
+    )
+    monkeypatch.setattr(tagt, "generate_resources_from_request", _fake_generation)
+
+    result = tat.run_total_agent(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "继续学习",
+            "course_tree_summary_payload": {
+                "syllabus_id": 20,
+                "student_tree_summaries": [
+                    _student_tree_summary(101, weak=["HBase Basics"]),
+                    _student_tree_summary(102, weak=["HBase Basics"]),
+                    _student_tree_summary(103, weak=["HBase Basics"]),
+                    _student_tree_summary(104, weak=["RowKey 热点"]),
+                    _student_tree_summary(105, weak=["预分区"]),
+                ],
+            },
+        }
+    )
+
+    strategy = result["result"]["resource_generation"]["resource_strategy"]
+    assert strategy["strategy_signals"]["matched_course_global_weak_node"] is True
+    assert strategy["strategy_signals"]["global_signal_action"] == tac.GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE
+    assert strategy["difficulty"] == tac.RESOURCE_STRATEGY_DIFFICULTY_REVIEW

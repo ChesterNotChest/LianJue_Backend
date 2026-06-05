@@ -760,6 +760,12 @@ E2E amend 默认场景：
 python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py -m "not llm and not mysql"
 ```
 
+WSL / bash 下推荐写法：
+
+```bash
+python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py -m 'not llm and not mysql'
+```
+
 E2E amend 真实 Profile Agent 状态夹具 opt-in：
 
 ```bash
@@ -770,6 +776,12 @@ E2E amend 深状态 + 全真实 Agents opt-in：
 
 ```bash
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_real_deep_state.py -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+E2E amend 深状态 + 真实 RAG 即时答疑 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_real_deep_state.py::test_total_agent_e2e_real_deep_state_answer_learning_question -m "llm and search and mysql" --capture=tee-sys -rs
 ```
 
 最近一次阶段收口通过记录：
@@ -799,6 +811,7 @@ tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/
 tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/documents/documents-20260604181856-f7ce0b/document.json
 tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/quiz/quiz-20260604182424-04ee82/quiz.json
 tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/mindmap/mindmap-20260604182520-1339b8/mindmap.mmd
+tests/artifacts/total_agent/e2e_real_deep_state/answer_learning_question_real_rag/real_deep_state_answer_learning_question_result.json
 ```
 
 人工抽查结论：
@@ -846,7 +859,8 @@ E2E amend 的稳定场景输入固化在 `tests/fixtures/total_agent/deep_studen
 
 Total Agent E2E 收口矩阵：
 
-- `tests/total_agent/test_total_agent_e2e_amend.py` 默认场景回答“深画像、深学习记录树、active plan 和当前资源进入 Total Agent 后，是否能影响上下文、资源策略、反馈推进和 no-force 决策”。它不访问真实 LLM/RAG/DB，适合稳定审查深学生状态。
+- `tests/total_agent/test_total_agent_e2e_amend.py` 默认场景回答“深画像、深学习记录树、active plan 和当前资源进入 Total Agent 后，是否能影响上下文、资源策略、即时答疑、反馈推进和 no-force 决策”。它不访问真实 LLM/RAG/DB，适合稳定审查深学生状态。当前默认场景也覆盖 `answer_learning_question`：学生问 RowKey 热点概念时，Total Agent 只返回 answer/evidence，不推进 plan、不生成资源。
+- `tests/total_agent/test_total_agent_e2e_real_deep_state.py::test_total_agent_e2e_real_deep_state_answer_learning_question` 回答“同一个深学生状态在真实 Total Agent + 真实 RAG 下是否能完成即时答疑闭环”。该场景断言 intent 为 `answer_learning_question`，保留 answer/evidence，不推进 active plan、不生成资源、不写 feedback。
 - `test_e2e_state_fixture_real_profile_agent_optional` 回答“真实 Profile Agent 生成的画像是否能作为 E2E 状态夹具被保存和读取”。它不替代全链路资源生成。
 - `tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db` 回答“真实 DB、真实 Profile Agent、真实推荐 Agent/RAG、真实资源生成和 study graph sync 是否能完成端到端闭环”。该场景更偏全链路可用性。
 - `tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph` 回答“在语义对齐的推荐图下，真实 LLM/RAG/资源生成链路是否能稳定走到 resource generation 和 feedback/study graph”。该场景用于降低自然语言目标不命中 syllabus 节点导致的偶然失败。

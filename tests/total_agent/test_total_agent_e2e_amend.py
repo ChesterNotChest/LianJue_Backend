@@ -513,6 +513,51 @@ def test_total_agent_e2e_feedback_updates_plan_and_study_graph(monkeypatch, tmp_
     )
 
 
+def test_total_agent_e2e_answer_learning_question_no_plan_mutation(monkeypatch, tmp_path):
+    state = _build_total_agent_e2e_student_state(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        artifact_name="answer_learning_question",
+    )
+    plan_before = prt.get_active_learning_plan(state.user_id, state.syllabus_id)
+
+    result = tat.run_total_agent(
+        {
+            "user_id": state.user_id,
+            "syllabus_id": state.syllabus_id,
+            "message": "为什么 RowKey 会出现热点？",
+            "mock_evidence": [
+                {
+                    "title": "RowKey 热点",
+                    "summary": "单调递增 RowKey 会让写入集中到最后一个 Region，预分区和加盐前缀可以缓解。",
+                    "source": "RAG",
+                    "score": 0.9,
+                }
+            ],
+        }
+    )
+    plan_after = prt.get_active_learning_plan(state.user_id, state.syllabus_id)
+    answer = result["result"]["answer_learning_question"]
+
+    assert result["success"] is True
+    assert result["intent"] == tac.INTENT_ANSWER_LEARNING_QUESTION
+    assert result["suggested_next_action"] == tac.ACTION_OFFER_PRACTICE_OR_RESOURCE
+    assert answer["plan_mutation"] is False
+    assert answer["resource_generation"] is False
+    assert plan_after["current_step_index"] == plan_before["current_step_index"]
+    assert result["tool_trace"] == [
+        tac.TOOL_LOAD_TOTAL_CONTEXT,
+        tac.TOOL_INFER_USER_INTENT,
+        tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
+        tac.TOOL_ANSWER_LEARNING_QUESTION,
+    ]
+    _write_artifact(
+        state.artifact_root,
+        "answer_learning_question_result.json",
+        {"student_state": _state_artifact_payload(state), "total_agent_result": result, "active_plan_after_answer": plan_after},
+    )
+
+
 def test_total_agent_e2e_vague_goal_asks_clarification_without_plan(monkeypatch, tmp_path):
     artifact_root = _reset_artifact_root("clarification_no_force")
     monkeypatch.chdir(tmp_path)

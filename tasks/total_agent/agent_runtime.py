@@ -11,20 +11,25 @@ from tasks.common.agent_model import build_openai_compatible_model
 from tasks.total_agent.agent_contracts import (
     ACTION_ASK_GOAL_CLARIFICATION,
     ACTION_GENERATE_CURRENT_STEP_RESOURCE,
+    ACTION_OFFER_PRACTICE_OR_RESOURCE,
     ACTION_RECORD_LEARNING_FEEDBACK,
     ACTION_WAIT_USER_ACCEPTANCE,
     INTENT_ACCEPT_RECOMMENDATION,
+    INTENT_ANSWER_LEARNING_QUESTION,
     INTENT_GENERATE_CURRENT_STEP_RESOURCE,
     INTENT_RECORD_LEARNING_FEEDBACK,
     INTENT_RECOMMEND_LEARNING_PATH,
     INTENT_SKIP_CURRENT_STEP,
     TOOL_ACCEPT_LEARNING_PLAN,
+    TOOL_ANSWER_LEARNING_QUESTION,
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+    TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
     TOOL_GET_NEXT_LEARNING_TASK,
     TOOL_INFER_USER_INTENT,
     TOOL_LOAD_TOTAL_CONTEXT,
     TOOL_NORMALIZE_LEARNING_GOAL,
     TOOL_RECORD_LEARNING_FEEDBACK,
+    TOOL_RETRIEVE_LEARNING_EVIDENCE,
     TOOL_RUN_LEARNING_RECOMMENDATION,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_TOOL_ORDER,
@@ -32,8 +37,11 @@ from tasks.total_agent.agent_contracts import (
     TotalAgentResult,
 )
 from tasks.total_agent.agent_tools import (
+    answer_learning_question as tool_answer_learning_question,
     build_total_agent_result,
     deterministic_run_total_agent,
+    get_course_learning_tree_summary as tool_get_course_learning_tree_summary,
+    retrieve_learning_evidence as tool_retrieve_learning_evidence,
     tool_accept_learning_plan,
     tool_generate_current_step_resource,
     tool_get_next_learning_task,
@@ -53,6 +61,7 @@ TERMINAL_TOTAL_AGENT_TOOLS = {
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_SKIP_CURRENT_STEP,
+    TOOL_ANSWER_LEARNING_QUESTION,
 }
 
 
@@ -75,6 +84,8 @@ def get_total_agent() -> Agent:
             "For accept_recommendation, call accept_learning_plan. "
             "For generate_current_step_resource, call get_next_learning_task then generate_current_step_resource. "
             "For record_learning_feedback, call record_learning_feedback then get_next_learning_task; do not generate resources in the same turn. "
+            "For answer_learning_question, call retrieve_learning_evidence then answer_learning_question; do not create resources or mutate plans in the same turn. "
+            "When course or class-wide learning status may affect the decision, you may call get_course_learning_tree_summary before the terminal tool. "
             "For skip_current_step, call skip_current_step then get_next_learning_task; do not generate resources in the same turn. "
             "Do not invent learning plans, recommendation paths, resources, or study graph changes yourself. "
             "Return a JSON object matching TotalAgentResult."
@@ -115,6 +126,26 @@ def get_total_agent() -> Agent:
         return tool_get_next_learning_task(ctx.deps.state)
 
     @agent.tool(sequential=True)
+    def get_course_learning_tree_summary(ctx: RunContext[TotalAgentDeps]) -> dict:
+        payload = ctx.deps.state.get("payload") if isinstance(ctx.deps.state.get("payload"), dict) else {}
+        summary_payload = payload.get("course_tree_summary_payload") if isinstance(payload.get("course_tree_summary_payload"), dict) else {}
+        if not summary_payload:
+            summary_payload = {
+                "syllabus_id": payload.get("syllabus_id"),
+                "class_id": payload.get("class_id"),
+                "teacher_id": payload.get("teacher_id"),
+                "focus_user_id": payload.get("user_id"),
+                "user_ids": payload.get("course_user_ids") or payload.get("class_user_ids") or [],
+            }
+        result = tool_get_course_learning_tree_summary(summary_payload)
+        ctx.deps.state["course_learning_tree_summary_result"] = result
+        ctx.deps.state.setdefault("total_context", {})["course_learning_tree_summary"] = result
+        trace = ctx.deps.state.setdefault("tool_trace", [])
+        if isinstance(trace, list) and TOOL_GET_COURSE_LEARNING_TREE_SUMMARY not in trace:
+            trace.append(TOOL_GET_COURSE_LEARNING_TREE_SUMMARY)
+        return result
+
+    @agent.tool(sequential=True)
     def generate_current_step_resource(ctx: RunContext[TotalAgentDeps]) -> dict:
         if ctx.deps.state.get("intent") != INTENT_GENERATE_CURRENT_STEP_RESOURCE:
             raise ModelRetry(
@@ -127,6 +158,18 @@ def get_total_agent() -> Agent:
     @agent.tool(sequential=True)
     def record_learning_feedback(ctx: RunContext[TotalAgentDeps]) -> dict:
         return _remember_terminal(ctx, TOOL_RECORD_LEARNING_FEEDBACK, tool_record_learning_feedback(ctx.deps.state))
+
+    @agent.tool(sequential=True)
+    def retrieve_learning_evidence(ctx: RunContext[TotalAgentDeps]) -> dict:
+        return tool_retrieve_learning_evidence(ctx.deps.state)
+
+    @agent.tool(sequential=True)
+    def answer_learning_question(ctx: RunContext[TotalAgentDeps]) -> dict:
+        if ctx.deps.state.get("intent") != INTENT_ANSWER_LEARNING_QUESTION:
+            raise ModelRetry("answer_learning_question is only allowed when inferred intent is answer_learning_question.")
+        if TOOL_RETRIEVE_LEARNING_EVIDENCE not in list(ctx.deps.state.get("tool_trace") or []):
+            raise ModelRetry("Call retrieve_learning_evidence before answer_learning_question.")
+        return _remember_terminal(ctx, TOOL_ANSWER_LEARNING_QUESTION, tool_answer_learning_question(ctx.deps.state))
 
     @agent.tool(sequential=True)
     def skip_current_step(ctx: RunContext[TotalAgentDeps]) -> dict:
@@ -219,7 +262,22 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         if isinstance(state.get("skip_current_step_result"), dict)
         else {}
     )
+    answer_terminal = (
+        terminal
+        if terminal_tool == TOOL_ANSWER_LEARNING_QUESTION
+        else state.get("answer_learning_question_result")
+        if isinstance(state.get("answer_learning_question_result"), dict)
+        else {}
+    )
+    evidence_terminal = state.get("learning_evidence_result") if isinstance(state.get("learning_evidence_result"), dict) else {}
+    course_summary_terminal = (
+        state.get("course_learning_tree_summary_result")
+        if isinstance(state.get("course_learning_tree_summary_result"), dict)
+        else {}
+    )
 
+    if course_summary_terminal:
+        result["course_learning_tree_summary"] = course_summary_terminal
     if recommendation_terminal:
         result["recommendation"] = recommendation_terminal
     if normalization_terminal:
@@ -232,6 +290,10 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         result["record_learning_feedback"] = feedback_terminal
     if skip_terminal:
         result["skip_current_step"] = skip_terminal
+    if evidence_terminal:
+        result["retrieve_learning_evidence"] = evidence_terminal
+    if answer_terminal:
+        result["answer_learning_question"] = answer_terminal
 
     if intent == INTENT_RECOMMEND_LEARNING_PATH or terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION:
         suggested = recommendation_terminal.get("suggested_next_action") or ACTION_WAIT_USER_ACCEPTANCE
@@ -245,6 +307,8 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         suggested = feedback_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
     elif intent == INTENT_SKIP_CURRENT_STEP or terminal_tool == TOOL_SKIP_CURRENT_STEP:
         suggested = skip_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif intent == INTENT_ANSWER_LEARNING_QUESTION or terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
+        suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
 
     return build_total_agent_result(
         state,

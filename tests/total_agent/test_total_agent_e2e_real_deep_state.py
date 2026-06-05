@@ -374,3 +374,69 @@ def test_total_agent_e2e_real_deep_state_all_agents(monkeypatch, db_real_deep_st
             "tool_status_events": reporter.events,
         },
     )
+
+
+@pytest.mark.llm
+@pytest.mark.search
+@pytest.mark.mysql
+def test_total_agent_e2e_real_deep_state_answer_learning_question(monkeypatch, db_real_deep_state_case):
+    _require_real_deep_state_env()
+    _normalize_model_for_dashscope()
+    artifact_root = _reset_artifact_root("answer_learning_question_real_rag")
+    user, syllabus, relation = db_real_deep_state_case
+    reporter = StatusReporter()
+
+    reporter.emit("fixture", "preparing deep student state")
+    state = _build_real_deep_state(monkeypatch, artifact_root, user, syllabus, reporter)
+    reporter.emit("fixture", "deep student state ready", status="done")
+    plan_before = prt.get_active_learning_plan(state.user_id, state.syllabus_id)
+    graph_name = os.getenv("PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME") or os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"
+
+    reporter.emit("total agent", "calling answer question flow")
+    answer_result = tat.run_total_agent_agent(
+        {
+            "user_id": state.user_id,
+            "syllabus_id": state.syllabus_id,
+            "message": "为什么 HBase RowKey 会出现热点？",
+            "graph_name": graph_name,
+            "rag_top_k": 5,
+            "status_callback": reporter.emit_event,
+        }
+    )
+    reporter.emit(
+        "total agent",
+        "answer question flow completed",
+        status="done" if answer_result.get("success") else "failed",
+        intent=answer_result.get("intent"),
+        tool_trace=answer_result.get("tool_trace"),
+    )
+    plan_after = prt.get_active_learning_plan(state.user_id, state.syllabus_id)
+    answer = answer_result["result"]["answer_learning_question"]
+    evidence = answer_result["result"]["retrieve_learning_evidence"]
+
+    assert answer_result["success"] is True
+    assert answer_result["intent"] == tac.INTENT_ANSWER_LEARNING_QUESTION
+    assert answer_result["suggested_next_action"] == tac.ACTION_OFFER_PRACTICE_OR_RESOURCE
+    assert evidence["success"] is True
+    assert "evidence_summary" in evidence
+    assert answer["plan_mutation"] is False
+    assert answer["resource_generation"] is False
+    assert answer["answer"]["text"]
+    assert plan_after["plan_id"] == plan_before["plan_id"]
+    assert plan_after["current_step_index"] == plan_before["current_step_index"]
+    assert tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE not in answer_result["tool_trace"]
+    assert tac.TOOL_RECORD_LEARNING_FEEDBACK not in answer_result["tool_trace"]
+
+    _write_artifact(
+        artifact_root,
+        "real_deep_state_answer_learning_question_result.json",
+        {
+            "student_state": _state_artifact_payload(state),
+            "personal_profile_path": relation.personal_profile_path,
+            "graph_name": graph_name,
+            "answer_result": answer_result,
+            "active_plan_before": plan_before,
+            "active_plan_after": plan_after,
+            "tool_status_events": reporter.events,
+        },
+    )

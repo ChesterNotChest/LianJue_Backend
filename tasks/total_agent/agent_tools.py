@@ -15,20 +15,29 @@ from tasks.common.status_events import (
     emit_status_pair,
     get_status_events,
 )
+from tasks.common.search_tool import search_tool
 from tasks.generative_task import generate_resources_from_request
 from tasks.total_agent.agent_contracts import (
     ACTION_ASK_GOAL_CLARIFICATION,
     ACTION_GENERATE_CURRENT_STEP_RESOURCE,
     ACTION_GET_NEXT_LEARNING_TASK,
+    ACTION_OFFER_PRACTICE_OR_RESOURCE,
     ACTION_RECORD_LEARNING_FEEDBACK,
     ACTION_RETRY_RECOMMENDATION,
     ACTION_WAIT_USER_ACCEPTANCE,
+    GLOBAL_SIGNAL_ADVANCE_OR_ENRICH,
+    GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE,
+    GLOBAL_SIGNAL_INDIVIDUAL_TARGETED_SUPPORT,
+    GLOBAL_SIGNAL_REINFORCE_SHARED_WEAKNESS,
     INTENT_ACCEPT_RECOMMENDATION,
+    INTENT_ANSWER_LEARNING_QUESTION,
     INTENT_ASK_GOAL_CLARIFICATION,
     INTENT_GENERATE_CURRENT_STEP_RESOURCE,
     INTENT_RECORD_LEARNING_FEEDBACK,
     INTENT_RECOMMEND_LEARNING_PATH,
     INTENT_SKIP_CURRENT_STEP,
+    LEARNING_EFFECT_LOW_SCORE_THRESHOLD,
+    LEARNING_EFFECT_MASTERED_SCORE_THRESHOLD,
     PROFILE_READ_ACTION_BUILD_IF_MISSING,
     PROFILE_READ_ACTION_USE_PERSISTED_ONLY,
     PROFILE_SOURCE_BUILT,
@@ -41,13 +50,45 @@ from tasks.total_agent.agent_contracts import (
     RESOURCE_STRATEGY_DIFFICULTY_REVIEW,
     RESOURCE_STRATEGY_DIFFICULTY_STANDARD,
     RESOURCE_STRATEGY_DIFFICULTY_TARGETED,
+    QA_LEVEL_ASYNC_RESOURCE,
+    QA_LEVEL_CONTEXTUAL,
+    QA_LEVEL_FAST,
+    RESOURCE_FEEDBACK_ACCEPTED,
+    RESOURCE_FEEDBACK_DISLIKED,
+    RESOURCE_FEEDBACK_REJECTED,
+    RESOURCE_FEEDBACK_UNKNOWN,
+    RESOURCE_FRESHNESS_EXPIRED,
+    RESOURCE_FRESHNESS_FRESH,
+    RESOURCE_FRESHNESS_STALE,
+    RESOURCE_QUALITY_INVALID,
+    RESOURCE_QUALITY_LOW_QUALITY,
+    RESOURCE_QUALITY_NEEDS_REVIEW,
+    RESOURCE_QUALITY_USABLE,
+    RESOURCE_RECOMMENDATION_GENERATE_ALL,
+    RESOURCE_RECOMMENDATION_GENERATE_MISSING,
+    RESOURCE_RECOMMENDATION_REUSE_EXISTING,
+    RESOURCE_REUSE_MIN_MATCH_SCORE,
+    RESOURCE_REUSE_REPEATED_FAILURE_THRESHOLD,
+    REUSE_REJECT_EXPIRED_RESOURCE,
+    REUSE_REJECT_INVALID_RESOURCE,
+    REUSE_REJECT_REPEATED_FAILURE,
+    REUSE_REJECT_STUDENT_REJECTED,
+    REUSE_REJECT_TOO_EASY,
+    REUSE_REJECT_TOO_HARD,
+    REUSE_REJECT_TOPIC_MISMATCH,
     TOOL_ACCEPT_LEARNING_PLAN,
+    TOOL_ANSWER_LEARNING_QUESTION,
+    TOOL_APPLY_LEARNING_EFFECT_SIGNAL,
+    TOOL_DECIDE_RESOURCE_REUSE,
+    TOOL_FIND_PERSONAL_RESOURCES,
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+    TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
     TOOL_GET_NEXT_LEARNING_TASK,
     TOOL_INFER_USER_INTENT,
     TOOL_LOAD_TOTAL_CONTEXT,
     TOOL_NORMALIZE_LEARNING_GOAL,
     TOOL_RECORD_LEARNING_FEEDBACK,
+    TOOL_RETRIEVE_LEARNING_EVIDENCE,
     TOOL_RUN_LEARNING_RECOMMENDATION,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_CONTEXT_SCHEMA_VERSION,
@@ -537,6 +578,7 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     next_task = _safe_dict(state.get("next_task") or total_context.get("next_task"))
     profile = normalize_profile_summary(total_context.get("profile_summary"))
     study_graph_state = normalize_study_graph_state(total_context.get("study_graph_state"))
+    course_summary = _safe_dict(total_context.get("course_learning_tree_summary"))
     explicit_resource_types = _unique_texts(_list_from_any(payload.get("resource_types")))
 
     message = _safe_text(payload.get("message") or payload.get("question"))
@@ -557,6 +599,21 @@ def build_current_step_resource_strategy(state: dict) -> dict:
         or bool(next_outcomes & weak_node_ids)
     )
     matched_profile_weak_point = bool(_unique_texts(weak_points))
+    course_signal = _find_course_weak_signal(course_summary, [next_title, next_node_id, *outcomes, *weak_points])
+    global_arbitration = {}
+    if course_signal:
+        personal_signal = _build_personal_signal_for_strategy(
+            next_title=next_title,
+            next_node_id=next_node_id,
+            next_outcomes=outcomes,
+            weak_points=weak_points,
+            study_graph_state=study_graph_state,
+            matched_profile_weak_point=matched_profile_weak_point,
+            matched_study_graph_weak_node=matched_study_graph_weak_node,
+        )
+        global_arbitration = combine_global_and_personal_learning_signals(
+            {"personal_signal": personal_signal, "course_signal": course_signal}
+        )
 
     if explicit_resource_types:
         resource_types = explicit_resource_types
@@ -579,6 +636,11 @@ def build_current_step_resource_strategy(state: dict) -> dict:
         difficulty = RESOURCE_STRATEGY_DIFFICULTY_TARGETED
     if message_requests_review:
         difficulty = RESOURCE_STRATEGY_DIFFICULTY_REVIEW
+    global_signal_action = _safe_text(_safe_dict(_safe_dict(global_arbitration).get("strategy_signal")).get("action"))
+    if global_signal_action == GLOBAL_SIGNAL_INDIVIDUAL_TARGETED_SUPPORT:
+        difficulty = RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+    elif global_signal_action == GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE and difficulty == RESOURCE_STRATEGY_DIFFICULTY_STANDARD:
+        difficulty = RESOURCE_STRATEGY_DIFFICULTY_REVIEW
 
     return {
         "success": True,
@@ -592,12 +654,434 @@ def build_current_step_resource_strategy(state: dict) -> dict:
             "explicit_resource_types": bool(explicit_resource_types),
             "matched_profile_weak_point": matched_profile_weak_point,
             "matched_study_graph_weak_node": matched_study_graph_weak_node,
+            "matched_course_global_weak_node": bool(course_signal),
+            "global_signal_action": global_signal_action,
             "message_requests_practice": message_requests_practice,
             "message_requests_review": message_requests_review,
         },
+        "global_signal_arbitration": _safe_dict(global_arbitration.get("strategy_signal")),
         "error_code": "",
         "error_message": "",
     }
+
+
+def _compact_search_evidence(raw_result: Any, *, limit: int = 3) -> list[dict]:
+    result = _safe_dict(raw_result)
+    candidates = (
+        _safe_list(result.get("contexts"))
+        or _safe_list(result.get("chunks"))
+        or _safe_list(result.get("results"))
+        or _safe_list(result.get("documents"))
+        or _safe_list(result.get("items"))
+    )
+    evidence = []
+    for item in candidates[:limit]:
+        if not isinstance(item, dict):
+            text = _safe_text(item)
+            if text:
+                evidence.append({"title": "", "summary": text[:240], "source": "RAG", "score": 0.0})
+            continue
+        summary = _safe_text(
+            item.get("summary")
+            or item.get("content")
+            or item.get("text")
+            or item.get("chunk")
+            or item.get("paragraph")
+        )
+        if not summary:
+            continue
+        try:
+            score = float(item.get("score") or item.get("similarity") or item.get("rrf_score") or 0.0)
+        except Exception:
+            score = 0.0
+        evidence.append(
+            {
+                "title": _safe_text(item.get("title") or item.get("source") or item.get("doc_title") or item.get("id")),
+                "summary": summary[:240],
+                "source": "RAG",
+                "score": score,
+            }
+        )
+    if not evidence and _safe_text(result.get("summary")):
+        evidence.append(
+            {
+                "title": _safe_text(result.get("title")),
+                "summary": _safe_text(result.get("summary"))[:240],
+                "source": "RAG",
+                "score": 0.0,
+            }
+        )
+    return evidence
+
+
+def retrieve_learning_evidence(state: Dict[str, Any]) -> dict:
+    _append_trace(state, TOOL_RETRIEVE_LEARNING_EVIDENCE)
+    payload = _safe_dict(state.get("payload"))
+    context = _safe_dict(state.get("total_context"))
+    message = _safe_text(payload.get("message") or payload.get("question"))
+    qa_level = _safe_text(payload.get("qa_level")) or QA_LEVEL_FAST
+    graph_name = _safe_text(payload.get("graph_name") or payload.get("rag_graph_name"))
+    top_k = _positive_int(payload.get("rag_top_k")) or 3
+    evidence = [dict(item) for item in _safe_list(payload.get("evidence_summary") or payload.get("mock_evidence")) if isinstance(item, dict)]
+    warnings: list[str] = []
+
+    if not evidence and graph_name and message and qa_level != QA_LEVEL_ASYNC_RESOURCE:
+        try:
+            raw_result = emit_status_pair(
+                state,
+                agent=TOTAL_AGENT_STATUS_AGENT,
+                stage=TOOL_RETRIEVE_LEARNING_EVIDENCE,
+                fn=lambda: search_tool(message, graph_name=graph_name, top_k=top_k),
+                payload={"graph_name": graph_name, "top_k": top_k},
+            )
+            evidence = _compact_search_evidence(raw_result, limit=top_k)
+        except Exception as exc:
+            warnings.extend(["rag_retrieval_failed", _safe_text(exc)])
+    if not evidence:
+        warnings.append("no_rag_evidence")
+
+    result = _tool_result(
+        TOOL_RETRIEVE_LEARNING_EVIDENCE,
+        True,
+        state=state,
+        qa_level=qa_level,
+        evidence_summary=evidence,
+        context_used={
+            "profile": qa_level == QA_LEVEL_CONTEXTUAL,
+            "active_plan": bool(context.get("active_plan")),
+            "study_graph": bool(context.get("study_graph_state")),
+            "rag": bool(evidence),
+        },
+        warnings=_unique_texts(warnings),
+    )
+    state["learning_evidence_result"] = result
+    return result
+
+
+def _answer_key_points(question: str, evidence: list[dict], context: dict) -> list[str]:
+    joined = " ".join([question, *[_safe_text(item.get("summary")) for item in evidence if isinstance(item, dict)]])
+    points = []
+    if _message_has_any(joined, ("rowkey", "热点", "hotspot")):
+        points.extend(
+            [
+                "HBase 按 RowKey 的字典序和 key range 组织数据。",
+                "单调递增或集中前缀的 RowKey 容易把写入压到少数 Region。",
+                "加盐前缀、散列前缀和预分区可以帮助打散写入分布。",
+            ]
+        )
+    elif evidence:
+        points.extend(_safe_text(item.get("summary"))[:120] for item in evidence[:3] if isinstance(item, dict))
+    weak_points = _safe_list(_safe_dict(context.get("profile_summary")).get("weak_points"))
+    if weak_points:
+        points.append(f"结合你的画像，当前可以优先补：{', '.join(_safe_text(item) for item in weak_points[:3])}。")
+    return _unique_texts(points)[:5]
+
+
+def answer_learning_question(state: Dict[str, Any]) -> dict:
+    _append_trace(state, TOOL_ANSWER_LEARNING_QUESTION)
+    payload = _safe_dict(state.get("payload"))
+    context = _safe_dict(state.get("total_context"))
+    evidence_result = _safe_dict(state.get("learning_evidence_result"))
+    question = _safe_text(payload.get("question") or payload.get("message"))
+    qa_level = _safe_text(evidence_result.get("qa_level") or payload.get("qa_level")) or QA_LEVEL_FAST
+    evidence = _safe_list(evidence_result.get("evidence_summary"))
+    key_points = _answer_key_points(question, evidence, context)
+
+    if qa_level == QA_LEVEL_ASYNC_RESOURCE:
+        text = "这个问题更适合生成专题资料或练习来系统处理。"
+        suggested = ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    else:
+        text = " ".join(key_points) if key_points else "我可以先给出一个简短解释，但当前没有检索到足够的课程证据，建议后续补一份资料或练习。"
+        suggested = ACTION_OFFER_PRACTICE_OR_RESOURCE
+
+    result = _tool_result(
+        TOOL_ANSWER_LEARNING_QUESTION,
+        True,
+        state=state,
+        answer={"text": text, "key_points": key_points, "confidence": 0.82 if evidence else 0.48},
+        evidence_summary=evidence,
+        suggested_next_action=suggested,
+        plan_mutation=False,
+        resource_generation=False,
+        warnings=evidence_result.get("warnings") or [],
+    )
+    state["answer_learning_question_result"] = result
+    return result
+
+
+def find_personal_resources(payload: dict) -> dict:
+    requested_types = _unique_texts(_list_from_any(payload.get("resource_types")))
+    resources = _safe_list(payload.get("resources") or payload.get("personal_resources"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id"))
+    node_id = _safe_text(payload.get("node_id"))
+    knowledge_items = set(_unique_texts(_list_from_any(payload.get("knowledge_items"))))
+    matches = []
+    seen_types = set()
+    for item in resources:
+        if not isinstance(item, dict):
+            continue
+        if user_id and _positive_int(item.get("user_id")) not in (None, user_id):
+            continue
+        if syllabus_id and _positive_int(item.get("syllabus_id")) not in (None, syllabus_id):
+            continue
+        resource_type = _safe_text(item.get("resource_type"))
+        if requested_types and resource_type not in requested_types:
+            continue
+        item_knowledge = set(_unique_texts(_list_from_any(item.get("knowledge_items"))))
+        score = 0.0
+        if resource_type in requested_types:
+            score += 0.35
+        if node_id and node_id == _safe_text(item.get("node_id")):
+            score += 0.3
+        if knowledge_items and item_knowledge:
+            score += min(0.25, 0.1 * len(knowledge_items & item_knowledge))
+        if _safe_text(item.get("topic")) and any(point in _safe_text(item.get("topic")) for point in knowledge_items):
+            score += 0.1
+        match = dict(item)
+        match.setdefault("quality_state", RESOURCE_QUALITY_NEEDS_REVIEW)
+        match.setdefault("freshness_state", RESOURCE_FRESHNESS_FRESH)
+        match.setdefault("student_feedback_state", RESOURCE_FEEDBACK_UNKNOWN)
+        match["match_score"] = round(min(score, 1.0), 4)
+        matches.append(match)
+        seen_types.add(resource_type)
+    return {
+        "success": True,
+        "matches": matches,
+        "missing_resource_types": [item for item in requested_types if item not in seen_types],
+        "warnings": [],
+        "error_code": "",
+        "error_message": "",
+    }
+
+
+def decide_resource_reuse(payload: dict) -> dict:
+    requested_types = _unique_texts(_list_from_any(payload.get("requested_resource_types") or payload.get("resource_types")))
+    learning_effect = _safe_dict(payload.get("learning_effect"))
+    reusable = []
+    skipped = []
+    reusable_types = set()
+    for item in _safe_list(payload.get("matches")):
+        if not isinstance(item, dict):
+            continue
+        reasons = []
+        quality = _safe_text(item.get("quality_state")) or RESOURCE_QUALITY_NEEDS_REVIEW
+        freshness = _safe_text(item.get("freshness_state")) or RESOURCE_FRESHNESS_FRESH
+        feedback_state = _safe_text(item.get("student_feedback_state")) or RESOURCE_FEEDBACK_UNKNOWN
+        feedback = _safe_dict(item.get("student_feedback"))
+        failure_count = int(item.get("failure_count") or 0)
+        match_score = float(item.get("match_score") or 0.0)
+        if _safe_dict(item.get("validation")).get("valid") is False or quality in {RESOURCE_QUALITY_INVALID, RESOURCE_QUALITY_LOW_QUALITY}:
+            reasons.append(REUSE_REJECT_INVALID_RESOURCE)
+        if freshness == RESOURCE_FRESHNESS_EXPIRED:
+            reasons.append(REUSE_REJECT_EXPIRED_RESOURCE)
+        if feedback_state == RESOURCE_FEEDBACK_REJECTED or feedback.get("explicitly_rejected") is True:
+            reasons.append(REUSE_REJECT_STUDENT_REJECTED)
+        if feedback_state == RESOURCE_FEEDBACK_DISLIKED and failure_count >= 1:
+            reasons.append(REUSE_REJECT_REPEATED_FAILURE)
+        if failure_count >= RESOURCE_REUSE_REPEATED_FAILURE_THRESHOLD:
+            reasons.append(REUSE_REJECT_REPEATED_FAILURE)
+        if feedback.get("too_easy") is True and learning_effect.get("current_need") != "foundation_review":
+            reasons.append(REUSE_REJECT_TOO_EASY)
+        if feedback.get("too_hard") is True and learning_effect.get("current_need") != "challenge":
+            reasons.append(REUSE_REJECT_TOO_HARD)
+        if match_score < RESOURCE_REUSE_MIN_MATCH_SCORE:
+            reasons.append(REUSE_REJECT_TOPIC_MISMATCH)
+        if reasons:
+            skipped.append({"resource_id": item.get("resource_id"), "resource_type": item.get("resource_type"), "skip_reason_codes": _unique_texts(reasons)})
+            continue
+        reusable.append({"resource_id": item.get("resource_id"), "resource_type": item.get("resource_type"), "reuse_reason_codes": ["fresh", "high_match"]})
+        reusable_types.add(_safe_text(item.get("resource_type")))
+    missing = [item for item in requested_types if item not in reusable_types]
+    mode = RESOURCE_RECOMMENDATION_REUSE_EXISTING if reusable and not missing else RESOURCE_RECOMMENDATION_GENERATE_MISSING if reusable else RESOURCE_RECOMMENDATION_GENERATE_ALL
+    return {"success": True, "resource_recommendation_mode": mode, "reusable_resources": reusable, "skipped_resources": skipped, "missing_resource_types": missing, "warnings": []}
+
+
+def apply_learning_effect_signal(payload: dict) -> dict:
+    try:
+        score = float(payload.get("score"))
+    except Exception:
+        score = None
+    wrong_items = _unique_texts(_list_from_any(payload.get("wrong_knowledge_items")))
+    feedback = _safe_dict(payload.get("student_feedback"))
+    if score is not None and score < LEARNING_EFFECT_LOW_SCORE_THRESHOLD:
+        mastery_signal = "struggled"
+        next_strategy = RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+    elif score is not None and score >= LEARNING_EFFECT_MASTERED_SCORE_THRESHOLD:
+        mastery_signal = "mastered"
+        next_strategy = RESOURCE_STRATEGY_DIFFICULTY_STANDARD
+    else:
+        mastery_signal = "practiced"
+        next_strategy = RESOURCE_STRATEGY_DIFFICULTY_REVIEW if wrong_items else RESOURCE_STRATEGY_DIFFICULTY_STANDARD
+    resource_feedback_state = RESOURCE_FEEDBACK_UNKNOWN
+    if feedback.get("explicitly_rejected") is True:
+        resource_feedback_state = RESOURCE_FEEDBACK_REJECTED
+    elif feedback.get("too_hard") is True or feedback.get("too_easy") is True or feedback.get("liked") is False:
+        resource_feedback_state = RESOURCE_FEEDBACK_DISLIKED
+    elif feedback.get("liked") is True:
+        resource_feedback_state = RESOURCE_FEEDBACK_ACCEPTED
+    return {
+        "success": True,
+        "learning_effect": {
+            "mastery_signal": mastery_signal,
+            "weak_knowledge_items": wrong_items if mastery_signal == "struggled" else [],
+            "mastered_knowledge_items": wrong_items if mastery_signal == "mastered" else [],
+            "resource_feedback_state": resource_feedback_state,
+            "next_resource_strategy": next_strategy,
+        },
+        "profile_signal": {
+            "refresh_recommended": mastery_signal == "struggled",
+            "reason_codes": _unique_texts(["low_score" if mastery_signal == "struggled" else "", "weak_knowledge_items" if wrong_items else ""]),
+        },
+        "warnings": [],
+    }
+
+
+def _mastery_is_strong(signal: dict) -> bool:
+    label = _safe_text(signal.get("mastery_label") or signal.get("label"))
+    try:
+        score = float(signal.get("mastery_score") if signal.get("mastery_score") is not None else signal.get("score"))
+    except Exception:
+        score = 0.0
+    return label in {"mastered", "high", "strong"} or score >= LEARNING_EFFECT_MASTERED_SCORE_THRESHOLD
+
+
+def _mastery_is_weak(signal: dict) -> bool:
+    label = _safe_text(signal.get("mastery_label") or signal.get("label"))
+    try:
+        score = float(signal.get("mastery_score") if signal.get("mastery_score") is not None else signal.get("score"))
+    except Exception:
+        score = 1.0
+    return label in {"weak", "low", "struggled"} or score < LEARNING_EFFECT_LOW_SCORE_THRESHOLD
+
+
+def _course_signal_is_weak(signal: dict) -> bool:
+    if signal.get("is_class_weak") is True:
+        return True
+    try:
+        weak_count = int(signal.get("weak_student_count") or 0)
+    except Exception:
+        weak_count = 0
+    try:
+        average = float(signal.get("average_mastery") or 1.0)
+    except Exception:
+        average = 1.0
+    return weak_count > 0 or average < LEARNING_EFFECT_LOW_SCORE_THRESHOLD
+
+
+def combine_global_and_personal_learning_signals(payload: dict) -> dict:
+    payload = _safe_dict(payload)
+    personal = _safe_dict(payload.get("personal_signal"))
+    course = _safe_dict(payload.get("course_signal"))
+    knowledge_item = _safe_text(
+        payload.get("knowledge_item")
+        or personal.get("knowledge_item")
+        or personal.get("title")
+        or course.get("knowledge_item")
+        or course.get("title")
+    )
+    personal_known = bool(personal)
+    personal_weak = personal_known and _mastery_is_weak(personal)
+    personal_strong = personal_known and _mastery_is_strong(personal)
+    course_weak = _course_signal_is_weak(course)
+
+    if personal_weak and course_weak:
+        action = GLOBAL_SIGNAL_REINFORCE_SHARED_WEAKNESS
+        resource_strategy = RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+    elif personal_strong and course_weak:
+        action = GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE
+        resource_strategy = RESOURCE_STRATEGY_DIFFICULTY_REVIEW
+    elif personal_weak and not course_weak:
+        action = GLOBAL_SIGNAL_INDIVIDUAL_TARGETED_SUPPORT
+        resource_strategy = RESOURCE_STRATEGY_DIFFICULTY_TARGETED
+    elif personal_strong and not course_weak:
+        action = GLOBAL_SIGNAL_ADVANCE_OR_ENRICH
+        resource_strategy = RESOURCE_STRATEGY_DIFFICULTY_STANDARD
+    elif course_weak:
+        action = GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE
+        resource_strategy = RESOURCE_STRATEGY_DIFFICULTY_REVIEW
+    else:
+        action = GLOBAL_SIGNAL_ADVANCE_OR_ENRICH
+        resource_strategy = RESOURCE_STRATEGY_DIFFICULTY_STANDARD
+
+    return {
+        "success": True,
+        "strategy_signal": {
+            "knowledge_item": knowledge_item,
+            "matched_profile_weak_point": bool(personal.get("matched_profile_weak_point") or personal_weak),
+            "matched_own_study_graph_weak_node": bool(personal.get("matched_own_study_graph_weak_node") or personal_weak),
+            "matched_course_global_weak_node": course_weak,
+            "personal_mastery_known": personal_known,
+            "personal_mastery_label": _safe_text(personal.get("mastery_label") or personal.get("label")),
+            "personal_mastery_score": personal.get("mastery_score") if personal.get("mastery_score") is not None else personal.get("score"),
+            "course_average_mastery": course.get("average_mastery"),
+            "action": action,
+            "resource_strategy": resource_strategy,
+        },
+        "warnings": [],
+    }
+
+
+def get_course_learning_tree_summary(payload: dict) -> dict:
+    from tasks import study_graph_task
+
+    return study_graph_task.get_course_learning_tree_summary(_safe_dict(payload))
+
+
+def _find_course_weak_signal(course_summary: dict, knowledge_items: Iterable[Any]) -> dict:
+    summary = _safe_dict(course_summary.get("summary") if isinstance(course_summary.get("summary"), dict) else course_summary)
+    weak_nodes = _safe_list(summary.get("weak_nodes"))
+    candidates = _unique_texts(knowledge_items)
+    for node in weak_nodes:
+        if not isinstance(node, dict):
+            continue
+        title = _safe_text(node.get("title"))
+        if title and (title in candidates or any(title in item or item in title for item in candidates)):
+            result = dict(node)
+            result["knowledge_item"] = title
+            result["is_class_weak"] = True
+            return result
+    return {}
+
+
+def _build_personal_signal_for_strategy(
+    *,
+    next_title: str,
+    next_node_id: str,
+    next_outcomes: Iterable[Any],
+    weak_points: Iterable[Any],
+    study_graph_state: dict,
+    matched_profile_weak_point: bool,
+    matched_study_graph_weak_node: bool,
+) -> dict:
+    candidates = _unique_texts([next_title, next_node_id, *list(next_outcomes), *list(weak_points)])
+    weak_nodes = set(_unique_texts(_list_from_any(study_graph_state.get("weak_node_ids"))))
+    mastered_nodes = set(_unique_texts(_list_from_any(study_graph_state.get("mastered_node_ids"))))
+    if matched_profile_weak_point or matched_study_graph_weak_node:
+        return {
+            "knowledge_item": candidates[0] if candidates else "",
+            "mastery_label": "weak",
+            "mastery_score": 0.3,
+            "matched_profile_weak_point": matched_profile_weak_point,
+            "matched_own_study_graph_weak_node": matched_study_graph_weak_node,
+        }
+    if any(item in mastered_nodes for item in candidates):
+        return {
+            "knowledge_item": candidates[0] if candidates else "",
+            "mastery_label": "mastered",
+            "mastery_score": 0.9,
+            "matched_profile_weak_point": False,
+            "matched_own_study_graph_weak_node": False,
+        }
+    if any(item in weak_nodes for item in candidates):
+        return {
+            "knowledge_item": candidates[0] if candidates else "",
+            "mastery_label": "weak",
+            "mastery_score": 0.3,
+            "matched_profile_weak_point": False,
+            "matched_own_study_graph_weak_node": True,
+        }
+    return {}
 
 
 def tool_load_total_context(state: Dict[str, Any]) -> dict:
@@ -654,6 +1138,19 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
             study_graph_state = normalize_study_graph_state({})
             study_graph_state["warnings"].append(f"study_graph_read_failed:{exc}")
 
+    course_learning_tree_summary = _safe_dict(payload.get("course_learning_tree_summary"))
+    course_summary_input = payload.get("course_tree_summary_payload")
+    if not course_learning_tree_summary and isinstance(course_summary_input, dict):
+        try:
+            course_learning_tree_summary = get_course_learning_tree_summary(course_summary_input)
+            for warning in _list_from_any(course_learning_tree_summary.get("warnings")):
+                text = _safe_text(warning)
+                if text:
+                    warnings.append(text)
+        except Exception as exc:
+            warnings.append(f"course_learning_tree_summary_failed:{exc}")
+            course_learning_tree_summary = {}
+
     total_context = {
         "user_id": user_id,
         "syllabus_id": syllabus_id,
@@ -663,6 +1160,7 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
         "current_resource_id": _safe_text(context.get("current_resource_id") or payload.get("resource_id")),
         "recent_resource_ids": list(_safe_list(context.get("recent_resource_ids"))),
         "study_graph_state": study_graph_state,
+        "course_learning_tree_summary": course_learning_tree_summary,
         "warnings": warnings,
     }
     state["total_context"] = total_context
@@ -716,6 +1214,10 @@ def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
         intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE
         confidence = 0.82
         reason = "message asks to continue current plan"
+    elif _message_has_any(message, ("为什么", "为啥", "是什么", "解释", "区别", "关系", "怎么理解", "question", "why", "explain")):
+        intent = INTENT_ANSWER_LEARNING_QUESTION
+        confidence = 0.84
+        reason = "message asks a learning question"
     elif active_plan:
         intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE
         confidence = 0.72
@@ -1244,6 +1746,15 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
         suggested_next_action = skipped.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
         error_code = skipped.get("error_code") or ""
         error_message = skipped.get("error_message") or ""
+    elif intent == INTENT_ANSWER_LEARNING_QUESTION:
+        evidence = retrieve_learning_evidence(state)
+        answer = answer_learning_question(state)
+        final_result["retrieve_learning_evidence"] = evidence
+        final_result["answer_learning_question"] = answer
+        success = bool(answer.get("success"))
+        suggested_next_action = answer.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
+        error_code = answer.get("error_code") or ""
+        error_message = answer.get("error_message") or ""
     else:
         suggested_next_action = ACTION_ASK_GOAL_CLARIFICATION
         final_result["clarification"] = {
@@ -1263,13 +1774,20 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
 
 __all__ = [
     "TOTAL_AGENT_TOOL_ORDER",
+    "answer_learning_question",
+    "apply_learning_effect_signal",
     "build_current_step_resource_strategy",
     "build_total_agent_result",
+    "decide_resource_reuse",
     "deterministic_run_total_agent",
+    "find_personal_resources",
     "get_study_graph_features",
+    "get_course_learning_tree_summary",
+    "combine_global_and_personal_learning_signals",
     "load_profile_summary",
     "normalize_profile_summary",
     "normalize_study_graph_state",
+    "retrieve_learning_evidence",
     "tool_accept_learning_plan",
     "tool_generate_current_step_resource",
     "tool_get_next_learning_task",
