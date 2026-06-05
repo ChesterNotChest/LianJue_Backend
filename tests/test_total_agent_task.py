@@ -6,6 +6,7 @@ import pytest
 from tasks import personal_recommendation_task as prt
 from tasks import total_agent_task as tat
 from tasks import learning_profile_task as lpt
+from tasks.common import status_events
 from tasks.learning_profile import storage as profile_storage
 from tasks.total_agent import agent_contracts as tac
 from tasks.total_agent import agent_runtime as tar
@@ -68,6 +69,15 @@ def _accept_plan(user_id: int = 8, syllabus_id: int = 20) -> dict:
 def _fake_generation(request_payload: dict) -> dict:
     return {
         "success": True,
+        "tool_status_events": [
+            status_events.create_status_event(
+                run_id=request_payload.get("run_id"),
+                agent="resource_agent",
+                stage="generate_resource_payload",
+                status=status_events.STATUS_SUCCEEDED,
+                payload={"resource_type": "documents"},
+            )
+        ],
         "resources": [
             {
                 "resource_id": "documents-total-agent-test",
@@ -77,6 +87,19 @@ def _fake_generation(request_payload: dict) -> dict:
             }
         ],
     }
+
+
+def test_status_event_helper_builds_stable_keys():
+    event = status_events.create_status_event(
+        run_id="run_1",
+        agent="resource_agent",
+        stage="generate_resource_payload",
+        status=status_events.STATUS_RUNNING,
+    )
+
+    assert event["event_key"] == "resource_agent.generate_resource_payload.running"
+    assert event["label_key"] == "agent.resource.generate_resource_payload.running"
+    assert event["payload"] == {}
 
 
 def _write_artifact(name: str, payload: dict) -> None:
@@ -91,6 +114,10 @@ def test_total_agent_returns_structured_error_for_missing_user_id():
     assert result["schema_version"] == tac.TOTAL_AGENT_SCHEMA_VERSION
     assert result["error_code"] == "missing_user_id"
     assert result["tool_trace"] == [tac.TOOL_LOAD_TOTAL_CONTEXT]
+    assert [event["event_key"] for event in result["tool_status_events"]] == [
+        "total_agent.load_total_context.running",
+        "total_agent.load_total_context.failed",
+    ]
 
 
 def test_total_agent_agent_final_result_includes_loaded_context():
@@ -224,6 +251,9 @@ def test_total_agent_history_driven_continue_generates_current_step_resource(mon
     assert resource_generation["resources"][0]["resource_type"] == "documents"
     assert resource_generation["request"]["topic"] == "HBase Basics"
     assert result["tool_trace"] == tac.TOTAL_AGENT_TOOL_ORDER[tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE]
+    event_keys = [event["event_key"] for event in result["tool_status_events"]]
+    assert "total_agent.generate_current_step_resource.succeeded" in event_keys
+    assert "resource_agent.generate_resource_payload.succeeded" in event_keys
 
 
 def test_total_agent_feedback_advances_to_next_step(monkeypatch, tmp_path):

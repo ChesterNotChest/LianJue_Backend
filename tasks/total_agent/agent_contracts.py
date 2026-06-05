@@ -114,6 +114,7 @@ class TotalAgentResult(BaseModel):
     schema_version: str = TOTAL_AGENT_SCHEMA_VERSION
     intent: str = ""
     tool_trace: List[str] = Field(default_factory=list)
+    tool_status_events: List[Dict[str, Any]] = Field(default_factory=list)
     result: Dict[str, Any] = Field(default_factory=dict)
     suggested_next_action: str = ""
     error_code: str = ""

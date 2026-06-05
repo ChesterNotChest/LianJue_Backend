@@ -59,6 +59,23 @@ def _write_artifact(root: Path, name: str, payload: dict) -> Path:
     return path
 
 
+def _emit_e2e_status(agent: str, action: str, *, status: str = "running", **details) -> None:
+    detail_text = ""
+    if details:
+        compact_details = ", ".join(f"{key}={value}" for key, value in details.items() if value is not None)
+        if compact_details:
+            detail_text = f" ({compact_details})"
+    print(f"[total-agent-e2e] {agent}: {action}... {status}{detail_text}", flush=True)
+
+
+def _emit_tool_status_events(events: list[dict] | None) -> None:
+    for event in events or []:
+        agent = event.get("agent") or "agent"
+        stage = event.get("stage") or event.get("event_key") or "stage"
+        status = event.get("status") or "unknown"
+        _emit_e2e_status(str(agent), str(stage), status=str(status))
+
+
 def _normalize_model_for_dashscope() -> None:
     text_config = recommendation_runtime.OPENAI_COMPAT_MODEL_CONFIGS.get("text") or {}
     api_base = str(text_config.get("api_base") or text_config.get("base_url") or "")
@@ -195,6 +212,7 @@ def _run_current_step_resource_and_feedback(
     goal_alignment: dict | None = None,
     result_name: str = "total_agent_large_e2e_result.json",
 ) -> dict:
+    _emit_e2e_status("learning plan", "accepting recommendation path")
     accept_result = _accept_recommendation(
         {
             "user_id": user.user_id,
@@ -205,7 +223,14 @@ def _run_current_step_resource_and_feedback(
     assert accept_result["success"] is True
     next_task = accept_result["next_task"]
     assert next_task and next_task.get("status") == prt.LEARNING_PLAN_STEP_STATUS_ACTIVE
+    _emit_e2e_status(
+        "learning plan",
+        "learning plan active",
+        status="done",
+        step_id=next_task.get("step_id"),
+    )
 
+    _emit_e2e_status("material agent", "generating current step resource")
     resource_result = gt.generate_resources_from_request(
         {
             "user_id": user.user_id,
@@ -218,12 +243,21 @@ def _run_current_step_resource_and_feedback(
             "generation_requirements": {"model_tier": os.getenv("GENERATIVE_TEST_MODEL_TIER") or "cheap"},
         }
     )
+    _emit_tool_status_events(resource_result.get("tool_status_events"))
     assert resource_result["success"] is True
     assert resource_result["success_count"] >= 1
     resource = resource_result["resources"][0]
     assert resource["resource_type"] == "documents"
     assert resource["success"] is True
+    _emit_e2e_status(
+        "material agent",
+        "resource generated",
+        status="done",
+        resource_id=resource.get("resource_id"),
+        resource_type=resource.get("resource_type"),
+    )
 
+    _emit_e2e_status("learning plan", "recording resource feedback")
     event_payload = {
         "user_id": user.user_id,
         "syllabus_id": syllabus.syllabus_id,
@@ -239,7 +273,9 @@ def _run_current_step_resource_and_feedback(
     event_result = _record_event(event_payload)
     assert event_result["success"] is True
     assert event_result["updated_step"]["status"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
+    _emit_e2e_status("learning plan", "feedback recorded", status="done")
 
+    _emit_e2e_status("study graph", "syncing feedback to learning tree")
     changes = sgt.build_study_graph_changes_from_resource_event(event_payload)
     assert changes
     study_graph_result = sgt.submit_learning_tree_changes(
@@ -253,6 +289,12 @@ def _run_current_step_resource_and_feedback(
     study_tree = sgt.get_student_learning_tree(user.user_id, syllabus.syllabus_id)
     study_tree_payload = study_tree.get("tree") if isinstance(study_tree.get("tree"), dict) else study_tree
     assert study_tree_payload.get("nodes")
+    _emit_e2e_status(
+        "study graph",
+        "feedback synced to learning tree",
+        status="done",
+        node_count=len(study_tree_payload.get("nodes") or []),
+    )
 
     next_after_event = _get_next_task(user.user_id, syllabus.syllabus_id)
     assert next_after_event["success"] is True

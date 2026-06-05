@@ -65,6 +65,7 @@ class ResourceGenerationAgentResult(BaseModel):
     generated_content: Optional[Dict[str, Any]] = None
     planning_bundle: Optional[Dict[str, Any]] = None
     tool_trace: List[str] = Field(default_factory=list)
+    tool_status_events: List[Dict[str, Any]] = Field(default_factory=list)
     error_message: str = ""
     error_code: str = ""
 
@@ -73,7 +74,7 @@ class ResourceGenerationAgentResult(BaseModel):
     def parse_dict_fields(cls, value: Any) -> Any:
         return _parse_json_dict(value)
 
-    @field_validator("tool_trace", mode="before")
+    @field_validator("tool_trace", "tool_status_events", mode="before")
     @classmethod
-    def parse_tool_trace(cls, value: Any) -> Any:
+    def parse_list_fields(cls, value: Any) -> Any:
         return _parse_json_list(value)

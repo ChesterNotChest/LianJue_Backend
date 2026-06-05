@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
+from tasks.common.status_events import STATUS_RUNNING, emit_status_event
 from tasks.generative import resource_planning_agent as planning_task
 from tasks.generative.resource_agent_contracts import (
     RESOURCE_AGENT_ERROR_GENERATION_FAILED,
@@ -20,6 +21,27 @@ def _append_trace(state: Dict[str, Any], tool_name: str) -> None:
     trace = state.setdefault("tool_trace", [])
     if isinstance(trace, list):
         trace.append(tool_name)
+    emit_status_event(
+        state,
+        agent="resource_agent",
+        stage=tool_name,
+        status=STATUS_RUNNING,
+        payload={"resource_type": state.get("resource_type") or ""},
+    )
+
+
+def _with_status(state: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
+    tool_name = _safe_text(result.get("tool"))
+    if tool_name:
+        emit_status_event(
+            state,
+            agent="resource_agent",
+            stage=tool_name,
+            status="succeeded" if result.get("success") is not False else "failed",
+            message=result.get("error_message") or result.get("error") or "",
+            payload={"resource_type": result.get("resource_type") or state.get("resource_type") or ""},
+        )
+    return result
 
 
 def _get_search_fn(planning_agent: Any) -> Optional[Callable[..., Dict[str, Any]]]:
@@ -189,13 +211,13 @@ def tool_read_generation_request(state: Dict[str, Any]) -> Dict[str, Any]:
     request = state.get("request") if isinstance(state.get("request"), dict) else {}
     resource_type = _safe_text(state.get("resource_type") or request.get("resource_type"))
     if not request:
-        return {
+        return _with_status(state, {
             "tool": "read_generation_request",
             "success": False,
             "error_code": RESOURCE_AGENT_ERROR_MISSING_REQUEST,
             "error_message": "missing generation request",
-        }
-    return {
+        })
+    return _with_status(state, {
         "tool": "read_generation_request",
         "success": True,
         "user_id": request.get("user_id"),
@@ -203,7 +225,7 @@ def tool_read_generation_request(state: Dict[str, Any]) -> Dict[str, Any]:
         "resource_type": resource_type,
         "topic": request.get("topic") or "",
         "question": request.get("question") or "",
-    }
+    })
 
 
 def tool_read_generation_plan(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -214,12 +236,12 @@ def tool_read_generation_plan(state: Dict[str, Any]) -> Dict[str, Any]:
     if not plan:
         plan = planning_task._build_default_plan(request, resource_type)
         state["plan"] = plan
-    return {
+    return _with_status(state, {
         "tool": "read_generation_plan",
         "success": True,
         "resource_type": resource_type,
         "plan": plan,
-    }
+    })
 
 
 def tool_retrieve_generation_materials(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -235,13 +257,13 @@ def tool_retrieve_generation_materials(state: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(retrieval_context, dict):
         retrieval_context = {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}
     state["retrieval_context"] = retrieval_context
-    return {
+    return _with_status(state, {
         "tool": "retrieve_generation_materials",
         "success": bool(retrieval_context.get("success")),
         "result_count": int(retrieval_context.get("result_count") or len(retrieval_context.get("paragraphs") or [])),
         "retrieval_context": retrieval_context,
         "error": retrieval_context.get("error") or "",
-    }
+    })
 
 
 def tool_write_generation_draft(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -267,14 +289,14 @@ def tool_write_generation_draft(state: Dict[str, Any]) -> Dict[str, Any]:
             "write_generation_draft",
         ],
     }
-    return {
+    return _with_status(state, {
         "tool": "write_generation_draft",
         "success": True,
         "resource_type": resource_type,
         "draft": draft,
         "learning_brief": learning_brief,
         "planning_bundle": state["planning_bundle"],
-    }
+    })
 
 
 def tool_generate_resource_payload(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -293,46 +315,46 @@ def tool_generate_resource_payload(state: Dict[str, Any]) -> Dict[str, Any]:
         else:
             error_message = "resource content generation tool is required"
             state["generation_error"] = error_message
-            return {
+            return _with_status(state, {
                 "tool": "generate_resource_payload",
                 "success": False,
                 "resource_type": resource_type,
                 "error_code": RESOURCE_AGENT_ERROR_GENERATION_FAILED,
                 "error_message": error_message,
-            }
+            })
     except Exception as exc:
         state["generation_error"] = str(exc)
-        return {
+        return _with_status(state, {
             "tool": "generate_resource_payload",
             "success": False,
             "resource_type": resource_type,
             "error_code": RESOURCE_AGENT_ERROR_GENERATION_FAILED,
             "error_message": str(exc),
-        }
+        })
     if not isinstance(generated_content, dict):
         error_message = "generated resource payload must be a dict"
         state["generation_error"] = error_message
-        return {
+        return _with_status(state, {
             "tool": "generate_resource_payload",
             "success": False,
             "resource_type": resource_type,
             "error_code": RESOURCE_AGENT_ERROR_GENERATION_FAILED,
             "error_message": error_message,
-        }
+        })
     state["generated_content"] = generated_content
-    return {
+    return _with_status(state, {
         "tool": "generate_resource_payload",
         "success": True,
         "resource_type": resource_type,
         "content": generated_content,
-    }
+    })
 
 
 def tool_persist_generated_resource(state: Dict[str, Any]) -> Dict[str, Any]:
     _append_trace(state, "persist_generated_resource")
     existing_resource = state.get("persisted_resource")
     if isinstance(existing_resource, dict) and existing_resource.get("success") is True:
-        return {
+        return _with_status(state, {
             "tool": "persist_generated_resource",
             "success": bool(existing_resource.get("success")),
             "resource_type": existing_resource.get("resource_type") or state.get("resource_type") or "",
@@ -340,18 +362,18 @@ def tool_persist_generated_resource(state: Dict[str, Any]) -> Dict[str, Any]:
             "idempotent": True,
             "error_code": existing_resource.get("error_code") or "",
             "error_message": existing_resource.get("error_message") or "",
-        }
+        })
     request = state.get("request") if isinstance(state.get("request"), dict) else {}
     resource_type = _safe_text(state.get("resource_type") or request.get("resource_type"))
     generated_content = state.get("generated_content")
     if not isinstance(generated_content, dict):
-        return {
+        return _with_status(state, {
             "tool": "persist_generated_resource",
             "success": False,
             "resource_type": resource_type,
             "error_code": RESOURCE_AGENT_ERROR_PERSIST_FAILED,
             "error_message": "missing generated_content",
-        }
+        })
     try:
         from tasks.generative.resource_generation_agent import build_single_resource_payload
         from tasks.generative.resource_persistence import persist_generated_resource
@@ -362,19 +384,19 @@ def tool_persist_generated_resource(state: Dict[str, Any]) -> Dict[str, Any]:
         )
     except Exception as exc:
         state["persist_error"] = str(exc)
-        return {
+        return _with_status(state, {
             "tool": "persist_generated_resource",
             "success": False,
             "resource_type": resource_type,
             "error_code": RESOURCE_AGENT_ERROR_PERSIST_FAILED,
             "error_message": str(exc),
-        }
+        })
     state["persisted_resource"] = persisted
-    return {
+    return _with_status(state, {
         "tool": "persist_generated_resource",
         "success": bool(persisted.get("success")),
         "resource_type": resource_type,
         "resource": persisted,
         "error_code": persisted.get("error_code") or "",
         "error_message": persisted.get("error_message") or "",
-    }
+    })

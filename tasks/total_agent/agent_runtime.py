@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
+from uuid import uuid4
 from typing import Any, Dict
 
 from pydantic_ai import Agent, ModelRetry, RunContext
@@ -263,9 +264,13 @@ def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False) -> dict:
 
 
 def run_total_agent_agent(payload: Dict[str, Any]) -> dict:
+    payload = payload or {}
     state = {
-        "payload": payload or {},
+        "payload": payload,
         "tool_trace": [],
+        "tool_status_events": [],
+        "run_id": f"total_agent_run_{uuid4().hex[:12]}",
+        "status_callback": payload.get("status_callback") if isinstance(payload, dict) else None,
         "total_context": {},
         "intent": "",
         "terminal_tool_result": None,

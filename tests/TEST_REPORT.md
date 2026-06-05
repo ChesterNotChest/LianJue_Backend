@@ -30,7 +30,7 @@ python -m pytest -q
 ### 1.b 集成测试 1 - 用户画像
 
 ```bash
-RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py tests/test_profile_personal_syllabus_full_chain.py -m llm
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py tests/test_profile_personal_syllabus_full_chain.py -m llm --capture=tee-sys -rs
 ```
 
 ### 1.c 集成测试 2 - 资源生成
@@ -42,7 +42,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_
 ### 1.d 集成测试 3 - 学习成长树
 
 ```bash
-RUN_LLM_TESTS=1 python -m pytest -q tests/test_study_graph_agent_choice.py -m llm
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_study_graph_agent_choice.py -m llm --capture=tee-sys -rs
 ```
 
 ### 1.e 单元测试包 1 - 学习成长树
@@ -729,29 +729,29 @@ Total Agent 的默认单元验收命令和用例说明已归入 `1.l / 2.l`。�
 真实 LLM 工具选择 opt-in：
 
 ```bash
-RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py -m llm
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py -m llm --capture=tee-sys -rs
 ```
 
 真实 Profile Agent -> Total Agent 画像读取 opt-in：
 
 ```bash
-RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py::test_total_agent_reads_real_profile_agent_output_for_resource_strategy -m llm
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py::test_total_agent_reads_real_profile_agent_output_for_resource_strategy -m llm --capture=tee-sys -rs
 ```
 
 大型端到端 opt-in：
 
 ```bash
-RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" -rs
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
 ```
 
 可拆分复现：
 
 ```bash
-RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db -m "llm and search and mysql" -rs
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db -m "llm and search and mysql" --capture=tee-sys -rs
 ```
 
 ```bash
-RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph -m "llm and search and mysql" -rs
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph -m "llm and search and mysql" --capture=tee-sys -rs
 ```
 
 E2E amend 默认场景：
@@ -763,13 +763,13 @@ python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py -m "not llm 
 E2E amend 真实 Profile Agent 状态夹具 opt-in：
 
 ```bash
-RUN_LLM_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py::test_e2e_state_fixture_real_profile_agent_optional -m "llm and mysql"
+RUN_LLM_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_amend.py::test_e2e_state_fixture_real_profile_agent_optional -m "llm and mysql" --capture=tee-sys -rs
 ```
 
 E2E amend 深状态 + 全真实 Agents opt-in：
 
 ```bash
-RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_real_deep_state.py -m "llm and search and mysql" -rs
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e_real_deep_state.py -m "llm and search and mysql" --capture=tee-sys -rs
 ```
 
 最近一次阶段收口通过记录：

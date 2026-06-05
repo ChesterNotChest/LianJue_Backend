@@ -14,6 +14,7 @@ model/*
 
 *.pdf
 整体设计思路.md
+*.html
 build_syllabus_description.md
 EasyOcrOptionsSchema.json
 *.sql

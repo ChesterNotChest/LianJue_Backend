@@ -53,6 +53,15 @@ class StatusReporter:
         self.events.append(event)
         print(f"[total-agent-e2e] {agent}: {action}... {status}", flush=True)
 
+    def emit_event(self, event: dict) -> None:
+        if not isinstance(event, dict):
+            return
+        self.events.append(event)
+        agent = event.get("agent") or "agent"
+        stage = event.get("stage") or event.get("event_key") or "stage"
+        status = event.get("status") or "unknown"
+        print(f"[total-agent-e2e] {agent}: {stage}... {status}", flush=True)
+
 
 def _require_real_deep_state_env() -> None:
     missing = [
@@ -274,6 +283,7 @@ def test_total_agent_e2e_real_deep_state_all_agents(monkeypatch, db_real_deep_st
             "message": state.messages["follow_up"][0],
             "graph_name": graph_name,
             "rag_top_k": 5,
+            "status_callback": reporter.emit_event,
         }
     )
     reporter.emit(
@@ -318,6 +328,7 @@ def test_total_agent_e2e_real_deep_state_all_agents(monkeypatch, db_real_deep_st
             "status": prt.LEARNING_PLAN_STEP_STATUS_COMPLETED,
             "score": 0.86,
             "context": {"current_resource_id": generated_resource.get("resource_id")},
+            "status_callback": reporter.emit_event,
         }
     )
     reporter.emit(

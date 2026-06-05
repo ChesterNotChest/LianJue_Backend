@@ -3,9 +3,18 @@ from __future__ import annotations
 import re
 from copy import deepcopy
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Any, Dict, Iterable, List, Optional
 
 from tasks import personal_recommendation_task as prt
+from tasks.common.status_events import (
+    STATUS_FAILED,
+    STATUS_RUNNING,
+    STATUS_SUCCEEDED,
+    emit_status_event,
+    emit_status_pair,
+    get_status_events,
+)
 from tasks.generative_task import generate_resources_from_request
 from tasks.total_agent.agent_contracts import (
     ACTION_ASK_GOAL_CLARIFICATION,
@@ -47,6 +56,8 @@ from tasks.total_agent.agent_contracts import (
     TOTAL_AGENT_TOOL_ORDER,
 )
 
+TOTAL_AGENT_STATUS_AGENT = "total_agent"
+
 
 def _utc_timestamp() -> int:
     return int(datetime.now(timezone.utc).timestamp())
@@ -83,16 +94,40 @@ def _positive_int(value: Any) -> Optional[int]:
 
 
 def _append_trace(state: Dict[str, Any], tool_name: str) -> None:
+    state.setdefault("run_id", f"total_agent_run_{uuid4().hex[:12]}")
     trace = state.setdefault("tool_trace", [])
     if isinstance(trace, list):
         trace.append(tool_name)
+    emit_status_event(state, agent=TOTAL_AGENT_STATUS_AGENT, stage=tool_name, status=STATUS_RUNNING)
 
 
-def _tool_result(tool_name: str, success: bool = True, **payload: Any) -> dict:
+def _extend_status_events(target_state: Dict[str, Any], source_state_or_result: Any) -> None:
+    if not isinstance(target_state, dict) or not isinstance(source_state_or_result, dict):
+        return
+    events = get_status_events(source_state_or_result)
+    if not events:
+        return
+    target_events = target_state.setdefault("tool_status_events", [])
+    if isinstance(target_events, list):
+        target_events.extend(events)
+    else:
+        target_state["tool_status_events"] = list(events)
+
+
+def _tool_result(tool_name: str, success: bool = True, state: Optional[Dict[str, Any]] = None, **payload: Any) -> dict:
     result = {"tool": tool_name, "success": bool(success)}
     result.update(payload)
     result.setdefault("error_code", "" if success else "tool_failed")
     result.setdefault("error_message", "")
+    if state is not None:
+        emit_status_event(
+            state,
+            agent=TOTAL_AGENT_STATUS_AGENT,
+            stage=tool_name,
+            status=STATUS_SUCCEEDED if success else STATUS_FAILED,
+            message=result.get("error_message") or "",
+            payload={"error_code": result.get("error_code") or ""} if not success else {},
+        )
     return result
 
 
@@ -111,6 +146,7 @@ def build_total_agent_result(
         "schema_version": TOTAL_AGENT_SCHEMA_VERSION,
         "intent": _safe_text(intent),
         "tool_trace": list(state.get("tool_trace") or []),
+        "tool_status_events": get_status_events(state),
         "result": result or {},
         "suggested_next_action": _safe_text(suggested_next_action),
         "error_code": _safe_text(error_code),
@@ -364,7 +400,7 @@ def normalize_study_graph_state(features: dict | None) -> dict:
     }
 
 
-def load_profile_summary(payload: dict) -> dict:
+def load_profile_summary(payload: dict, status_state: Optional[Dict[str, Any]] = None) -> dict:
     user_id = _positive_int(_safe_dict(payload).get("user_id"))
     syllabus_id = _positive_int(_safe_dict(payload).get("syllabus_id"))
     if not user_id:
@@ -388,12 +424,23 @@ def load_profile_summary(payload: dict) -> dict:
 
     action = _safe_text(_safe_dict(payload).get("profile_read_action")) or PROFILE_READ_ACTION_USE_PERSISTED_ONLY
     warnings: list[str] = []
+    local_state: Dict[str, Any] = {
+        "run_id": _safe_dict(status_state).get("run_id") or _safe_dict(payload).get("run_id") or "",
+        "status_callback": _safe_dict(status_state).get("status_callback") or _safe_dict(payload).get("status_callback"),
+        "tool_status_events": [],
+    }
     try:
         from tasks import learning_profile_task
 
-        profile = learning_profile_task.get_persisted_learning_profile(user_id, syllabus_id)
+        profile = emit_status_pair(
+            local_state,
+            agent="profile_agent",
+            stage="load_context",
+            fn=lambda: learning_profile_task.get_persisted_learning_profile(user_id, syllabus_id),
+            payload={"user_id": user_id, "syllabus_id": syllabus_id},
+        )
         if isinstance(profile, dict) and profile:
-            return {
+            result = {
                 "success": True,
                 "source": PROFILE_SOURCE_PERSISTED,
                 "profile": profile,
@@ -401,18 +448,28 @@ def load_profile_summary(payload: dict) -> dict:
                 "error_code": "",
                 "error_message": "",
             }
+            result["tool_status_events"] = get_status_events(local_state)
+            if status_state is not None:
+                _extend_status_events(status_state, local_state)
+            return result
 
         warnings.append(PROFILE_WARNING_NOT_FOUND)
         if action == PROFILE_READ_ACTION_BUILD_IF_MISSING:
-            built = learning_profile_task.get_or_build_learning_profile(
-                user_id,
-                syllabus_id,
-                refresh_profile=False,
-                dialogue_text=_safe_dict(payload).get("message") or _safe_dict(payload).get("question"),
-                learning_goal=_safe_dict(payload).get("learning_goal"),
+            built = emit_status_pair(
+                local_state,
+                agent="profile_agent",
+                stage="assemble_profile",
+                fn=lambda: learning_profile_task.get_or_build_learning_profile(
+                    user_id,
+                    syllabus_id,
+                    refresh_profile=False,
+                    dialogue_text=_safe_dict(payload).get("message") or _safe_dict(payload).get("question"),
+                    learning_goal=_safe_dict(payload).get("learning_goal"),
+                ),
+                payload={"user_id": user_id, "syllabus_id": syllabus_id},
             )
             if isinstance(built, dict) and built:
-                return {
+                result = {
                     "success": True,
                     "source": PROFILE_SOURCE_BUILT,
                     "profile": built,
@@ -420,10 +477,14 @@ def load_profile_summary(payload: dict) -> dict:
                     "error_code": "",
                     "error_message": "",
                 }
+                result["tool_status_events"] = get_status_events(local_state)
+                if status_state is not None:
+                    _extend_status_events(status_state, local_state)
+                return result
         else:
             warnings.append(PROFILE_WARNING_BUILD_SKIPPED)
 
-        return {
+        result = {
             "success": False,
             "source": PROFILE_SOURCE_NONE,
             "profile": {},
@@ -431,8 +492,12 @@ def load_profile_summary(payload: dict) -> dict:
             "error_code": PROFILE_WARNING_NOT_FOUND,
             "error_message": "no persisted learning profile",
         }
+        result["tool_status_events"] = get_status_events(local_state)
+        if status_state is not None:
+            _extend_status_events(status_state, local_state)
+        return result
     except Exception as exc:
-        return {
+        result = {
             "success": False,
             "source": PROFILE_SOURCE_NONE,
             "profile": {},
@@ -440,12 +505,29 @@ def load_profile_summary(payload: dict) -> dict:
             "error_code": PROFILE_WARNING_READ_FAILED,
             "error_message": _safe_text(exc),
         }
+        result["tool_status_events"] = get_status_events(local_state)
+        if status_state is not None:
+            _extend_status_events(status_state, local_state)
+        return result
 
 
-def get_study_graph_features(user_id: int, syllabus_id: int) -> dict:
+def get_study_graph_features(user_id: int, syllabus_id: int, status_state: Optional[Dict[str, Any]] = None) -> dict:
     from tasks import study_graph_task
 
-    features = study_graph_task.get_learning_tree_features(user_id, syllabus_id)
+    local_state: Dict[str, Any] = {
+        "run_id": _safe_dict(status_state).get("run_id") or "",
+        "status_callback": _safe_dict(status_state).get("status_callback"),
+        "tool_status_events": [],
+    }
+    features = emit_status_pair(
+        local_state,
+        agent="study_graph",
+        stage="read_features",
+        fn=lambda: study_graph_task.get_learning_tree_features(user_id, syllabus_id),
+        payload={"user_id": user_id, "syllabus_id": syllabus_id},
+    )
+    if status_state is not None:
+        _extend_status_events(status_state, local_state)
     return features if isinstance(features, dict) else {}
 
 
@@ -528,6 +610,7 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
         result = _tool_result(
             TOOL_LOAD_TOTAL_CONTEXT,
             False,
+            state=state,
             error_code="missing_user_id",
             error_message="user_id must be a positive integer",
         )
@@ -548,7 +631,7 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
 
     next_task = _find_next_step(active_plan) or {}
     try:
-        profile_read = load_profile_summary(payload)
+        profile_read = load_profile_summary(payload, status_state=state)
         profile_summary = normalize_profile_summary(profile_read)
         for warning in _list_from_any(_safe_dict(profile_read).get("warnings")):
             text = _safe_text(warning)
@@ -561,7 +644,11 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
     study_graph_state = normalize_study_graph_state({})
     if user_id and syllabus_id:
         try:
-            study_graph_state = normalize_study_graph_state(get_study_graph_features(user_id, syllabus_id))
+            try:
+                graph_features = get_study_graph_features(user_id, syllabus_id, status_state=state)
+            except TypeError:
+                graph_features = get_study_graph_features(user_id, syllabus_id)
+            study_graph_state = normalize_study_graph_state(graph_features)
         except Exception as exc:
             warnings.append(f"study_graph_read_failed:{exc}")
             study_graph_state = normalize_study_graph_state({})
@@ -584,6 +671,7 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
     return _tool_result(
         TOOL_LOAD_TOTAL_CONTEXT,
         True,
+        state=state,
         user_id=user_id,
         syllabus_id=syllabus_id,
         active_plan=active_plan,
@@ -650,6 +738,7 @@ def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
     result = _tool_result(
         TOOL_INFER_USER_INTENT,
         True,
+        state=state,
         intent=intent,
         confidence=confidence,
         reason=reason,
@@ -670,6 +759,7 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_RUN_LEARNING_RECOMMENDATION,
             False,
+            state=state,
             error_code="missing_user_id",
             error_message="user_id must be a positive integer",
         )
@@ -682,7 +772,13 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
         if not isinstance(goals, list) or not goals:
             goal_text = _safe_text(payload.get("learning_goal") or payload.get("message") or payload.get("question"))
             payload["goals"] = [goal_text] if goal_text else []
-        recommendation = prt.run_recommendation_route_from_payload(payload)
+        recommendation = emit_status_pair(
+            state,
+            agent="recommendation_agent",
+            stage="rank_path",
+            fn=lambda: prt.run_recommendation_route_from_payload(payload),
+            payload={"user_id": user_id, "syllabus_id": payload.get("syllabus_id")},
+        )
 
     state["recommendation_result"] = recommendation
     has_best_path = bool(_safe_dict(recommendation).get("best_path"))
@@ -690,6 +786,7 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
     return _tool_result(
         TOOL_RUN_LEARNING_RECOMMENDATION,
         bool(_safe_dict(recommendation).get("success", True)),
+        state=state,
         recommendation=recommendation,
         has_best_path=has_best_path,
         suggested_next_action=suggested,
@@ -721,6 +818,7 @@ def tool_normalize_learning_goal_for_recommendation(state: Dict[str, Any]) -> di
         result = _tool_result(
             TOOL_NORMALIZE_LEARNING_GOAL,
             True,
+            state=state,
             normalized_goals=[item for item in normalized_goals if item],
             selected_nodes=[_safe_text(node.get("id") or node.get("title")) for node in selected],
             confidence=min(0.95, 0.55 + 0.12 * scored[0][0]),
@@ -731,6 +829,7 @@ def tool_normalize_learning_goal_for_recommendation(state: Dict[str, Any]) -> di
         result = _tool_result(
             TOOL_NORMALIZE_LEARNING_GOAL,
             True,
+            state=state,
             normalized_goals=[],
             selected_nodes=[],
             confidence=0.0,
@@ -750,6 +849,7 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_ACCEPT_LEARNING_PLAN,
             False,
+            state=state,
             error_code="missing_user_id",
             error_message="user_id must be a positive integer",
         )
@@ -757,6 +857,7 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_ACCEPT_LEARNING_PLAN,
             True,
+            state=state,
             accepted=False,
             plan={},
             next_task={},
@@ -769,6 +870,7 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_ACCEPT_LEARNING_PLAN,
             False,
+            state=state,
             error_code="missing_recommendation_result",
             error_message="recommendation_result is required to accept a learning plan",
         )
@@ -783,6 +885,7 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_ACCEPT_LEARNING_PLAN,
             False,
+            state=state,
             accept_result=accept_result,
             error_code=_safe_text(accept_result.get("error_code") or "accept_learning_plan_failed"),
             error_message=_safe_text(accept_result.get("error_message")),
@@ -794,6 +897,7 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
     return _tool_result(
         TOOL_ACCEPT_LEARNING_PLAN,
         True,
+        state=state,
         accepted=True,
         auto_accept=bool(payload.get("auto_accept") is True),
         accept_result=accept_result,
@@ -817,6 +921,7 @@ def tool_get_next_learning_task(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_GET_NEXT_LEARNING_TASK,
             False,
+            state=state,
             plan={},
             next_task={},
             metrics={},
@@ -829,6 +934,7 @@ def tool_get_next_learning_task(state: Dict[str, Any]) -> dict:
     return _tool_result(
         TOOL_GET_NEXT_LEARNING_TASK,
         bool(next_task),
+        state=state,
         plan={"plan_id": plan.get("plan_id"), "status": plan.get("status")},
         next_task=next_task,
         metrics=_plan_metrics(plan),
@@ -885,6 +991,7 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
         return _tool_result(
             TOOL_GENERATE_CURRENT_STEP_RESOURCE,
             False,
+            state=state,
             next_task={},
             resources=[],
             error_code="no_next_task",
@@ -895,13 +1002,19 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
     resource_strategy = build_current_step_resource_strategy(state)
     state["resource_strategy"] = resource_strategy
     request_payload = _build_resource_request(state, next_task, resource_strategy)
+    request_payload["run_id"] = state.get("run_id") or ""
+    request_payload["status_callback"] = state.get("status_callback")
     generation_result = generate_resources_from_request(request_payload)
+    request_payload.pop("status_callback", None)
+    if isinstance(generation_result, dict):
+        _extend_status_events(state, generation_result)
     resources = _normalize_resources(_safe_dict(generation_result))
     state["resource_generation_request"] = request_payload
     state["resource_generation_result"] = generation_result
     return _tool_result(
         TOOL_GENERATE_CURRENT_STEP_RESOURCE,
         bool(_safe_dict(generation_result).get("success", True)),
+        state=state,
         next_task=next_task,
         resource_strategy=resource_strategy,
         request=request_payload,
@@ -962,6 +1075,7 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
         return _tool_result(
             tool_name,
             False,
+            state=state,
             error_code="missing_user_id",
             error_message="user_id must be a positive integer",
         )
@@ -970,6 +1084,7 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
         return _tool_result(
             tool_name,
             False,
+            state=state,
             error_code="no_active_plan",
             error_message="no active learning plan",
         )
@@ -979,6 +1094,7 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
         return _tool_result(
             tool_name,
             False,
+            state=state,
             error_code="no_target_step",
             error_message="no step to update",
         )
@@ -1004,6 +1120,7 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
     return _tool_result(
         tool_name,
         True,
+        state=state,
         event_entry=event_entry,
         updated_step=updated_step,
         activated_step=activated_step,
@@ -1031,7 +1148,14 @@ def tool_skip_current_step(state: Dict[str, Any]) -> dict:
 
 
 def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
-    state: Dict[str, Any] = {"payload": payload or {}, "tool_trace": []}
+    payload = payload or {}
+    state: Dict[str, Any] = {
+        "payload": payload,
+        "tool_trace": [],
+        "tool_status_events": [],
+        "run_id": f"total_agent_run_{uuid4().hex[:12]}",
+        "status_callback": payload.get("status_callback") if isinstance(payload, dict) else None,
+    }
     context_result = tool_load_total_context(state)
     if not context_result.get("success"):
         return build_total_agent_result(
@@ -1063,7 +1187,13 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
             if suggested_next_action == ACTION_RETRY_RECOMMENDATION:
                 retry_payload = dict(payload or {})
                 retry_payload["goals"] = normalization.get("normalized_goals") or retry_payload.get("goals") or []
-                retry_state = {"payload": retry_payload, "tool_trace": state["tool_trace"]}
+                retry_state = {
+                    "payload": retry_payload,
+                    "tool_trace": state["tool_trace"],
+                    "tool_status_events": state.setdefault("tool_status_events", []),
+                    "run_id": state.get("run_id"),
+                    "status_callback": state.get("status_callback"),
+                }
                 retry = tool_run_learning_recommendation(retry_state)
                 state.update({key: value for key, value in retry_state.items() if key != "payload"})
                 final_result["recommendation_retry"] = retry

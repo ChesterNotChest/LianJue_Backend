@@ -236,6 +236,7 @@ def normalize_generation_request(payload: dict) -> dict:
         "profile_snapshot": payload.get("profile_snapshot") if isinstance(payload.get("profile_snapshot"), dict) else {},
         "retrieval_context": retrieval_context,
         "generation_requirements": payload.get("generation_requirements") if isinstance(payload.get("generation_requirements"), dict) else {},
+        "run_id": payload.get("run_id") or "",
     }
     if not normalized["knowledge_items"]:
         normalized["knowledge_items"] = normalized["weak_points"][:]
@@ -245,6 +246,7 @@ def normalize_generation_request(payload: dict) -> dict:
 def build_single_resource_payload(request_payload: dict, resource_type: str) -> dict:
     normalized_type = _normalize_resource_type(resource_type)
     payload = dict(request_payload)
+    payload.pop("status_callback", None)
     payload["resource_type"] = normalized_type
     if normalized_type == "mindmap" and not payload.get("knowledge_items"):
         payload["knowledge_items"] = payload.get("weak_points") or [payload["topic"]]
@@ -819,6 +821,7 @@ def generate_single_resource_from_request(
     generation_agent: Any = None,
     planning_agent: Any = None,
 ) -> dict:
+    status_callback = request_payload.get("status_callback") if isinstance(request_payload, dict) else None
     normalized_request = normalize_generation_request(request_payload)
     if generation_agent is None:
         from tasks.generative.resource_agent_runtime import run_single_resource_generation_agent
@@ -828,12 +831,14 @@ def generate_single_resource_from_request(
             normalized_request,
             resource_type,
             planning_agent=planner,
+            status_callback=status_callback,
         )
         if agent_result.resource:
             persisted = dict(agent_result.resource)
             planning_bundle = agent_result.planning_bundle if isinstance(agent_result.planning_bundle, dict) else {}
             persisted["planning_trace"] = planning_bundle.get("tool_trace") or []
             persisted["tool_trace"] = agent_result.tool_trace[:]
+            persisted["tool_status_events"] = list(agent_result.tool_status_events or [])
             return persisted
         failed = _build_failed_resource_result(
             resource_type,
@@ -842,12 +847,13 @@ def generate_single_resource_from_request(
             planning_trace=[],
         )
         failed["tool_trace"] = agent_result.tool_trace[:]
+        failed["tool_status_events"] = list(agent_result.tool_status_events or [])
         return failed
 
     agent = generation_agent or LLMResourceGenerationAgent()
     planner = planning_agent or planning_task.get_resource_planning_agent()
 
-    state = {"request": normalized_request, "tool_trace": [], "planning_results": {}}
+    state = {"request": normalized_request, "tool_trace": [], "tool_status_events": [], "planning_results": {}}
     planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
     from tasks.generative.resource_agent_tools import _compact_planning_bundle_for_generation
 
@@ -869,10 +875,11 @@ def run_resource_generation_agent(
     generation_agent: Any = None,
     planning_agent: Any = None,
 ) -> dict:
+    status_callback = request_payload.get("status_callback") if isinstance(request_payload, dict) else None
     normalized_request = normalize_generation_request(request_payload)
     planner = planning_agent or planning_task.get_resource_planning_agent()
 
-    state = {"request": normalized_request, "tool_trace": [], "planning_results": {}}
+    state = {"request": normalized_request, "tool_trace": [], "tool_status_events": [], "planning_results": {}}
     resources = []
     for resource_type in normalized_request["resource_types"]:
         planning_trace: List[str] = []
@@ -884,6 +891,7 @@ def run_resource_generation_agent(
                     normalized_request,
                     resource_type,
                     planning_agent=planner,
+                    status_callback=status_callback,
                 )
                 planning_bundle = agent_result.planning_bundle if isinstance(agent_result.planning_bundle, dict) else {}
                 planning_trace = planning_bundle.get("tool_trace") or []
@@ -891,7 +899,9 @@ def run_resource_generation_agent(
                     raise RuntimeError(agent_result.error_message or "resource generation agent did not persist a resource")
                 persisted = dict(agent_result.resource)
                 persisted["tool_trace"] = agent_result.tool_trace[:]
+                persisted["tool_status_events"] = list(agent_result.tool_status_events or [])
                 state["tool_trace"].extend(agent_result.tool_trace)
+                state["tool_status_events"].extend(agent_result.tool_status_events or [])
             else:
                 planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
                 planning_trace = planning_bundle.get("tool_trace") or []
@@ -927,6 +937,7 @@ def run_resource_generation_agent(
         "success_count": success_count,
         "failed_count": failed_count,
         "tool_trace": state["tool_trace"],
+        "tool_status_events": state.get("tool_status_events") or [],
         "error_message": "" if failed_count == 0 else f"{failed_count} resource(s) failed",
         "error_code": "" if failed_count == 0 else "partial_failure",
     }
