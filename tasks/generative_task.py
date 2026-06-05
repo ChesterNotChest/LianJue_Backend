@@ -42,9 +42,18 @@ from tasks.generative.resource_persistence import (
 # 生成 Agent 实现：门面保留可 monkeypatch 的兼容 wrapper，真实逻辑在包内。
 from tasks.generative import resource_generation_agent as _generation_impl
 from tasks.generative.resource_generation_agent import (
-    LLMResourceGenerationAgent as _BaseLLMResourceGenerationAgent,
+    LLMResourceGenerationAgent,
     build_single_resource_payload,
     normalize_generation_request,
+)
+from tasks.generative.resource_agent_contracts import (
+    RESOURCE_AGENT_SCHEMA_VERSION,
+    RESOURCE_GENERATION_TOOL_ORDER,
+    ResourceGenerationAgentResult,
+)
+from tasks.generative.resource_agent_runtime import (
+    build_resource_generation_agent,
+    run_single_resource_generation_agent as _run_single_resource_generation_agent,
 )
 
 ################
@@ -87,15 +96,15 @@ from tasks.generative.validation import (
 )
 
 
-LITELLM_MODEL_CONFIGS = _generation_impl.LITELLM_MODEL_CONFIGS
+_TaskLLMResourceGenerationAgent = LLMResourceGenerationAgent
 
 
-class LLMResourceGenerationAgent(_BaseLLMResourceGenerationAgent):
-    """Compatibility wrapper preserving task-level monkeypatch points."""
-
-    def __init__(self, model=None) -> None:
-        _generation_impl.LITELLM_MODEL_CONFIGS = LITELLM_MODEL_CONFIGS
-        super().__init__(model=model)
+def _resolve_generation_agent_for_impl(generation_agent=None):
+    if generation_agent is not None:
+        return generation_agent
+    if LLMResourceGenerationAgent is not _TaskLLMResourceGenerationAgent:
+        return LLMResourceGenerationAgent()
+    return None
 
 
 def generate_single_resource_from_request(
@@ -108,7 +117,7 @@ def generate_single_resource_from_request(
     return _generation_impl.generate_single_resource_from_request(
         request_payload,
         resource_type,
-        generation_agent=generation_agent or LLMResourceGenerationAgent(),
+        generation_agent=_resolve_generation_agent_for_impl(generation_agent),
         planning_agent=planning_agent or get_resource_planning_agent(),
     )
 
@@ -121,7 +130,7 @@ def run_resource_generation_agent(
 ) -> dict:
     return _generation_impl.run_resource_generation_agent(
         request_payload,
-        generation_agent=generation_agent or LLMResourceGenerationAgent(),
+        generation_agent=_resolve_generation_agent_for_impl(generation_agent),
         planning_agent=planning_agent or get_resource_planning_agent(),
     )
 
@@ -295,9 +304,11 @@ __all__ = [
     "GENERATIVE_PPT_SCHEMA_VERSION",
     "GENERATIVE_QUIZ_SCHEMA_VERSION",
     "GENERATIVE_RESOURCE_TYPES",
-    "LITELLM_MODEL_CONFIGS",
     "LLMResourceGenerationAgent",
     "MINDMAP_ALLOWED_DIAGRAM_PREFIXES",
+    "RESOURCE_AGENT_SCHEMA_VERSION",
+    "RESOURCE_GENERATION_TOOL_ORDER",
+    "ResourceGenerationAgentResult",
     "ResourcePlanningAgent",
     "_get_backend_root",
     "_get_generative_root",
@@ -311,6 +322,7 @@ __all__ = [
     "_write_json",
     "_write_text",
     "append_manifest_entry",
+    "build_resource_generation_agent",
     "build_single_resource_payload",
     "ensure_generative_workspace",
     "generate_coding_practice",
@@ -340,6 +352,7 @@ __all__ = [
     "read_json",
     "repo_relative_path",
     "run_resource_generation_agent",
+    "_run_single_resource_generation_agent",
     "run_resource_planning_agent",
     "save_manifest",
     "strip_mermaid_fence",

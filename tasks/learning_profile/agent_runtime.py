@@ -1,16 +1,15 @@
 ﻿from __future__ import annotations
 
 import json
-import os
 from functools import lru_cache
 from typing import Any, Dict
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
 from tasks.learning_profile import alignment
+from tasks.common.agent_model import build_openai_compatible_model
 from tasks.learning_profile.models import LearningProfileDeps, LearningProfileResult
 from tasks.learning_profile.agent_tools import (
     _tool_assemble_profile,
@@ -25,14 +24,7 @@ from tasks.learning_profile.agent_tools import (
 )
 
 def _build_learning_profile_model() -> OpenAIModel:
-	text_config = OPENAI_COMPAT_MODEL_CONFIGS.get('text') or {}
-	model_name = alignment.safe_text(text_config.get('model_name') or text_config.get('name'))
-	if not model_name:
-		raise RuntimeError('missing MODEL_CONFIGS["text"]["model_name"] for learning profile agent')
-	base_url = alignment.safe_text(text_config.get('api_base') or text_config.get('base_url')) or None
-	api_key = alignment.safe_text(text_config.get('api_key')) or os.getenv('OPENAI_API_KEY')
-	provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-	return OpenAIModel(model_name, provider=provider)
+	return build_openai_compatible_model(agent_name="learning profile agent")
 
 
 @lru_cache(maxsize=1)
@@ -90,6 +82,26 @@ def get_learning_profile_agent() -> Agent:
 	@agent.tool(sequential=True)
 	def save_or_update_profile(ctx: RunContext[LearningProfileDeps]) -> dict:
 		return _tool_save_or_update_profile(ctx.deps.state)
+
+	@agent.output_validator
+	def require_profile_ready(
+		ctx: RunContext[LearningProfileDeps],
+		output: LearningProfileResult,
+	) -> LearningProfileResult:
+		state = ctx.deps.state
+		if not isinstance(state.get('profile'), dict):
+			raise ModelRetry(
+				'You must call normalize_events, compute_features, and assemble_profile before final output. '
+				'The state does not contain a profile yet.'
+			)
+		if state.get('syllabus_id') is not None and not state.get('profile_saved'):
+			raise ModelRetry(
+				'You must call save_or_update_profile before final output when syllabus_id is present. '
+				'The profile has not been persisted yet.'
+			)
+		if not isinstance(output.profile, dict):
+			output.profile = state['profile']
+		return output
 
 	return agent
 

@@ -2,6 +2,16 @@
 
 本文档描述当前学习画像模块的最终实现边界。目标是说明输入输出契约、内部核心逻辑、测试构造和持久化内容，便于后续接入总 Agent、前端接口或维护个人教学大纲。
 
+## 当前同步状态
+
+学习画像模块当前负责构建、读取和持久化 profile；Total Agent 默认只读取 persisted profile。只有 payload 显式 `profile_read_action="build_if_missing"` 或 opt-in E2E 明确需要时，Total Agent 才允许调用 `get_or_build_learning_profile` 构建缺失画像。
+
+Total Agent 消费画像时不会要求 profile 原生提供 `documents / quiz / mindmap` 等资源类型字段，而是通过 `normalize_profile_summary` 把 `resource_preference`、`concept_gaps`、`bottleneck_topics`、`knowledge_mastery.knowledge_point_details` 等真实画像字段归一为调度摘要：`learning_goal`、`weak_points`、`preferred_formats`、`risk_level`、`time_budget` 和 `profile_source`。
+
+即时答疑不会把 profile weak points 直接塞进回答。Total Agent 会按 question、active step、outcomes、study graph weak nodes 和 session topic hints 做相关性过滤；无关长句型弱点只进入 `filtered_weak_points`，不进入 `answer.text`。
+
+真实 Profile Agent -> Total Agent 的窄集成和全真实 E2E 当前统一通过 `tests/total_agent/test_total_agent_e2e.py` 或 `tests/test_total_agent_agent_choice.py` 回归；旧拆分 E2E 文件不再作为入口。
+
 ## 0. 新增的常量定义
 
 路径常量位于 `constant.py`：
@@ -49,6 +59,9 @@
 - `tasks/learning_profile/models.py`
   - `LearningProfileDeps`
   - `LearningProfileResult`
+- `tasks/common/agent_model.py`
+  - 统一构造 OpenAI-compatible pydantic-ai 模型。
+  - 处理 DashScope Qwen/QwQ/DeepSeek thinking 与 tool calling 的兼容参数。
 - `tasks/learning_profile/__init__.py`
   - 仅作为包说明，不作为外部业务入口。
 - `repositories/user_syllabus_repo.py`

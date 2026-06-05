@@ -30,19 +30,19 @@ python -m pytest -q
 ### 1.b 集成测试 1 - 用户画像
 
 ```bash
-RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py tests/test_profile_personal_syllabus_full_chain.py -m llm
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_learning_profile_agent_choice.py tests/test_profile_personal_syllabus_full_chain.py -m llm --capture=tee-sys -rs
 ```
 
 ### 1.c 集成测试 2 - 资源生成
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_generative_resource_agent_integration.py -m "llm and search" -rs
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 RUN_LLM_TESTS=1 RUN_SEARCH_TESTS=1 SEARCH_TOOL_GRAPH_NAME=RAG python -m pytest -p no:debugging -q tests/test_generative_resource_agent_integration.py -m "llm and search" --capture=tee-sys -rs
 ```
 
 ### 1.d 集成测试 3 - 学习成长树
 
 ```bash
-RUN_LLM_TESTS=1 python -m pytest -q tests/test_study_graph_agent_choice.py -m llm
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_study_graph_agent_choice.py -m llm --capture=tee-sys -rs
 ```
 
 ### 1.e 单元测试包 1 - 学习成长树
@@ -90,19 +90,36 @@ python -m pytest -q tests/test_job_checker_startup_graph_sync.py
 ### 1.j 单元测试包 7 - 个人推荐路径
 
 ```bash
-python -m pytest -q tests/test_personal_recommendation_task.py tests/test_personal_recommendation_api.py tests/test_personal_recommendation_agent_choice.py -m "not llm"
+python -m pytest -q tests/test_personal_recommendation_task.py tests/test_personal_recommendation_api.py tests/test_personal_recommendation_agent_choice.py
 ```
 
-### 1.k 集成测试 3 - 个人推荐路径 Agent
+### 1.l 单元测试包 8 - Total Agent
+
+```bash
+python -m pytest -q tests/test_total_agent_task.py tests/total_agent/test_process_contract.py
+```
+
+### 1.k 集成测试 3 - 个人推荐路径 Agent 产物
 
 ```bash
 RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
 ```
 
-可选真实 RAG 评估：
+全量 LLM + RAG 功能验证：
 
 ```bash
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
+```
+
+每周知识点 Agent 破拆真实 LLM + RAG 验证：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py::test_period_concept_decomposer_real_llm_rag_optional -m llm
+```
+
+调试 Agent proposal / RAG evidence 时可额外打开：
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1 PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG python -m pytest -q tests/test_personal_recommendation_agent_choice.py::test_period_concept_decomposer_real_llm_rag_optional -m llm
 ```
 
 可选环境变量：
@@ -113,6 +130,10 @@ PERSONAL_RECOMMENDATION_RAG_QUERY=<query>
 PERSONAL_RECOMMENDATION_RAG_TOP_K=5
 PERSONAL_RECOMMENDATION_ROUTE_K=10
 PERSONAL_RECOMMENDATION_BEAM_WIDTH=8
+PERSONAL_RECOMMENDATION_USE_AGENT_DECOMPOSER=1
+PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
+PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG
+PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K=5
 ```
 
 ## 2 用例描述
@@ -216,7 +237,7 @@ markers =
 集成边界：
 
 - `generative_task` 是本链路唯一模块间入口，接收总 Agent 传入的资源生成 payload。
-- `tasks.generative.resource_generation_agent` 是资源生成 Agent 内部实现，负责调用编排 Agent 并生成 typed resource JSON。
+- `tasks.generative.resource_generation_agent` 是资源生成 Agent 内部实现，负责调用编排 Agent，并通过 OpenAI-compatible/pydantic-ai 内容 Agent 生成 typed resource JSON；资源内容生成链路不再调用 LiteLLM，也不保留 LiteLLM fallback。
 - `tasks.generative.resource_planning_agent` 是资源编排 Agent 内部实现，负责读取/生成 plan、检索材料、整理 draft，作为资源生成 Agent 的工具层依赖。
 - `search_tool` 必须由资源编排 Agent 根据 payload 自行调用，测试不允许外部预先指定检索 query。
 - `tasks.generative.resource_persistence` 负责确定性的校验、渲染、落盘和 manifest 写入。
@@ -250,8 +271,6 @@ markers =
   "weak_points": ["RowKey 热点", "预分区策略"],
   "knowledge_items": ["RowKey 热点", "预分区策略"],
   "generation_requirements": {
-    "model_tier": "cheap",
-    "ppt_model_tier": "standard",
     "slide_count_target": 8,
     "theme": "academic-rich",
     "style": "study-review"
@@ -260,6 +279,8 @@ markers =
 ```
 
 该 payload 模拟总 Agent 已经根据用户画像、教学大纲和当前学习意图完成调度决策，并把一组资源生成任务交给 `generative_task`。资源生成 Agent 不接收外部指定的检索 query；检索由资源编排 Agent 根据 question、topic、knowledge_items、weak_points 和 resource_type 自行组织 query 并调用公共 `search_tool`。
+
+RAG token 优化边界：资源编排 Agent 负责检索和 draft；`generate_resource_payload` 在调用内容 Agent 前会把完整 `planning_bundle` 压缩为 compact generation bundle，只保留 `learning_brief`、短证据摘要、必要 plan/draft 字段和工具轨迹。该压缩在真实 runtime 和测试注入 generation agent 的链路中都必须生效，避免把长检索原文直接传给内容 Agent。
 
 测试输出按成功和失败分开看：
 
@@ -316,7 +337,7 @@ payload[]
       -> retrieve_generation_materials
       -> read/write_generation_draft
       -> search_tool 查询 RAG 图
-  -> LLMResourceGenerationAgent 生成 typed resource JSON
+  -> OpenAI-compatible Resource Content Agent 生成 typed resource JSON
   -> tasks.generative.resource_persistence
       -> validation / renderers / storage
       -> 写 manifest，ppt 额外导出 `.pptx`
@@ -571,6 +592,70 @@ tests/artifacts/personal_recommendation/mock_rag_route_graph_closure/route_resul
 
 该产物保留 mock RAG 输入、工具返回、推荐摘要和完整 `recommendation` 结果，可直接检查前端推荐图的数据质量。
 
+### 2.l 单元测试包 8 - Total Agent
+
+目标：验证正式 `tasks.total_agent_task` 的 deterministic 调度、learning plan 状态机、上下文继承和资源生成请求边界；同时保留 `tests/total_agent` 前置闭环契约作为回归基线。该单元测试包不访问真实 LLM/RAG/DB。
+
+覆盖文件：
+
+- `tests/test_total_agent_task.py`
+- `tests/total_agent/test_process_contract.py`
+
+默认链路：
+
+```text
+recommendation_result fixture
+  -> wait_user_acceptance
+  -> explicit confirmation / auto_accept=true
+  -> accept learning_plan
+  -> continue current step
+  -> generate current step resource request
+  -> record feedback
+  -> activate next step
+```
+
+覆盖范围：
+
+- 推荐成功后只返回候选和 `wait_user_acceptance`，不隐式创建 plan。
+- 用户确认或 `auto_accept=true` 时才执行 `accept_learning_plan`。
+- 已有 active plan 时，“继续学习”走 history-driven 当前 step，不重新随机推荐。
+- 反馈完成或跳过当前 step 后激活下一个 pending step。
+- `load_total_context` 读取 active plan、next task、持久化画像摘要和学习成长树摘要；读取失败只返回 warning，不伪造画像。
+- `generate_current_step_resource` 先构建 `resource_strategy`，再调用资源生成入口；单元测试通过 monkeypatch 隔离真实资源生成。
+
+测试侧前置闭环：
+
+```text
+fixed recommendation_result fixture
+  -> accept learning_plan
+  -> record first step completed
+  -> get next task
+
+run_recommendation_route_from_payload
+  -> accept learning_plan
+  -> record first step completed
+  -> get next task
+
+multi-turn deterministic router
+  -> recommend / continue / completed / skip
+  -> preserve active_plan_id and current step state
+```
+
+mock profile / mock study graph / mock resource result 只存在于测试侧契约和 monkeypatch 中。正式 `tasks/total_agent` 链路通过 `learning_profile_task` 读取真实持久化画像；读取失败只返回空 `profile_summary` 和 warning，不在 runtime 内伪造 profile。资源生成测试通过 monkeypatch `generate_resources_from_request` 完成，不通过 payload 注入 mock result。
+
+测试产物：
+
+```text
+tests/artifacts/total_agent/total_agent_deterministic_result.json
+tests/artifacts/total_agent/total_agent_persisted_profile_read_result.json
+tests/artifacts/total_agent/total_agent_profile_strategy_result.json
+tests/artifacts/total_agent/process_contract/
+```
+
+`total_agent_deterministic_result.json` 同时保留两种对照场景：无持久化画像时 `profile_source=none`，以及测试侧通过 `learning_profile_task` 注入持久化画像时 `profile_source=persisted_profile`。后者应能看到资源策略从默认 `documents` 变为 `documents + quiz`，并把 `difficulty` 标记为 `targeted`。
+
+`total_agent_persisted_profile_read_result.json` 验证画像存储层保存后的 profile 能通过正式 `load_profile_summary -> get_persisted_learning_profile` 读取回来，属于单元级持久化边界检查，不调用真实 Profile Agent。
+
 ### 2.k 集成测试 3 - 个人推荐路径 Agent
 
 目标：验证 `personal_recommendation_task.run_personal_recommendation_agent` 背后的真实 LLM 工具选择能力。该测试模拟总 Agent 传入的推荐 payload，mock RAG/多路检索结果，并使用固定 profile/tree fixture 跑真实推荐算法链路，重点验证路径推荐 Agent 会自行调度工具并完成推荐闭环。
@@ -586,24 +671,26 @@ tests/artifacts/personal_recommendation/mock_rag_route_graph_closure/route_resul
   - `load_request_context`
   - `search_recommendation_context`
   - `run_recommendation_route`
-- `search_recommendation_context` 是 Agent 工具层能力，测试中用 mock 结果替代真实 KnowLion 检索。
+- `test_personal_recommendation_agent_selects_expected_tools` 使用真实 LLM 和 mock RAG，验证 Agent 工具选择稳定性。
+- `test_personal_recommendation_agent_real_rag_optional` 使用真实 LLM 和真实 RAG，验证真实检索上下文能进入推荐闭环。
+- `test_personal_recommendation_mock_agent_accepts_learning_plan` 使用 mock 工具链，默认验证推荐路径可被 accept 并写入 `manifest.jsonl`。
 - `run_recommendation_route` 是剪枝、评分和路径选择工具，测试中使用固定 profile/tree fixture 跑真实推荐算法。
 - 输出包含 `graph`、`rag_overlay`、`candidates`、`selected` 和 `best_path`。
 
-该测试默认不进入 CI。只有设置 `RUN_LLM_TESTS=1` 时才运行。默认 LLM 用例使用 mock RAG，保证 Agent 工具选择测试稳定。
-
-可选真实 RAG 用例 `test_personal_recommendation_agent_real_rag_optional` 需要额外设置 `RUN_REAL_RAG_TESTS=1`，用于人工评估真实知识库检索质量。该用例仍使用固定 profile/tree fixture，避免真实 RAG 质量评估和推荐算法输入波动混在一起。
+个人推荐 Agent 默认回归只运行 mock 集成链路：流程包含工具编排、推荐生成、路径 accept 和 `manifest.jsonl` 写入，但不访问真实 LLM / RAG。真实 LLM 工具选择测试仍通过 `RUN_LLM_TESTS=1` 手动开启；真实 LLM + RAG 全量功能验证仍通过 `RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1` 手动开启。
 
 测试层面默认图名为 `RAG`，与资源生成 Agent 的真实检索集成测试保持一致；`PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME` 只用于临时覆盖。
 
 测试产物：
 
 ```text
+tests/artifacts/personal_recommendation/mock_agent_learning_plan/mock_agent_learning_plan_result.json
+tests/artifacts/personal_recommendation/mock_agent_learning_plan/learning_plan/user_12345/syllabus_20/manifest.jsonl
 tests/artifacts/personal_recommendation/agent_choice/agent_choice_result.json
 tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_rag_result.json
 ```
 
-该产物保留总 Agent 模拟 payload、真实 LLM 工具调用顺序、每个工具返回、推荐摘要和最终 `PersonalRecommendationResult`。
+该产物保留总 Agent 模拟 payload、工具调用顺序、每个工具返回、推荐摘要、最终 `PersonalRecommendationResult`，以及 mock accept 链路的学习计划 manifest。
 
 ## 3 生成文件说明
 
@@ -634,3 +721,146 @@ print(tmp_path)
 - `schedule/syllabus/*.json`
 
 测试结束后只删除本次测试新增的 JSON 文件，不会删除已有缓存或历史文件。
+
+## 5 Total Agent
+
+Total Agent 的默认单元验收命令和用例说明已归入 `1.l / 2.l`。本节只保留可人工检查的探究产物和 opt-in 入口，避免和单元测试包重复。
+
+真实 LLM 工具选择 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py -m llm --capture=tee-sys -rs
+```
+
+真实 Profile Agent -> Total Agent 画像读取 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 python -m pytest -q tests/test_total_agent_agent_choice.py::test_total_agent_reads_real_profile_agent_output_for_resource_strategy -m llm --capture=tee-sys -rs
+```
+
+Total Agent E2E 统一主入口：
+
+```bash
+python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "not llm and not mysql and not search" --capture=tee-sys -rs
+```
+
+统一入口职责并集：
+
+- 默认 deep-state fixture E2E：深画像、学习记录树、active plan、当前资源、资源策略、即时答疑、反馈推进和 clarification。
+- 真实 Profile Agent 状态夹具 opt-in。
+- 大型端到端 opt-in：真实 DB、Profile Agent、Recommendation Agent/RAG、Resource Agent、study graph sync。
+- 深状态 + 全真实 Agents opt-in。
+- 深状态 + 真实 RAG 即时答疑 opt-in。
+
+统一大型 opt-in：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+可拆分复现：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+```bash
+RUN_LLM_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_e2e_state_fixture_real_profile_agent_optional -m "llm and mysql" --capture=tee-sys -rs
+```
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_e2e_real_deep_state_all_agents -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py::test_total_agent_e2e_real_deep_state_answer_learning_question -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+说明：`tests/total_agent/e2e_cases_*.py` 只承载场景实现，不作为用户/CI 回归入口；不保留旧 E2E 入口回退。
+
+最近一次阶段收口通过记录：
+
+```text
+模型：config.json / MODEL_CONFIGS.text = openai/qwen3.5-27b
+结果：1 passed
+用户：user_id=76
+课程：syllabus_id=29
+continue intent：generate_current_step_resource
+feedback intent：record_learning_feedback
+资源策略：profile_source=persisted_profile, resource_types=[documents, quiz, mindmap], difficulty=targeted
+学习计划：feedback 后 current_step_index=1，下一步 HBase RowKey 设计 active
+学习记录树：12 nodes / 7 edges，2 mastered，9 weak，feedback 已同步到 HBase 基础节点
+```
+
+关键产物：
+
+```text
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/real_deep_state_all_agents_result.json
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/student_state_fixture_result.json
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/profiles/29-76.json
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/learning_plan/learning_plan/user_76/syllabus_29/manifest.jsonl
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/study_graph/user_76/syllabus_29/manifest.json
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/study_graph/user_76/syllabus_29/change_log.jsonl
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/documents/documents-20260604181856-f7ce0b/document.md
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/documents/documents-20260604181856-f7ce0b/document.json
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/quiz/quiz-20260604182424-04ee82/quiz.json
+tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/generative/user_76/mindmap/mindmap-20260604182520-1339b8/mindmap.mmd
+tests/artifacts/total_agent/e2e_real_deep_state/answer_learning_question_real_rag/real_deep_state_answer_learning_question_result.json
+```
+
+人工抽查结论：
+
+- 链路有效：真实 Profile Agent 持久化画像，Total Agent 读取 persisted profile 和 study graph weak signal 后生成 targeted 资源策略。
+- 资源有效：documents / quiz / mindmap 均 validation=true，内容围绕 HBase 基础、RowKey 热点、加盐前缀、预分区和 Region 划分展开。
+- 反馈有效：record_learning_feedback 后 learning plan 推进到下一步，study graph change log 写入 learning_plan 同步事件。
+- 已修补：Profile Agent 的 `concept_gaps` 已增加短语化过滤，避免长课程句子进入画像薄弱点；quiz markdown renderer 已清理模型自带的 `A.` / `B.` 选项前缀，避免出现 `A. A.`。
+
+如果希望在终端实时观察前端可复用的工具状态流，可打开 tee 输出：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
+```
+
+可选探究用例：
+
+```bash
+python -m pytest -q tests/total_agent/test_context_strategy_contract.py
+```
+
+`tests/total_agent/test_context_strategy_contract.py` 是上下文策略的前置样本，用于观察 profile / study graph / resource strategy 的契约形态；正式 Total Agent 单元验收以 `tests/test_total_agent_task.py` 为准。
+
+测试产物：
+
+```text
+tests/artifacts/total_agent/total_agent_deterministic_result.json
+tests/artifacts/total_agent/total_agent_profile_strategy_result.json
+tests/artifacts/total_agent/context_strategy_contract/context_strategy_contract_result.json
+tests/artifacts/total_agent/agent_choice_continue/agent_choice_continue_result.json
+tests/artifacts/total_agent/real_profile_to_total_agent/real_profile_to_total_agent_result.json
+tests/artifacts/total_agent/process_contract/
+tests/artifacts/total_agent/e2e/
+tests/artifacts/total_agent/e2e_amend/
+tests/artifacts/total_agent/e2e_real_deep_state/
+```
+
+`real_profile_to_total_agent_result.json` 是窄集成产物：先用真实 Profile Agent 生成并持久化画像，再让正式 Total Agent 读取该画像并构建资源策略。该测试仍通过 monkeypatch 隔离真实资源生成，避免把资源质量问题混入画像读取验证。
+
+`e2e_amend/` 是 Total Agent 黑盒补充验收产物目录，覆盖深学生状态夹具、profile-driven continue、study graph weak/stale continue、feedback 推进 plan + study graph、以及 no-force clarification 场景。默认 amend 场景不访问真实 LLM/RAG/DB，但状态不是浅 mock：画像由 `learning_profile` 真实工具链根据 `dialogue_text / learning_records / answer_records / resource_usage` 生成并持久化，学习记录树由 `study_graph_task.submit_learning_tree_changes` 多批次写入形成 10+ 节点、6+ 边和 weak/mastered/recent/stale 状态分布，学习计划通过推荐路径 accept 生成。artifact 同时保留原始画像输入记录、最终 persisted profile、learning plan manifest、study graph manifest/change log、当前资源和 Total Agent 决策结果，便于检查“真实格式状态 -> 总 Agent 决策”的闭环。
+
+E2E amend 的稳定场景输入固化在 `tests/fixtures/total_agent/deep_student_state.json`。该 fixture 只保存测试语料和场景定义，包括 profile 原始输入记录、study graph change batches、推荐路径、当前资源模板和学生消息；不保存运行后生成的 persisted profile、learning plan manifest、study graph manifest/change log 或 Total Agent result。运行产物仍写入 `tests/artifacts/` 并由 `.gitignore` 豁免。
+
+画像字段边界：真实 Profile Agent 产物保留画像层字段，例如 `resource_preference`、`concept_gaps`、`bottleneck_topics` 和 `knowledge_mastery`。Total Agent 不要求画像原生保存 `documents / quiz / mindmap`，而是在 `normalize_profile_summary` 中把 `resource_preference` 归一化成资源生成支持的 `resource_types`，再进入 `resource_strategy`。
+
+Total Agent E2E 收口矩阵：
+
+- `tests/total_agent/test_total_agent_e2e.py` 是统一 E2E 主入口；`tests/total_agent/e2e_cases_*.py` 只承载场景实现，不作为用户/CI 回归入口。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_e2e_answer_learning_question_learning_strategy` 回答“深画像、深学习记录树、active plan 和当前资源进入 Total Agent 后，策略型即时答疑是否能利用 active plan / next task / weak points，且不推进 plan、不生成资源”。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_e2e_real_deep_state_answer_learning_question` 回答“同一个深学生状态在真实 Total Agent + 真实 RAG 下是否能完成即时答疑闭环”。该场景断言 intent 为 `answer_learning_question`，保留 answer/evidence，不推进 active plan、不生成资源、不写 feedback。
+- `tests/total_agent/test_total_agent_e2e.py::test_e2e_state_fixture_real_profile_agent_optional` 回答“真实 Profile Agent 生成的画像是否能作为 E2E 状态夹具被保存和读取”。它不替代全链路资源生成。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db` 回答“真实 DB、真实 Profile Agent、真实推荐 Agent/RAG 是否能对自然语言目标给出可用推荐；如果真实 RAG/目标对齐没有产出路径，则应稳定落到 `ask_goal_clarification` 而不是测试崩溃”。该场景更偏真实入口可用性，成功资源闭环由 aligned graph 场景保底。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph` 回答“在语义对齐的推荐图下，确定性推荐路径 + 真实 Profile/资源生成/DB/study graph 是否能稳定走到 resource generation 和 feedback/study graph”。该场景用于降低自然语言目标和真实 RAG overlay 波动导致的偶然失败。
+- `tests/total_agent/test_total_agent_e2e.py::test_total_agent_e2e_real_deep_state_all_agents` 回答“同一个深学生状态在真实 Profile Agent、真实 Total Agent、真实资源生成 Agent、真实 DB、真实 study graph sync 下是否能完成继续学习资源生成和反馈推进闭环”。该场景已有 active plan，因此不强制重新触发推荐；真实推荐/RAG 仍由大型 E2E 覆盖。该用例会在终端输出简短状态行，例如 `profile agent: building deep profile`、`material agent: material generated`、`study graph: feedback synced to learning tree`，并把同一组 `tool_status_events` 写入 artifact，供前端工具调用状态展示参考。该用例成本高、外部波动大，适合作为最终发布前验收，不适合默认 CI。

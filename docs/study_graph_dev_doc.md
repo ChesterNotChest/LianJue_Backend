@@ -2,6 +2,36 @@
 
 本文档描述当前学生学习成长树的最终实现边界。目标是说明输入输出契约、内部核心逻辑、测试构造和持久化内容，便于后续接入总 Agent、前端接口或迁移 SQL。
 
+## 当前同步状态
+
+Study Graph 当前提供两类能力：学生个人学习成长树的读写，以及课程/班级层面的只读聚合摘要。Total Agent 在上下文加载阶段读取 `get_learning_tree_features`，用于识别 weak / mastered / stale / recent 节点；在学习反馈阶段通过 learning plan step 状态变更显式同步 study graph，不在推荐阶段直接写树。
+
+课程全局视角通过 `get_course_learning_tree_summary(payload)` 暴露，供 Total Agent 在需要时读取班级或课程级 weak signal。该摘要只用于策略仲裁，例如“个人弱点 + 班级共性弱点”时提高 targeted/review 优先级；它不反向修改个人画像、学习计划或推荐图。
+
+当前边界：
+
+- 推荐模块只读 `study_graph_state`，不写入 study graph。
+- Total Agent 的 `record_learning_feedback` 可触发 study graph sync；sync 失败不回滚 learning plan manifest，但必须进入 warning / status event。
+- 课程聚合摘要应保持隐私边界，只输出聚合统计、弱节点摘要和最小可用诊断，不输出其他学生明细。
+- `tool_status_events` 由 Total Agent 包装读取和同步阶段，前端可把它作为状态展示样本。
+
+成长树模型边界：
+
+- 每个 `user_id + syllabus_id` 维护一棵个人学习成长树。
+- 主树只放学生已经触达、学习、提问、练习、答错、掌握或被个人大纲确认过的知识节点。
+- 未学习内容默认不出现在树里；不提前铺满完整课程地图，也不展示 locked 节点。
+- 当前真实业务节点是 knowledge node；virtual root 只作为展示容器。
+- 当前只维护 `parent_of` 树边；推荐边、资源边、题目边、审计边不进入主树。
+- Student Agent 只能提交变更候选；归一化、去重、父节点裁决、低置信度拦截、掌握度更新和展示状态更新由 tool/service 层完成。
+- 复杂证据、置信度和事件明细只进入 change log 或节点轻量 source，不把主树变成审计系统。
+- 推荐结果不属于成长树。推荐可以建议“下一步学 X”，但 X 在学生真实触达前不生成树节点。
+
+Total Agent 中包含 study graph 的统一 E2E 回归入口是：
+
+```bash
+python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "not llm and not mysql and not search" --capture=tee-sys -rs
+```
+
 ## 0. 新增的常量定义
 
 当前常量主要位于 `tasks/study_graph/contracts.py`：
@@ -21,6 +51,40 @@
   - `mastered: 0.25`
 - `STUDY_GRAPH_DELTA_MIN = -0.3`
 - `STUDY_GRAPH_DELTA_MAX = 0.3`
+
+稳定枚举值：
+
+```text
+node_type:
+  tree_root
+  knowledge
+
+edge_type:
+  parent_of
+
+change_status:
+  accepted
+  merged
+  rejected
+  needs_review
+  skipped
+
+mastery_label:
+  weak
+  learning
+  normal
+  mastered
+
+signal:
+  learned
+  practiced
+  struggled
+  mastered
+
+display:
+  growth_stage = seed | sprout | branch | fruit
+  color_state = weak | growing | stable | mastered
+```
 
 路径常量位于 `constant.py`：
 
@@ -58,6 +122,9 @@
 - `tasks/study_graph/features.py`
   - 树摘要重算。
   - Agent 可消费 features 生成。
+- `tasks/common/agent_model.py`
+  - 统一构造 OpenAI-compatible pydantic-ai 模型。
+  - 处理 DashScope Qwen/QwQ/DeepSeek thinking 与 tool calling 的兼容参数。
 
 测试与文档：
 
@@ -228,11 +295,17 @@ study_graph_task.get_student_learning_graph
   - `error_message`
   - `error_code`
 
+输出兼容：
+
+- 真实模型如果把 `tree`、`features`、`changes` 作为 JSON 字符串返回，`StudentAgentResult` 会解析为 dict/list。
+- 该容错只处理结构化输出漂移，不改变学习树落盘逻辑。
+
 内部逻辑：
 
 - 构造 `StudentAgentDeps(payload, state)`。
 - 真实 Agent 按工具调用完成 RAG、上下文读取、变更候选构造、提交和读回。
 - 函数结束时从 `deps.state` 回填 `tree_id/tree/features/changes/tool_trace`。
+- 学习路径推荐可以只读 `study_graph` 状态，但推荐 plan 不写入 `study_graph`；只有学习计划 step 状态变化后，才由调用方显式同步进度。
 
 ### 3.2 `get_student_learning_graph(user_id, syllabus_id, include_debug=False) -> dict`
 
@@ -574,3 +647,15 @@ study_graph/.gitkeep
 - `study_graph_node`：`UNIQUE(tree_id, normalized_title)`
 - `study_graph_edge`：`UNIQUE(tree_id, source_node_id, target_node_id, edge_type)`
 - `study_graph_change_log`：`UNIQUE(tree_id, client_change_id)`
+
+## 6. 文档事实源
+
+`docs/study_graph_dev_doc.md` 是学习成长树模块唯一事实源。旧 `study_graph_tools_small_plan.md` 和 `study_graph_tools_contract.md` 的有效内容已经按真实代码实现融合进本文：
+
+- 每个学生每个大纲一棵个人成长树。
+- 只维护已触达知识节点和 `parent_of` 树边。
+- Student Agent 只提交变更候选，tool/service 层负责裁决和落盘。
+- `manifest.json` / `change_log.jsonl` 文件边界、SQL 迁移约束和只读 features 接口。
+- Total Agent 只消费个人 features 和课程聚合摘要，不在推荐阶段写树。
+
+旧阶段文档可删除；如果后续发现旧文档仍有有效事实，应先融合进本文或测试，再删除旧文档。

@@ -17,10 +17,14 @@ this stage is a user-centric request describing:
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
-from config import LITELLM_MODEL_CONFIGS
+from pydantic import BaseModel, field_validator, model_validator
+from pydantic_ai import Agent
+
 from . import resource_planning_agent as planning_task
+from tasks.common.agent_model import build_openai_compatible_model
 from tasks.generative.contracts import (
     GENERATIVE_CODING_PRACTICE_SCHEMA_VERSION,
     GENERATIVE_DOCUMENT_SCHEMA_VERSION,
@@ -35,37 +39,6 @@ from tasks.generative.storage import (
 
 
 DEFAULT_RESOURCE_TYPES = ("documents", "mindmap", "quiz")
-MODEL_TIERS = ("cheap", "standard", "strong")
-GENERAL_MODEL_KEYS_BY_TIER = {
-    "cheap": ("text_cheap", "deepseek_text", "text_deepseek", "deepseek_chat", "text"),
-    "standard": ("text_standard", "text", "text_cheap", "deepseek_text", "text_strong"),
-    "strong": ("text_strong", "text", "text_standard", "text_cheap"),
-}
-PPT_MODEL_KEYS_BY_TIER = {
-    "cheap": (
-        "ppt_text_cheap",
-        "ppt_text",
-        "text_cheap",
-        "deepseek_text",
-        "text_deepseek",
-        "deepseek_chat",
-        "text",
-    ),
-    "standard": (
-        "ppt_text",
-        "text_standard",
-        "text",
-        "text_cheap",
-        "deepseek_text",
-    ),
-    "strong": (
-        "ppt_text_strong",
-        "ppt_text",
-        "text_strong",
-        "text",
-        "text_standard",
-    ),
-}
 
 
 def _safe_text(value: Any) -> str:
@@ -263,6 +236,7 @@ def normalize_generation_request(payload: dict) -> dict:
         "profile_snapshot": payload.get("profile_snapshot") if isinstance(payload.get("profile_snapshot"), dict) else {},
         "retrieval_context": retrieval_context,
         "generation_requirements": payload.get("generation_requirements") if isinstance(payload.get("generation_requirements"), dict) else {},
+        "run_id": payload.get("run_id") or "",
     }
     if not normalized["knowledge_items"]:
         normalized["knowledge_items"] = normalized["weak_points"][:]
@@ -272,79 +246,79 @@ def normalize_generation_request(payload: dict) -> dict:
 def build_single_resource_payload(request_payload: dict, resource_type: str) -> dict:
     normalized_type = _normalize_resource_type(resource_type)
     payload = dict(request_payload)
+    payload.pop("status_callback", None)
     payload["resource_type"] = normalized_type
     if normalized_type == "mindmap" and not payload.get("knowledge_items"):
         payload["knowledge_items"] = payload.get("weak_points") or [payload["topic"]]
     return payload
 
 
+class ResourceContentAgentResult(BaseModel):
+    content: Dict[str, Any]
+
+    @model_validator(mode="before")
+    @classmethod
+    def wrap_direct_resource_json(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return value
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                return value
+            if isinstance(parsed, dict):
+                return parsed if "content" in parsed else {"content": parsed}
+            return value
+        if isinstance(value, dict) and "content" not in value:
+            return {"content": value}
+        return value
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def parse_content_json_string(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            return value
+        return parsed if isinstance(parsed, dict) else value
+
+
+@lru_cache(maxsize=1)
+def build_resource_content_agent() -> Agent:
+    return Agent(
+        model=build_openai_compatible_model(agent_name="resource content generation agent"),
+        output_type=ResourceContentAgentResult,
+        system_prompt=(
+            "You are the Resource Content Generation Agent. "
+            "Planning, retrieval, and draft writing are already completed by other tools. "
+            "Use only the provided request and planning_bundle to write the requested resource content. "
+            "Return only a JSON object matching {\"content\": <typed resource JSON>}."
+        ),
+        name="resource_content_generation_agent",
+        description="OpenAI-compatible agent for typed learning resource content JSON",
+        retries=2,
+        defer_model_check=True,
+    )
+
+
 class LLMResourceGenerationAgent:
-    """Default generation agent that turns planning output into typed resource JSON."""
+    """OpenAI-compatible content generator for typed resource JSON.
 
-    def __init__(self, model: Any = None) -> None:
-        self.model = model or self._load_default_model()
-        self._model_cache: Dict[str, Any] = {"text": self.model}
+    The class name is retained for task-level monkeypatch compatibility, but it no
+    longer uses LiteLLM. Planning/RAG stays in the resource planning tools; this
+    class only asks the configured pydantic-ai model to produce typed content.
+    """
 
-    @staticmethod
-    def _load_default_model() -> Any:
-        from utils.llm_utils import get_model_instance
-
-        return get_model_instance()
-
-    @staticmethod
-    def _build_text_only_model(model_key: str) -> Any:
-        from knowlion.multi_model_litellm import LitellmMultiModel
-
-        model_config = LITELLM_MODEL_CONFIGS.get(model_key)
-        if not isinstance(model_config, dict):
-            raise ValueError(f"model config {model_key} is unavailable")
-        return LitellmMultiModel({"text": model_config})
-
-    def _resolve_model_tier(self, resource_type: str, request_payload: dict) -> str:
-        requirements = request_payload.get("generation_requirements") if isinstance(request_payload, dict) else {}
-        requirements = requirements if isinstance(requirements, dict) else {}
-
-        explicit_tier = _safe_text(
-            requirements.get("model_tier")
-            or requirements.get("llm_tier")
-            or (requirements.get("ppt_model_tier") if resource_type == "ppt" else None)
-        ).lower()
-        if explicit_tier in MODEL_TIERS:
-            return explicit_tier
-
-        # Default to the cheapest tier first so resource generation can prefer low-cost DeepSeek-like models.
-        return "cheap"
-
-    def _candidate_model_keys(self, resource_type: str, tier: str) -> tuple[str, ...]:
-        normalized_tier = tier if tier in MODEL_TIERS else "cheap"
-        if resource_type == "ppt":
-            return PPT_MODEL_KEYS_BY_TIER[normalized_tier]
-        return GENERAL_MODEL_KEYS_BY_TIER[normalized_tier]
-
-    def _resolve_model_key(self, resource_type: str, request_payload: dict) -> str:
-        requirements = request_payload.get("generation_requirements") if isinstance(request_payload, dict) else {}
-        requirements = requirements if isinstance(requirements, dict) else {}
-
-        explicit_model_key = _safe_text(requirements.get("model_key") or requirements.get("llm_model_key"))
-        if explicit_model_key and explicit_model_key in LITELLM_MODEL_CONFIGS:
-            return explicit_model_key
-
-        if resource_type == "ppt":
-            ppt_model_key = _safe_text(requirements.get("ppt_model_key"))
-            if ppt_model_key and ppt_model_key in LITELLM_MODEL_CONFIGS:
-                return ppt_model_key
-        tier = self._resolve_model_tier(resource_type, request_payload)
-        for candidate in self._candidate_model_keys(resource_type, tier):
-            if candidate in LITELLM_MODEL_CONFIGS:
-                return candidate
-        return "text"
-
-    def _get_model_for_resource_type(self, resource_type: str, request_payload: dict) -> Any:
-        model_key = self._resolve_model_key(resource_type, request_payload)
-        if model_key in self._model_cache:
-            return self._model_cache[model_key]
-        self._model_cache[model_key] = self._build_text_only_model(model_key)
-        return self._model_cache[model_key]
+    def __init__(self, agent: Any = None, model: Any = None) -> None:
+        if model is not None:
+            raise ValueError("LiteLLM-style model injection is no longer supported for resource content generation")
+        self.agent = agent or build_resource_content_agent()
 
     def _call_json(
         self,
@@ -380,12 +354,16 @@ class LLMResourceGenerationAgent:
             },
             ensure_ascii=False,
         )
-        model = self._get_model_for_resource_type(
-            _safe_text(request_payload.get("resource_type")) or task_name,
-            request_payload,
-        )
-        raw = model.call_text_model(system_prompt, user_prompt, stream=False)
-        return _extract_json_object(raw)
+        result = self.agent.run_sync(f"{system_prompt}\n\n{user_prompt}")
+        output = result.output
+        if isinstance(output, ResourceContentAgentResult):
+            return dict(output.content)
+        if isinstance(output, dict):
+            content = output.get("content")
+            if isinstance(content, dict):
+                return content
+            return output
+        raise ValueError("resource content agent returned invalid output")
 
     def _generate_document_content(self, request_payload: dict, planning_bundle: dict) -> dict:
         document_system_prompt = (
@@ -843,16 +821,47 @@ def generate_single_resource_from_request(
     generation_agent: Any = None,
     planning_agent: Any = None,
 ) -> dict:
+    status_callback = request_payload.get("status_callback") if isinstance(request_payload, dict) else None
     normalized_request = normalize_generation_request(request_payload)
+    if generation_agent is None:
+        from tasks.generative.resource_agent_runtime import run_single_resource_generation_agent
+
+        planner = planning_agent or planning_task.get_resource_planning_agent()
+        agent_result = run_single_resource_generation_agent(
+            normalized_request,
+            resource_type,
+            planning_agent=planner,
+            status_callback=status_callback,
+        )
+        if agent_result.resource:
+            persisted = dict(agent_result.resource)
+            planning_bundle = agent_result.planning_bundle if isinstance(agent_result.planning_bundle, dict) else {}
+            persisted["planning_trace"] = planning_bundle.get("tool_trace") or []
+            persisted["tool_trace"] = agent_result.tool_trace[:]
+            persisted["tool_status_events"] = list(agent_result.tool_status_events or [])
+            return persisted
+        failed = _build_failed_resource_result(
+            resource_type,
+            normalized_request["topic"],
+            agent_result.error_message or "resource generation agent did not persist a resource",
+            planning_trace=[],
+        )
+        failed["tool_trace"] = agent_result.tool_trace[:]
+        failed["tool_status_events"] = list(agent_result.tool_status_events or [])
+        return failed
+
     agent = generation_agent or LLMResourceGenerationAgent()
     planner = planning_agent or planning_task.get_resource_planning_agent()
 
-    state = {"request": normalized_request, "tool_trace": [], "planning_results": {}}
+    state = {"request": normalized_request, "tool_trace": [], "tool_status_events": [], "planning_results": {}}
     planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
+    from tasks.generative.resource_agent_tools import _compact_planning_bundle_for_generation
+
+    generation_bundle = _compact_planning_bundle_for_generation(planning_bundle, resource_type)
     generated_content = agent.generate_resource_content(
         build_single_resource_payload(normalized_request, resource_type),
         resource_type,
-        planning_bundle,
+        generation_bundle,
     )
     persisted = _tool_persist_generated_resource(state, resource_type, generated_content)
     persisted["planning_trace"] = planning_bundle.get("tool_trace") or []
@@ -866,23 +875,46 @@ def run_resource_generation_agent(
     generation_agent: Any = None,
     planning_agent: Any = None,
 ) -> dict:
+    status_callback = request_payload.get("status_callback") if isinstance(request_payload, dict) else None
     normalized_request = normalize_generation_request(request_payload)
-    agent = generation_agent or LLMResourceGenerationAgent()
     planner = planning_agent or planning_task.get_resource_planning_agent()
 
-    state = {"request": normalized_request, "tool_trace": [], "planning_results": {}}
+    state = {"request": normalized_request, "tool_trace": [], "tool_status_events": [], "planning_results": {}}
     resources = []
     for resource_type in normalized_request["resource_types"]:
         planning_trace: List[str] = []
         try:
-            planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
-            planning_trace = planning_bundle.get("tool_trace") or []
-            generated_content = agent.generate_resource_content(
-                build_single_resource_payload(normalized_request, resource_type),
-                resource_type,
-                planning_bundle,
-            )
-            persisted = _tool_persist_generated_resource(state, resource_type, generated_content)
+            if generation_agent is None:
+                from tasks.generative.resource_agent_runtime import run_single_resource_generation_agent
+
+                agent_result = run_single_resource_generation_agent(
+                    normalized_request,
+                    resource_type,
+                    planning_agent=planner,
+                    status_callback=status_callback,
+                )
+                planning_bundle = agent_result.planning_bundle if isinstance(agent_result.planning_bundle, dict) else {}
+                planning_trace = planning_bundle.get("tool_trace") or []
+                if not agent_result.resource:
+                    raise RuntimeError(agent_result.error_message or "resource generation agent did not persist a resource")
+                persisted = dict(agent_result.resource)
+                persisted["tool_trace"] = agent_result.tool_trace[:]
+                persisted["tool_status_events"] = list(agent_result.tool_status_events or [])
+                state["tool_trace"].extend(agent_result.tool_trace)
+                state["tool_status_events"].extend(agent_result.tool_status_events or [])
+            else:
+                planning_bundle = _tool_invoke_resource_planning_agent(state, resource_type, planner)
+                planning_trace = planning_bundle.get("tool_trace") or []
+                from tasks.generative.resource_agent_tools import _compact_planning_bundle_for_generation
+
+                generation_bundle = _compact_planning_bundle_for_generation(planning_bundle, resource_type)
+                generated_content = generation_agent.generate_resource_content(
+                    build_single_resource_payload(normalized_request, resource_type),
+                    resource_type,
+                    generation_bundle,
+                )
+                persisted = _tool_persist_generated_resource(state, resource_type, generated_content)
+                persisted["tool_trace"] = state["tool_trace"][:]
             persisted["planning_trace"] = planning_trace
             resources.append(persisted)
         except Exception as exc:
@@ -905,6 +937,7 @@ def run_resource_generation_agent(
         "success_count": success_count,
         "failed_count": failed_count,
         "tool_trace": state["tool_trace"],
+        "tool_status_events": state.get("tool_status_events") or [],
         "error_message": "" if failed_count == 0 else f"{failed_count} resource(s) failed",
         "error_code": "" if failed_count == 0 else "partial_failure",
     }

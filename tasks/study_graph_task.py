@@ -9,6 +9,7 @@
 from tasks.study_graph.service import (
     build_study_graph_changes_from_resource_event,
     build_study_graph_changes_from_student_payload,
+    get_course_learning_tree_summary,
     get_learning_tree_features,
     get_student_learning_tree,
     get_student_learning_tree_context,
@@ -30,6 +31,7 @@ __all__ = [
     "StudentAgentResult",
     "build_study_graph_changes_from_resource_event",
     "build_study_graph_changes_from_student_payload",
+    "get_course_learning_tree_summary",
     "get_learning_tree_features",
     "get_student_agent",
     "get_student_learning_graph",

@@ -1,4 +1,6 @@
-DEFAULT_WEIGHTS = {'E': 0.4, 'D': 0.2, 'R': 0.2, 'P': 0.2}
+DEFAULT_WEIGHTS = {'E': 0.35, 'D': 0.15, 'R': 0.15, 'P': 0.15, 'G': 0.10, 'C': 0.10}
+SCORE_KEY_GRANULARITY = "G"
+SCORE_KEY_CONFIDENCE = "C"
 
 
 def score(path_item, S, learning_tree):
@@ -27,7 +29,36 @@ def score(path_item, S, learning_tree):
     R = (prereq_unmet / prereq_total) if prereq_total>0 else 0
     # P: preference match (simple 0.5 default)
     P = 0.5
-    return {'E': E, 'D': D, 'R': R, 'P': P}
+    path = path_item.get('path') or []
+    path_depth = int(path_item.get('path_depth') or len(path) or 0)
+    if path_depth <= 0:
+        G = 0.0
+    elif path_depth == 1 and R > 0:
+        G = 0.25
+    elif 2 <= path_depth <= 5:
+        G = 0.75
+    else:
+        G = 0.5
+
+    confidences = []
+    for idx in range(len(path) - 1):
+        source = str(path[idx])
+        target = str(path[idx + 1])
+        edge_confidence = learning_tree.get(target, {}).get('edge_confidence', {})
+        if isinstance(edge_confidence, dict):
+            try:
+                confidences.append(float(edge_confidence.get(source, 1.0)))
+            except Exception:
+                confidences.append(1.0)
+        else:
+            confidences.append(1.0)
+    for node_id in path:
+        try:
+            confidences.append(float(learning_tree.get(node_id, {}).get('reliability', 1.0)))
+        except Exception:
+            confidences.append(1.0)
+    C = sum(confidences) / len(confidences) if confidences else 0.5
+    return {'E': E, 'D': D, 'R': R, 'P': P, 'G': G, 'C': C}
 
 
 def normalize_scores(score_dicts, keys=None):
@@ -35,7 +66,7 @@ def normalize_scores(score_dicts, keys=None):
     For metrics where lower is better (D,R) we invert the scale so higher is always better.
     """
     if keys is None:
-        keys = ['E', 'D', 'R', 'P']
+        keys = ['E', 'D', 'R', 'P', 'G', 'C']
     mins = {k: float('inf') for k in keys}
     maxs = {k: float('-inf') for k in keys}
     for s in score_dicts:
