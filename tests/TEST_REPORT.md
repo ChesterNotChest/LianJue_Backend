@@ -806,7 +806,7 @@ tests/artifacts/total_agent/e2e_real_deep_state/all_agents/generative_workspace/
 - 链路有效：真实 Profile Agent 持久化画像，Total Agent 读取 persisted profile 和 study graph weak signal 后生成 targeted 资源策略。
 - 资源有效：documents / quiz / mindmap 均 validation=true，内容围绕 HBase 基础、RowKey 热点、加盐前缀、预分区和 Region 划分展开。
 - 反馈有效：record_learning_feedback 后 learning plan 推进到下一步，study graph change log 写入 learning_plan 同步事件。
-- 待优化：Profile Agent 的 `concept_gaps` 仍可能混入过长课程句子，后续应做知识点短语化；quiz markdown 渲染存在 `A. A.` 选项前缀重复，属于展示层小问题。
+- 已修补：Profile Agent 的 `concept_gaps` 已增加短语化过滤，避免长课程句子进入画像薄弱点；quiz markdown renderer 已清理模型自带的 `A.` / `B.` 选项前缀，避免出现 `A. A.`。
 
 如果希望在终端实时观察前端可复用的工具状态流，可打开 tee 输出：
 

@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+import re
 from statistics import mean
 from time import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -32,6 +33,64 @@ PATTERN_KEYWORDS = {
 }
 
 DIFFICULTY_TERMS = ['薄弱', '不会', '困难', '卡住', '跟不上', '没掌握', '不太会', '吃力']
+
+_CONCEPT_GAP_MAX_CHARS = 24
+_CONCEPT_GAP_SENTENCE_TERMS = [
+	'如何',
+	'为什么',
+	'怎么',
+	'请问',
+	'学习',
+	'掌握',
+	'了解',
+	'能够',
+	'熟悉',
+	'完成',
+	'课程',
+	'导论',
+	'基本概念',
+]
+_CONCEPT_GAP_SPLIT_RE = re.compile(r"[\r\n。；;，,]+")
+
+
+def normalize_concept_gap(value: Any) -> str:
+	text = alignment.safe_text(value)
+	if not text:
+		return ''
+	text = re.sub(r'^\s*(?:第\s*)?\d+\s*(?:周|章|节|课|讲)?[\.\)、:：-]?\s*', '', text).strip()
+	parts = [part.strip(' -•\t') for part in _CONCEPT_GAP_SPLIT_RE.split(text) if part.strip(' -•\t')]
+	if parts:
+		text = parts[0]
+	if ':' in text or '：' in text:
+		left, right = re.split(r'[:：]', text, maxsplit=1)
+		left = left.strip()
+		right = right.strip()
+		if right and len(left) <= 8:
+			text = right
+		else:
+			text = left or right
+	text = text.strip(' -•\t?？!！.')
+	if not text or len(text) > _CONCEPT_GAP_MAX_CHARS:
+		return ''
+	if any(marker in text for marker in ['?', '？', '。', '；', ';']):
+		return ''
+	if len(text) >= 12 and any(term in text for term in _CONCEPT_GAP_SENTENCE_TERMS):
+		return ''
+	return text
+
+
+def dedupe_concept_gaps(values: Sequence[Any], *, limit: int = 10) -> List[str]:
+	gaps: List[str] = []
+	seen = set()
+	for value in values:
+		gap = normalize_concept_gap(value)
+		if not gap or gap in seen:
+			continue
+		seen.add(gap)
+		gaps.append(gap)
+		if len(gaps) >= limit:
+			break
+	return gaps
 
 
 def mean_or_zero(values: Sequence[float]) -> float:
@@ -119,7 +178,7 @@ def build_week_signals(personal_json: dict, syllabus_json: dict) -> Dict[str, An
 		if week_score <= 1.0:
 			weak_weeks.append(week_index)
 			if content:
-				concept_gaps.append(content[:40])
+				concept_gaps.append(content)
 		elif week_score >= 2.5:
 			mastered_weeks.append(week_index)
 
@@ -141,7 +200,7 @@ def build_week_signals(personal_json: dict, syllabus_json: dict) -> Dict[str, An
 		'week_items': week_items,
 		'weak_weeks': weak_weeks,
 		'mastered_weeks': mastered_weeks,
-		'concept_gaps': concept_gaps[:8],
+		'concept_gaps': dedupe_concept_gaps(concept_gaps, limit=8),
 	}
 
 
@@ -439,7 +498,7 @@ def build_concept_gaps(
 	for token in ['函数', '循环', '递归', '指针', '概率', '矩阵', 'SQL', '索引']:
 		if token in joined and any(term in joined for term in DIFFICULTY_TERMS):
 			gaps.append(token)
-	return list(dict.fromkeys(gaps))[:10]
+	return dedupe_concept_gaps(gaps, limit=10)
 
 
 def build_evidence(

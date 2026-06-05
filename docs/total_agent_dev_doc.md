@@ -114,7 +114,7 @@ quiz
 mindmap
 ```
 
-人工抽查结论：document 和 mindmap 质量可用；quiz 内容有效，但 markdown 渲染存在 `A. A.` 选项前缀重复，属于后续展示层修正项。
+人工抽查结论：document 和 mindmap 质量可用；quiz 内容有效。已补充 quiz markdown 选项前缀清洗，避免模型输出 `A. xxx` 时渲染成 `A. A. xxx`。
 
 ## E2E 分层
 
@@ -227,7 +227,7 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 
 ## 后续非阻塞项
 
-- Profile Agent 的 `concept_gaps` 偶尔混入过长课程句子，建议做知识点短语化。
-- Quiz markdown 渲染存在选项前缀重复，建议在 renderer 或 markdown writer 层修正。
+- Profile Agent 的 `concept_gaps` 已增加短语化过滤；后续仍可继续提升知识点抽取质量。
+- Quiz markdown 选项前缀重复已在 renderer 层修正。
 - API/前端接入还未纳入本关闭报告。
-- 真正的前端“进行中”状态需要单独设计 streaming 或 heartbeat 状态协议；当前 E2E 只提供终端 tee 输出和 artifact 中的 `tool_status_events` 样本。
+- 真正的前端“进行中”状态需要单独设计 streaming 或 heartbeat 状态协议；当前 E2E 只提供终端 tee 输出和 artifact 中的 `tool_status_events` 样本。小计划见 `docs/agent_work_status_small_plan.md`。

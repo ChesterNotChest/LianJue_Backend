@@ -83,7 +83,7 @@ def render_quiz_markdown(quiz: dict) -> str:
         if q_type == "single_choice" and isinstance(question.get("options"), list):
             for opt_index, option in enumerate(question["options"]):
                 label = chr(ord("A") + opt_index)
-                lines.append(f"- {label}. {option}")
+                lines.append(f"- {label}. {_strip_choice_label(option)}")
             lines.append("")
 
         answer_text = "True" if answer is True else "False" if answer is False else str(answer)
@@ -94,6 +94,11 @@ def render_quiz_markdown(quiz: dict) -> str:
             lines.extend([f"Knowledge Points: {', '.join(map(str, knowledge_points))}", ""])
 
     return "\n".join(lines).strip() + "\n"
+
+
+def _strip_choice_label(option: object) -> str:
+    text = str(option or "").strip()
+    return re.sub(r"^\s*[A-Da-d]\s*[\.\)、:：-]\s*", "", text).strip() or text
 
 
 def render_coding_practice_markdown(practice: dict) -> str:

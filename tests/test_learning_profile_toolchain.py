@@ -103,6 +103,72 @@ def test_learning_profile_toolchain_builds_profile_without_llm():
     assert profile["source_events"] == ["answer_records", "learning_records", "resource_usage"]
 
 
+def test_learning_profile_concept_gaps_use_short_knowledge_phrases():
+    state = {
+        "user_id": 3,
+        "syllabus_id": 10,
+        "user": SimpleNamespace(
+            user_id=3,
+            user_name="gap-cleanup",
+            email="gap-cleanup@example.com",
+        ),
+        "user_syllabuses": [],
+        "profile_scope": [],
+        "dialogue_texts": ["我做 RowKey 热点题时经常卡住。"],
+        "learning_goal": "掌握 HBase RowKey 设计",
+        "learning_records": [],
+        "answer_records": [
+            {
+                "question": "RowKey 如何避免热点？",
+                "correct": False,
+                "answered_at": 1759998200,
+                "time_spent_seconds": 160,
+                "meta": {"knowledge_points": ["RowKey 热点"]},
+            }
+        ],
+        "resource_usage": [],
+        "now_ts": 1760000000,
+        "history_entries": [],
+        "existing_profile": None,
+        "existing_profile_path": None,
+        "existing_profile_loaded": False,
+        "loaded_personal_syllabuses": [
+            (
+                10,
+                {
+                    "period": [
+                        {
+                            "week_index": 1,
+                            "content": "大数据课程导论与基本概念，理解数据规模、数据类型和处理模式",
+                            "enhanced_content": "大数据课程导论与基本概念，理解数据规模、数据类型和处理模式",
+                            "competance": "weak",
+                            "competance_progress": -1,
+                        }
+                    ]
+                },
+                {},
+            )
+        ],
+        "history_loaded": False,
+        "personal_syllabus_loaded": True,
+        "normalized_events": {},
+        "feature_bundle": {},
+        "profile": None,
+        "profile_path": None,
+        "profile_saved": False,
+        "tool_trace": [],
+    }
+
+    profile_tools._tool_normalize_events(state)
+    profile_tools._tool_compute_features(state)
+    profile_tools._tool_assemble_profile(state)
+
+    concept_gaps = state["profile"]["concept_gaps"]
+    assert "RowKey 热点" in concept_gaps
+    assert all(len(gap) <= 24 for gap in concept_gaps)
+    assert not any("大数据课程导论与基本概念" in gap for gap in concept_gaps)
+
+
 def test_learning_profile_save_tool_persists_course_profile(monkeypatch):
     state = {
         "user_id": 2,
