@@ -26,6 +26,9 @@ class GraphAdapter(ABC):
     def get_cost(self, node: Any) -> float:
         raise NotImplementedError()
 
+    def get_edge_metadata(self, source: Any, target: Any) -> Dict[str, Any]:
+        return {"source": "syllabus", "confidence": 1.0}
+
     def incr_read(self):
         """可选：统计一次图读操作（默认无-op）。"""
         return
@@ -59,6 +62,17 @@ class InMemoryGraphAdapter(GraphAdapter):
     def get_cost(self, node):
         self.incr_read()
         return float(self.learning_tree.get(node, {}).get('learning_time_est', 1))
+
+    def get_edge_metadata(self, source, target):
+        self.incr_read()
+        target_node = self.learning_tree.get(target, {})
+        edge_sources = target_node.get("edge_sources") if isinstance(target_node.get("edge_sources"), dict) else {}
+        edge_confidence = target_node.get("edge_confidence") if isinstance(target_node.get("edge_confidence"), dict) else {}
+        source_key = str(source)
+        return {
+            "source": edge_sources.get(source_key, "syllabus"),
+            "confidence": float(edge_confidence.get(source_key, 1.0)),
+        }
 
     def incr_read(self):
         self._reads += 1

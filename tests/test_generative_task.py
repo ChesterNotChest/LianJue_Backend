@@ -4,6 +4,7 @@ import os
 import pytest
 
 from tasks import generative_task as gt
+from tasks.generative.renderers import render_quiz_markdown
 from tasks.generative import storage as generative_storage
 
 
@@ -86,6 +87,30 @@ class InvalidQuizAgent:
                 }
             ],
         }
+
+
+def test_render_quiz_markdown_strips_model_choice_labels():
+    quiz_md = render_quiz_markdown(
+        {
+            "title": "RowKey quiz",
+            "questions": [
+                {
+                    "type": "single_choice",
+                    "stem": "哪一项最能缓解热点？",
+                    "options": ["A. 加盐前缀", "B、关闭缓存", "C) 删除表", "D: 扩大端口"],
+                    "answer": "A",
+                    "explanation": "加盐前缀可以打散单调写入。",
+                }
+            ],
+        }
+    )
+
+    assert "- A. 加盐前缀" in quiz_md
+    assert "- B. 关闭缓存" in quiz_md
+    assert "- C. 删除表" in quiz_md
+    assert "- D. 扩大端口" in quiz_md
+    assert "A. A." not in quiz_md
+    assert "B. B" not in quiz_md
 
 
 class FakeDocumentAgent:

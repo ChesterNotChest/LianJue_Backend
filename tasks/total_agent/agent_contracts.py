@@ -1,0 +1,200 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
+
+from pydantic import BaseModel, Field
+
+
+TOTAL_AGENT_SCHEMA_VERSION = "total_agent.v1"
+TOTAL_AGENT_CONTEXT_SCHEMA_VERSION = "total_agent.context.v1"
+
+INTENT_RECOMMEND_LEARNING_PATH = "recommend_learning_path"
+INTENT_ACCEPT_RECOMMENDATION = "accept_recommendation"
+INTENT_GENERATE_CURRENT_STEP_RESOURCE = "generate_current_step_resource"
+INTENT_RECORD_LEARNING_FEEDBACK = "record_learning_feedback"
+INTENT_SKIP_CURRENT_STEP = "skip_current_step"
+INTENT_ASK_GOAL_CLARIFICATION = "ask_goal_clarification"
+INTENT_ANSWER_LEARNING_QUESTION = "answer_learning_question"
+
+TOTAL_AGENT_INTENTS = {
+    INTENT_RECOMMEND_LEARNING_PATH,
+    INTENT_ACCEPT_RECOMMENDATION,
+    INTENT_GENERATE_CURRENT_STEP_RESOURCE,
+    INTENT_RECORD_LEARNING_FEEDBACK,
+    INTENT_SKIP_CURRENT_STEP,
+    INTENT_ASK_GOAL_CLARIFICATION,
+    INTENT_ANSWER_LEARNING_QUESTION,
+}
+
+ACTION_WAIT_USER_ACCEPTANCE = "wait_user_acceptance"
+ACTION_GENERATE_CURRENT_STEP_RESOURCE = "generate_current_step_resource"
+ACTION_RECORD_LEARNING_FEEDBACK = "record_learning_feedback"
+ACTION_GET_NEXT_LEARNING_TASK = "get_next_learning_task"
+ACTION_ASK_GOAL_CLARIFICATION = "ask_goal_clarification"
+ACTION_RETRY_RECOMMENDATION = "retry_recommendation"
+ACTION_CONTINUE_EXISTING_PLAN = "continue_existing_plan"
+ACTION_OFFER_PRACTICE_OR_RESOURCE = "offer_practice_or_resource"
+
+TOOL_LOAD_TOTAL_CONTEXT = "load_total_context"
+TOOL_INFER_USER_INTENT = "infer_user_intent"
+TOOL_RUN_LEARNING_RECOMMENDATION = "run_learning_recommendation"
+TOOL_NORMALIZE_LEARNING_GOAL = "normalize_learning_goal_for_recommendation"
+TOOL_ACCEPT_LEARNING_PLAN = "accept_learning_plan"
+TOOL_GET_NEXT_LEARNING_TASK = "get_next_learning_task"
+TOOL_GENERATE_CURRENT_STEP_RESOURCE = "generate_current_step_resource"
+TOOL_RECORD_LEARNING_FEEDBACK = "record_learning_feedback"
+TOOL_SKIP_CURRENT_STEP = "skip_current_step"
+TOOL_RETRIEVE_LEARNING_EVIDENCE = "retrieve_learning_evidence"
+TOOL_ANSWER_LEARNING_QUESTION = "answer_learning_question"
+TOOL_FIND_PERSONAL_RESOURCES = "find_personal_resources"
+TOOL_DECIDE_RESOURCE_REUSE = "decide_resource_reuse"
+TOOL_APPLY_LEARNING_EFFECT_SIGNAL = "apply_learning_effect_signal"
+TOOL_GET_COURSE_LEARNING_TREE_SUMMARY = "get_course_learning_tree_summary"
+
+GLOBAL_SIGNAL_REINFORCE_SHARED_WEAKNESS = "reinforce_shared_weakness"
+GLOBAL_SIGNAL_CHECKPOINT_THEN_ADVANCE = "checkpoint_then_advance"
+GLOBAL_SIGNAL_INDIVIDUAL_TARGETED_SUPPORT = "individual_targeted_support"
+GLOBAL_SIGNAL_ADVANCE_OR_ENRICH = "advance_or_enrich"
+
+TOTAL_AGENT_LEARNING_EVENT_RECORDED = "learning_event_recorded"
+
+RESOURCE_STRATEGY_DEFAULT_TYPE = "documents"
+RESOURCE_STRATEGY_DIFFICULTY_STANDARD = "standard"
+RESOURCE_STRATEGY_DIFFICULTY_TARGETED = "targeted"
+RESOURCE_STRATEGY_DIFFICULTY_REVIEW = "review"
+
+RESOURCE_RECOMMENDATION_REUSE_EXISTING = "reuse_existing"
+RESOURCE_RECOMMENDATION_GENERATE_MISSING = "generate_missing"
+RESOURCE_RECOMMENDATION_GENERATE_ALL = "generate_all"
+
+RESOURCE_QUALITY_USABLE = "usable"
+RESOURCE_QUALITY_INVALID = "invalid"
+RESOURCE_QUALITY_LOW_QUALITY = "low_quality"
+RESOURCE_QUALITY_NEEDS_REVIEW = "needs_review"
+
+RESOURCE_FRESHNESS_FRESH = "fresh"
+RESOURCE_FRESHNESS_STALE = "stale"
+RESOURCE_FRESHNESS_EXPIRED = "expired"
+
+RESOURCE_FEEDBACK_UNKNOWN = "unknown"
+RESOURCE_FEEDBACK_ACCEPTED = "accepted"
+RESOURCE_FEEDBACK_DISLIKED = "disliked"
+RESOURCE_FEEDBACK_REJECTED = "rejected"
+
+REUSE_REJECT_INVALID_RESOURCE = "invalid_resource"
+REUSE_REJECT_EXPIRED_RESOURCE = "expired_resource"
+REUSE_REJECT_STUDENT_REJECTED = "student_rejected"
+REUSE_REJECT_REPEATED_FAILURE = "repeated_failure"
+REUSE_REJECT_TOO_EASY = "too_easy"
+REUSE_REJECT_TOO_HARD = "too_hard"
+REUSE_REJECT_TOPIC_MISMATCH = "topic_mismatch"
+
+RESOURCE_REUSE_MIN_MATCH_SCORE = 0.72
+RESOURCE_REUSE_REPEATED_FAILURE_THRESHOLD = 2
+RESOURCE_REUSE_DEFAULT_MAX_AGE_DAYS = 30
+
+QA_LEVEL_FAST = "fast"
+QA_LEVEL_CONTEXTUAL = "contextual"
+QA_LEVEL_ASYNC_RESOURCE = "async_resource"
+
+QA_QUESTION_TYPE_CONCEPT = "concept_explanation"
+QA_QUESTION_TYPE_LEARNING_STRATEGY = "learning_strategy"
+QA_QUESTION_TYPE_EXERCISE_HELP = "exercise_help"
+QA_QUESTION_TYPE_UNKNOWN = "unknown"
+
+QA_WARNING_LOW_RELEVANCE_EVIDENCE = "low_relevance_evidence"
+QA_WARNING_PROFILE_WEAK_POINTS_FILTERED = "profile_weak_points_filtered"
+QA_CONTEXT_SESSION_WINDOW_TURNS = 6
+
+QA_NEXT_ACTION_OFFER_RESOURCE = "offer_resource"
+QA_NEXT_ACTION_OFFER_PRACTICE = "offer_practice"
+QA_NEXT_ACTION_CONTINUE_CURRENT_STEP = "continue_current_step"
+QA_NEXT_ACTION_CLARIFY_GOAL = "clarify_goal"
+
+QA_TONE_PRAGMATIC = "pragmatic"
+QA_TONE_FRIENDLY_PRAGMATIC = "friendly_pragmatic"
+QA_TONE_ENCOURAGING = "encouraging"
+
+QA_ANSWER_STYLE_CONCISE = "concise"
+QA_ANSWER_STYLE_NORMAL = "normal"
+QA_ANSWER_STYLE_DETAILED = "detailed"
+
+LEARNING_EFFECT_LOW_SCORE_THRESHOLD = 0.6
+LEARNING_EFFECT_MASTERED_SCORE_THRESHOLD = 0.85
+
+PROFILE_SOURCE_NONE = "none"
+PROFILE_SOURCE_PERSISTED = "persisted_profile"
+PROFILE_SOURCE_BUILT = "built_profile"
+
+PROFILE_READ_ACTION_USE_PERSISTED_ONLY = "use_persisted_only"
+PROFILE_READ_ACTION_BUILD_IF_MISSING = "build_if_missing"
+
+PROFILE_WARNING_NOT_FOUND = "profile_not_found"
+PROFILE_WARNING_READ_FAILED = "profile_read_failed"
+PROFILE_WARNING_BUILD_SKIPPED = "profile_build_skipped"
+
+RECOVERY_RETRY_RECOMMENDATION = ACTION_RETRY_RECOMMENDATION
+RECOVERY_ASK_GOAL_CLARIFICATION = ACTION_ASK_GOAL_CLARIFICATION
+RECOVERY_CONTINUE_EXISTING_PLAN = ACTION_CONTINUE_EXISTING_PLAN
+
+RECOMMENDATION_RECOVERY_ACTIONS = {
+    RECOVERY_RETRY_RECOMMENDATION,
+    RECOVERY_ASK_GOAL_CLARIFICATION,
+    RECOVERY_CONTINUE_EXISTING_PLAN,
+}
+
+TOTAL_AGENT_TOOL_ORDER = {
+    INTENT_RECOMMEND_LEARNING_PATH: [
+        TOOL_LOAD_TOTAL_CONTEXT,
+        TOOL_INFER_USER_INTENT,
+        TOOL_RUN_LEARNING_RECOMMENDATION,
+    ],
+    INTENT_ACCEPT_RECOMMENDATION: [
+        TOOL_LOAD_TOTAL_CONTEXT,
+        TOOL_INFER_USER_INTENT,
+        TOOL_ACCEPT_LEARNING_PLAN,
+        TOOL_GET_NEXT_LEARNING_TASK,
+    ],
+    INTENT_GENERATE_CURRENT_STEP_RESOURCE: [
+        TOOL_LOAD_TOTAL_CONTEXT,
+        TOOL_INFER_USER_INTENT,
+        TOOL_GET_NEXT_LEARNING_TASK,
+        TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+    ],
+    INTENT_RECORD_LEARNING_FEEDBACK: [
+        TOOL_LOAD_TOTAL_CONTEXT,
+        TOOL_INFER_USER_INTENT,
+        TOOL_RECORD_LEARNING_FEEDBACK,
+        TOOL_GET_NEXT_LEARNING_TASK,
+    ],
+    INTENT_SKIP_CURRENT_STEP: [
+        TOOL_LOAD_TOTAL_CONTEXT,
+        TOOL_INFER_USER_INTENT,
+        TOOL_SKIP_CURRENT_STEP,
+        TOOL_GET_NEXT_LEARNING_TASK,
+    ],
+    INTENT_ANSWER_LEARNING_QUESTION: [
+        TOOL_LOAD_TOTAL_CONTEXT,
+        TOOL_INFER_USER_INTENT,
+        TOOL_RETRIEVE_LEARNING_EVIDENCE,
+        TOOL_ANSWER_LEARNING_QUESTION,
+    ],
+}
+
+
+@dataclass
+class TotalAgentDeps:
+    state: Dict[str, Any] = field(default_factory=dict)
+
+
+class TotalAgentResult(BaseModel):
+    success: bool = True
+    schema_version: str = TOTAL_AGENT_SCHEMA_VERSION
+    intent: str = ""
+    tool_trace: List[str] = Field(default_factory=list)
+    tool_status_events: List[Dict[str, Any]] = Field(default_factory=list)
+    result: Dict[str, Any] = Field(default_factory=dict)
+    suggested_next_action: str = ""
+    error_code: str = ""
+    error_message: str = ""

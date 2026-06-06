@@ -1,0 +1,256 @@
+{
+  "subject_title": "大数据概论",
+  "profile_input_records": {
+    "dialogue_text": [
+      "我想两周内掌握 HBase RowKey 设计。",
+      "我做 RowKey 热点题时经常不知道怎么选前缀。",
+      "我希望先看短文档，再做一点测验。"
+    ],
+    "learning_goal": "掌握 HBase RowKey 热点规避和预分区策略",
+    "learning_records": [
+      {
+        "event_type": "study_session",
+        "topic": "大数据基础",
+        "duration_minutes": 42,
+        "status": "completed",
+        "score": 0.88,
+        "started_at_offset_seconds": -1814400,
+        "meta": {"knowledge_points": ["大数据基础"]}
+      },
+      {
+        "event_type": "study_session",
+        "topic": "HDFS 基础",
+        "duration_minutes": 36,
+        "status": "completed",
+        "score": 0.84,
+        "started_at_offset_seconds": -1555200,
+        "meta": {"knowledge_points": ["HDFS 基础"]}
+      },
+      {
+        "event_type": "study_session",
+        "topic": "HBase 基础",
+        "duration_minutes": 38,
+        "status": "completed",
+        "score": 0.52,
+        "started_at_offset_seconds": -864000,
+        "meta": {"knowledge_points": ["HBase 基础"]}
+      },
+      {
+        "event_type": "study_session",
+        "topic": "HBase RowKey 设计",
+        "duration_minutes": 45,
+        "status": "partial",
+        "score": 0.48,
+        "started_at_offset_seconds": -259200,
+        "meta": {"knowledge_points": ["HBase RowKey 设计", "RowKey 热点"]}
+      },
+      {
+        "event_type": "practice",
+        "topic": "RowKey 热点",
+        "duration_minutes": 28,
+        "status": "submitted",
+        "score": 0.43,
+        "started_at_offset_seconds": -172800,
+        "meta": {"knowledge_points": ["RowKey 热点", "预分区"]}
+      }
+    ],
+    "answer_records": [
+      {
+        "question": "RowKey 如何避免写入热点？",
+        "correct": false,
+        "time_spent_seconds": 170,
+        "answered_at_offset_seconds": -172800,
+        "meta": {"knowledge_points": ["RowKey 热点", "加盐前缀"]}
+      },
+      {
+        "question": "HBase 表为什么按 RowKey 字典序维护？",
+        "correct": true,
+        "time_spent_seconds": 95,
+        "answered_at_offset_seconds": -345600,
+        "meta": {"knowledge_points": ["HBase 数据模型"]}
+      },
+      {
+        "question": "预分区如何缓解 Region 热点？",
+        "correct": false,
+        "time_spent_seconds": 185,
+        "answered_at_offset_seconds": -86400,
+        "meta": {"knowledge_points": ["预分区", "Region 划分"]}
+      },
+      {
+        "question": "HBase 和 HDFS 的关系是什么？",
+        "correct": true,
+        "time_spent_seconds": 88,
+        "answered_at_offset_seconds": -691200,
+        "meta": {"knowledge_points": ["HDFS 基础", "HBase 基础"]}
+      },
+      {
+        "question": "热点监控应该看哪些写入分布信号？",
+        "correct": false,
+        "time_spent_seconds": 150,
+        "answered_at_offset_seconds": -43200,
+        "meta": {"knowledge_points": ["热点监控", "RowKey 热点"]}
+      }
+    ],
+    "resource_usage": [
+      {
+        "resource_id": "documents-hbase-basics-001",
+        "resource_type": "documents",
+        "action": "complete",
+        "duration_seconds": 900,
+        "timestamp_offset_seconds": -691200,
+        "meta": {"knowledge_points": ["HBase 基础"]}
+      },
+      {
+        "resource_id": "mindmap-hdfs-hbase-001",
+        "resource_type": "mindmap",
+        "action": "view",
+        "duration_seconds": 420,
+        "timestamp_offset_seconds": -604800,
+        "meta": {"knowledge_points": ["HDFS 基础", "HBase 基础"]}
+      },
+      {
+        "resource_id": "quiz-rowkey-hotspot-001",
+        "resource_type": "quiz",
+        "action": "submit",
+        "score": 0.43,
+        "timestamp_offset_seconds": -172800,
+        "meta": {"knowledge_points": ["RowKey 热点", "预分区"]}
+      },
+      {
+        "resource_id": "documents-region-presplit-001",
+        "resource_type": "documents",
+        "action": "partial",
+        "duration_seconds": 360,
+        "timestamp_offset_seconds": -86400,
+        "meta": {"knowledge_points": ["Region 划分", "预分区"]}
+      },
+      {
+        "resource_id": "coding-rowkey-prefix-001",
+        "resource_type": "coding_practice",
+        "action": "start",
+        "timestamp_offset_seconds": -21600,
+        "meta": {"knowledge_points": ["加盐前缀", "RowKey 热点"]}
+      }
+    ]
+  },
+  "recommendation": {
+    "success": true,
+    "best_path": {
+      "path": ["hbase_intro", "rowkey_design", "rowkey_hotspot"],
+      "skills": ["hbase", "rowkey_design", "rowkey_hotspot_avoidance"]
+    },
+    "candidates": [
+      {
+        "path": ["hbase_intro", "rowkey_design", "rowkey_hotspot"],
+        "skills": ["hbase", "rowkey_design", "rowkey_hotspot_avoidance"]
+      }
+    ],
+    "graph": {
+      "nodes": [
+        {"id": "hbase_intro", "title": "HBase 基础", "outcomes": ["hbase_intro"]},
+        {"id": "rowkey_design", "title": "HBase RowKey 设计", "outcomes": ["rowkey_design", "rowkey_hotspot_avoidance"]},
+        {"id": "rowkey_hotspot", "title": "RowKey 热点规避", "outcomes": ["rowkey_hotspot_avoidance"]}
+      ],
+      "edges": [
+        {"source": "hbase_intro", "target": "rowkey_design"},
+        {"source": "rowkey_design", "target": "rowkey_hotspot"}
+      ]
+    },
+    "error_code": "",
+    "error_message": ""
+  },
+  "study_graph_batches": [
+    {
+      "phase": "stale_history",
+      "timestamp_offset_seconds": -2592000,
+      "changes": [
+        {
+          "key": "mapreduce-stale",
+          "title": "MapReduce 基础",
+          "signal": "struggled",
+          "summary": "较早学习过 MapReduce 基础，近期没有复习。",
+          "confidence": 0.88
+        }
+      ]
+    },
+    {
+      "phase": "mastered_foundations_0",
+      "timestamp_offset_seconds": -172800,
+      "changes": [
+        {"key": "bigdata-mastered-0", "title": "大数据基础", "signal": "mastered", "summary": "多次学习与测验后，大数据基础已较稳定。", "confidence": 0.95},
+        {"key": "hdfs-mastered-0", "title": "HDFS 基础", "signal": "mastered", "summary": "HDFS 基础已通过多次练习巩固。", "confidence": 0.94}
+      ]
+    },
+    {
+      "phase": "mastered_foundations_1",
+      "timestamp_offset_seconds": -172740,
+      "changes": [
+        {"key": "bigdata-mastered-1", "title": "大数据基础", "signal": "mastered", "summary": "多次学习与测验后，大数据基础已较稳定。", "confidence": 0.95},
+        {"key": "hdfs-mastered-1", "title": "HDFS 基础", "signal": "mastered", "summary": "HDFS 基础已通过多次练习巩固。", "confidence": 0.94}
+      ]
+    },
+    {
+      "phase": "mastered_foundations_2",
+      "timestamp_offset_seconds": -172680,
+      "changes": [
+        {"key": "bigdata-mastered-2", "title": "大数据基础", "signal": "mastered", "summary": "多次学习与测验后，大数据基础已较稳定。", "confidence": 0.95},
+        {"key": "hdfs-mastered-2", "title": "HDFS 基础", "signal": "mastered", "summary": "HDFS 基础已通过多次练习巩固。", "confidence": 0.94}
+      ]
+    },
+    {
+      "phase": "active_step_foundation",
+      "timestamp_offset_seconds": -172800,
+      "stale_timestamp_offset_seconds": -2592000,
+      "changes": [
+        {"key": "hbase-foundation-weak", "title": "HBase 基础", "signal": "struggled", "summary": "已接触 HBase 基础，但概念结构仍不稳定。", "confidence": 0.92}
+      ]
+    },
+    {
+      "phase": "data_model_branch",
+      "timestamp_offset_seconds": -172200,
+      "changes": [
+        {"key": "hbase-data-model", "title": "HBase 数据模型", "signal": "learned", "summary": "能说出表、行键、列族等基本概念，但还需要和 RowKey 设计连接。", "confidence": 0.9, "parent_title": "HBase 基础", "delta": 0.22}
+      ]
+    },
+    {
+      "phase": "rowkey_region_branch",
+      "timestamp_offset_seconds": -171600,
+      "changes": [
+        {"key": "rowkey-design-learning", "title": "HBase RowKey 设计", "signal": "learned", "summary": "正在学习 RowKey 设计，能理解部分排序与定位逻辑。", "confidence": 0.88, "parent_title": "HBase 数据模型", "delta": 0.28},
+        {"key": "region-split-weak", "title": "Region 划分", "signal": "struggled", "summary": "对 Region 边界和行键范围的关系仍有困难。", "confidence": 0.9, "parent_title": "HBase RowKey 设计"}
+      ]
+    },
+    {
+      "phase": "hotspot_branch",
+      "timestamp_offset_seconds": -171000,
+      "changes": [
+        {"key": "presplitting-weak", "title": "预分区", "signal": "struggled", "summary": "对预分区边界估算和热点缓解关系理解不足。", "confidence": 0.88, "parent_title": "Region 划分"},
+        {"key": "rowkey-hotspot-weak", "title": "RowKey 热点", "signal": "struggled", "summary": "多次答题暴露出对单调递增 RowKey 热点成因理解不足。", "confidence": 0.93, "parent_title": "HBase RowKey 设计"}
+      ]
+    },
+    {
+      "phase": "mitigation_branch",
+      "timestamp_offset_seconds": -170400,
+      "changes": [
+        {"key": "salt-prefix-learning", "title": "加盐前缀", "signal": "learned", "summary": "开始理解通过前缀打散写入的方法。", "confidence": 0.84, "parent_title": "RowKey 热点", "delta": 0.2},
+        {"key": "hash-prefix-learning", "title": "散列前缀", "signal": "learned", "summary": "了解散列前缀可以降低集中写入风险。", "confidence": 0.82, "parent_title": "RowKey 热点", "delta": 0.18},
+        {"key": "hotspot-monitoring-learning", "title": "热点监控", "signal": "learned", "summary": "刚接触监控写入分布和 Region 负载指标。", "confidence": 0.82, "parent_title": "RowKey 热点", "delta": 0.18}
+      ]
+    }
+  ],
+  "current_resource": {
+    "resource_id": "documents-hbase-basics-001",
+    "resource_type": "documents",
+    "status": "ready"
+  },
+  "messages": {
+    "first_question": "我下一步应该怎么学习 HBase RowKey 热点规避？",
+    "follow_up": [
+      "继续学习，给我一点练习",
+      "我刚看完文档，但 RowKey 热点还是不懂",
+      "帮我复习 HBase 基础和 Region 划分",
+      "我学完了这份资料，测验得分 0.86",
+      "这个 HBase 基础太简单了，跳过"
+    ]
+  }
+}

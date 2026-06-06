@@ -6,6 +6,9 @@ from typing import Any
 
 from tasks.common.search_tool import search_tool
 from tasks.study_graph.contracts import (
+    COURSE_TREE_NODE_MIN_SAMPLE_SIZE,
+    COURSE_TREE_SUMMARY_DEFAULT_LIMIT,
+    COURSE_TREE_SUMMARY_MIN_GROUP_SIZE,
     STUDY_GRAPH_LOW_CONFIDENCE_THRESHOLD,
     STUDY_GRAPH_MAX_CONTEXT_CANDIDATES,
     build_client_change_id,
@@ -368,3 +371,239 @@ def get_learning_tree_features(user_id: int, syllabus_id: int, stale_days: int =
         tree = create_tree_if_missing(user_id, syllabus_id, title=None, now_ts=int(time()))
     payload = get_learning_tree_features_payload(tree, int(time()), stale_days=stale_days)
     return {"success": True, **payload}
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _unique_texts(items: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        text = _safe_text(item)
+        if text and text not in seen:
+            result.append(text)
+            seen.add(text)
+    return result
+
+
+def _coerce_tree_summary_source(item: Any) -> dict:
+    if not isinstance(item, dict):
+        return {}
+    if isinstance(item.get("tree"), dict):
+        tree = item["tree"]
+        return {
+            "user_id": item.get("user_id") or tree.get("user_id"),
+            "tree": tree,
+            "features": item.get("features") if isinstance(item.get("features"), dict) else {},
+        }
+    if isinstance(item.get("nodes"), list):
+        return {"user_id": item.get("user_id"), "tree": item, "features": {}}
+    if any(key in item for key in ("weak_topics", "mastered_topics", "learned_topics", "recently_grown")):
+        return {"user_id": item.get("user_id"), "tree": {}, "features": item}
+    return {}
+
+
+def _iter_course_summary_sources(payload: dict) -> list[dict]:
+    explicit = payload.get("student_tree_summaries") or payload.get("student_summaries") or payload.get("student_trees")
+    if isinstance(explicit, list):
+        return [_coerce_tree_summary_source(item) for item in explicit]
+
+    syllabus_id = _safe_int(payload.get("syllabus_id"))
+    user_ids = payload.get("user_ids") if isinstance(payload.get("user_ids"), list) else []
+    sources: list[dict] = []
+    for user_id in user_ids:
+        normalized_user_id = _safe_int(user_id)
+        if normalized_user_id <= 0 or syllabus_id <= 0:
+            continue
+        tree = get_tree(normalized_user_id, syllabus_id)
+        if isinstance(tree, dict):
+            sources.append({"user_id": normalized_user_id, "tree": tree, "features": {}})
+    return sources
+
+
+def _collect_node_signal(source: dict) -> list[dict]:
+    tree = source.get("tree") if isinstance(source.get("tree"), dict) else {}
+    nodes = tree.get("nodes") if isinstance(tree.get("nodes"), list) else []
+    signals: list[dict] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        title = _safe_text(node.get("title"))
+        if not title:
+            continue
+        mastery = node.get("mastery") if isinstance(node.get("mastery"), dict) else {}
+        score = _safe_float(mastery.get("score"), 0.0)
+        label = _safe_text(mastery.get("label") or "")
+        if not label:
+            if score < 0.4:
+                label = "weak"
+            elif score >= 0.8:
+                label = "mastered"
+            else:
+                label = "learning"
+        signals.append(
+            {
+                "title": title,
+                "label": label,
+                "score": score,
+                "recent": _safe_int(node.get("last_updated_at")) > 0,
+                "wrong_points": node.get("common_wrong_points") if isinstance(node.get("common_wrong_points"), list) else [],
+            }
+        )
+    features = source.get("features") if isinstance(source.get("features"), dict) else {}
+    for title in features.get("weak_topics") or features.get("weak_node_ids") or []:
+        signals.append({"title": _safe_text(title), "label": "weak", "score": 0.0, "recent": False, "wrong_points": []})
+    for title in features.get("mastered_topics") or features.get("mastered_node_ids") or []:
+        signals.append({"title": _safe_text(title), "label": "mastered", "score": 1.0, "recent": False, "wrong_points": []})
+    for title in features.get("recently_grown") or features.get("recent_node_ids") or []:
+        signals.append({"title": _safe_text(title), "label": "recent", "score": 0.0, "recent": True, "wrong_points": []})
+    return [signal for signal in signals if signal.get("title")]
+
+
+def get_course_learning_tree_summary(payload: dict) -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    syllabus_id = _safe_int(payload.get("syllabus_id"))
+    class_id = _safe_text(payload.get("class_id"))
+    limit = _safe_int(payload.get("limit"), COURSE_TREE_SUMMARY_DEFAULT_LIMIT)
+    if limit <= 0:
+        limit = COURSE_TREE_SUMMARY_DEFAULT_LIMIT
+    limit = min(limit, COURSE_TREE_SUMMARY_DEFAULT_LIMIT)
+    min_group_size = _safe_int(payload.get("min_group_size"), COURSE_TREE_SUMMARY_MIN_GROUP_SIZE)
+    node_min_sample_size = _safe_int(payload.get("node_min_sample_size"), COURSE_TREE_NODE_MIN_SAMPLE_SIZE)
+
+    sources = [source for source in _iter_course_summary_sources(payload) if source]
+    student_count = len(sources)
+    warnings: list[str] = []
+    if student_count < min_group_size:
+        warnings.append("course_summary_group_too_small")
+
+    buckets: dict[str, dict] = {}
+    for source in sources:
+        seen_titles: set[str] = set()
+        for signal in _collect_node_signal(source):
+            title = _safe_text(signal.get("title"))
+            if not title:
+                continue
+            bucket = buckets.setdefault(
+                title,
+                {
+                    "title": title,
+                    "sample_size": 0,
+                    "weak_student_count": 0,
+                    "mastered_student_count": 0,
+                    "recent_student_count": 0,
+                    "scores": [],
+                    "wrong_points": [],
+                },
+            )
+            if title not in seen_titles:
+                bucket["sample_size"] += 1
+                seen_titles.add(title)
+            label = _safe_text(signal.get("label"))
+            score = _safe_float(signal.get("score"))
+            bucket["scores"].append(score)
+            if label == "weak":
+                bucket["weak_student_count"] += 1
+            if label == "mastered":
+                bucket["mastered_student_count"] += 1
+            if label == "recent" or signal.get("recent"):
+                bucket["recent_student_count"] += 1
+            bucket["wrong_points"].extend(signal.get("wrong_points") or [])
+
+    visible = [
+        bucket for bucket in buckets.values()
+        if student_count >= min_group_size and bucket["sample_size"] >= node_min_sample_size
+    ]
+    hidden_count = len(buckets) - len(visible)
+    if hidden_count > 0:
+        warnings.append("small_sample_nodes_redacted")
+
+    def average(bucket: dict) -> float:
+        scores = [float(score) for score in bucket.get("scores") or []]
+        return round(sum(scores) / len(scores), 4) if scores else 0.0
+
+    weak_nodes = sorted(
+        [
+            {
+                "title": bucket["title"],
+                "weak_student_count": bucket["weak_student_count"],
+                "sample_size": bucket["sample_size"],
+                "average_mastery": average(bucket),
+                "common_wrong_points": _unique_texts(bucket.get("wrong_points") or [])[:5],
+            }
+            for bucket in visible
+            if bucket["weak_student_count"] > 0
+        ],
+        key=lambda item: (item["weak_student_count"], -item["average_mastery"]),
+        reverse=True,
+    )[:limit]
+    mastered_nodes = sorted(
+        [
+            {
+                "title": bucket["title"],
+                "mastered_student_count": bucket["mastered_student_count"],
+                "sample_size": bucket["sample_size"],
+                "average_mastery": average(bucket),
+            }
+            for bucket in visible
+            if bucket["mastered_student_count"] > 0
+        ],
+        key=lambda item: (item["mastered_student_count"], item["average_mastery"]),
+        reverse=True,
+    )[:limit]
+    recently_active_nodes = sorted(
+        [
+            {
+                "title": bucket["title"],
+                "recent_student_count": bucket["recent_student_count"],
+                "sample_size": bucket["sample_size"],
+            }
+            for bucket in visible
+            if bucket["recent_student_count"] > 0
+        ],
+        key=lambda item: item["recent_student_count"],
+        reverse=True,
+    )[:limit]
+    recommended_intervention = [
+        f"建议补充 {node['title']} 的针对性讲解和练习。"
+        for node in weak_nodes[:3]
+    ]
+
+    return {
+        "success": True,
+        "summary": {
+            "syllabus_id": syllabus_id,
+            "class_id": class_id,
+            "student_count": student_count,
+            "weak_nodes": weak_nodes,
+            "mastered_nodes": mastered_nodes,
+            "recently_active_nodes": recently_active_nodes,
+            "recommended_intervention": recommended_intervention,
+        },
+        "privacy": {
+            "aggregation": True,
+            "student_ids_redacted": True,
+            "min_group_size": min_group_size,
+            "node_min_sample_size": node_min_sample_size,
+            "hidden_node_count": max(0, hidden_count),
+        },
+        "warnings": _unique_texts(warnings),
+        "error_code": "",
+        "error_message": "",
+    }

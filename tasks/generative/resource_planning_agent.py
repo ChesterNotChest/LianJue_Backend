@@ -34,6 +34,22 @@ def _normalize_str_list(value: Any) -> List[str]:
     return normalized
 
 
+def _clip_text_items(value: Any, *, limit: int = 4, max_chars: int = 160) -> List[str]:
+    items = value if isinstance(value, list) else ([] if value is None else [value])
+    clipped: List[str] = []
+    for item in items:
+        text = _safe_text(item)
+        if not text:
+            continue
+        if len(text) > max_chars:
+            text = text[: max(0, max_chars - 3)].rstrip() + "..."
+        if text not in clipped:
+            clipped.append(text)
+        if len(clipped) >= limit:
+            break
+    return clipped
+
+
 def _tool_read_generation_plan(state: dict, resource_type: str) -> dict:
     state["tool_trace"].append("read_generation_plan")
     return dict(state["plans"].get(resource_type) or {})
@@ -100,18 +116,41 @@ def _build_default_draft(request_payload: dict, resource_type: str, plan: dict, 
     paragraphs = retrieval_context.get("paragraphs") if isinstance(retrieval_context, dict) else []
     paragraphs = paragraphs if isinstance(paragraphs, list) else []
     evidence = [str(item).strip() for item in paragraphs[:3] if str(item).strip()]
+    key_concepts = _normalize_str_list(request_payload.get("knowledge_items")) + _normalize_str_list(request_payload.get("weak_points"))
+    if not key_concepts:
+        key_concepts = [_safe_text(request_payload.get("topic"))]
+    outline = [
+        "问题背景",
+        "核心知识点",
+        "重点难点",
+        "针对性练习或结构梳理",
+    ]
+    learning_brief = {
+        "topic": request_payload.get("topic"),
+        "student_question": request_payload.get("question"),
+        "learning_goal": request_payload.get("learning_goal") or plan.get("objective"),
+        "resource_type": resource_type,
+        "key_concepts": _clip_text_items(key_concepts, limit=8, max_chars=80),
+        "weak_points": _clip_text_items(request_payload.get("weak_points"), limit=5, max_chars=80),
+        "outline": outline,
+        "evidence_summaries": _clip_text_items(evidence, limit=3, max_chars=180),
+        "generation_constraints": {
+            "max_slides": (request_payload.get("generation_requirements") or {}).get("max_slides", 6)
+            if isinstance(request_payload.get("generation_requirements"), dict)
+            else 6,
+            "quiz_count": (request_payload.get("generation_requirements") or {}).get("quiz_count", 5)
+            if isinstance(request_payload.get("generation_requirements"), dict)
+            else 5,
+        },
+    }
     return {
         "resource_type": resource_type,
         "title": f"{request_payload.get('topic')} {resource_type}",
         "summary": f"围绕学生问题“{request_payload.get('question')}”的草稿。",
-        "outline": [
-            "问题背景",
-            "核心知识点",
-            "重点难点",
-            "针对性练习或结构梳理",
-        ],
+        "outline": outline,
         "evidence": evidence,
         "plan_objective": plan.get("objective"),
+        "learning_brief": learning_brief,
     }
 
 
@@ -169,6 +208,7 @@ class ResourcePlanningAgent:
             "plan": plan,
             "retrieval_context": retrieval_context if isinstance(retrieval_context, dict) else {},
             "draft": draft,
+            "learning_brief": draft.get("learning_brief") if isinstance(draft, dict) else {},
             "tool_trace": state["tool_trace"][:],
         }
 

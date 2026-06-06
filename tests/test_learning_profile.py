@@ -155,6 +155,44 @@ def test_build_learning_profile_uses_behavior_answer_and_resource_signals(
     assert profile["evidence"]
 
 
+def test_build_learning_profile_returns_tool_profile_when_agent_final_output_fails(monkeypatch):
+    user = SimpleNamespace(user_id=7, user_name="alice", email="alice@example.com")
+    user_syllabus = SimpleNamespace(syllabus_id=19, personal_syllabus_path=None)
+    syllabus = SimpleNamespace(syllabus_id=19, title="Python 基础", syllabus_path=None)
+
+    class FakeAgent:
+        def run_sync(self, user_prompt, deps=None, **kwargs):
+            state = deps.state
+            profile_tools._tool_normalize_events(state)
+            profile_tools._tool_compute_features(state)
+            profile_tools._tool_assemble_profile(state)
+            raise RuntimeError("final output validation failed")
+
+    monkeypatch.setattr(profile_service, "get_user_by_id", lambda user_id: user if user_id == 7 else None)
+    monkeypatch.setattr(
+        profile_service, "list_user_syllabuses", lambda user_id: [user_syllabus] if user_id == 7 else []
+    )
+    monkeypatch.setattr(
+        profile_service, "get_syllabus_by_id", lambda syllabus_id: syllabus if syllabus_id == 19 else None
+    )
+    monkeypatch.setattr(profile_runtime, "get_learning_profile_agent", lambda: FakeAgent())
+    monkeypatch.setattr(profile_service, "collect_history_entries", lambda user_id, syllabus_id=None: [])
+    monkeypatch.setattr(profile_service, "load_personal_syllabus_rows", lambda user_id, syllabus_id=None: [])
+    monkeypatch.setattr(profile_service, "time", lambda: 1760000000)
+    monkeypatch.setattr(profile_service, "_tool_save_or_update_profile", lambda state: {"success": True})
+
+    profile = lpt.build_learning_profile(
+        user_id=7,
+        syllabus_id=19,
+        dialogue_text="我想补 Python 函数参数。",
+        learning_goal="掌握 Python 基础语法",
+    )
+
+    assert isinstance(profile, dict)
+    assert profile["user_id"] == 7
+    assert profile["learning_goal"] == "掌握 Python 基础语法"
+
+
 def test_build_learning_profile_can_call_context_tools_before_feature_tools(
     monkeypatch, repo_json_factory
 ):

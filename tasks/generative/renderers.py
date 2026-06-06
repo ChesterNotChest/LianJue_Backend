@@ -1,3 +1,4 @@
+import os
 import re
 from pathlib import Path
 
@@ -82,7 +83,7 @@ def render_quiz_markdown(quiz: dict) -> str:
         if q_type == "single_choice" and isinstance(question.get("options"), list):
             for opt_index, option in enumerate(question["options"]):
                 label = chr(ord("A") + opt_index)
-                lines.append(f"- {label}. {option}")
+                lines.append(f"- {label}. {_strip_choice_label(option)}")
             lines.append("")
 
         answer_text = "True" if answer is True else "False" if answer is False else str(answer)
@@ -93,6 +94,11 @@ def render_quiz_markdown(quiz: dict) -> str:
             lines.extend([f"Knowledge Points: {', '.join(map(str, knowledge_points))}", ""])
 
     return "\n".join(lines).strip() + "\n"
+
+
+def _strip_choice_label(option: object) -> str:
+    text = str(option or "").strip()
+    return re.sub(r"^\s*[A-Da-d]\s*[\.\)、:：-]\s*", "", text).strip() or text
 
 
 def render_coding_practice_markdown(practice: dict) -> str:
@@ -593,18 +599,23 @@ def render_pptx_file(ppt: dict, output_path: Path) -> None:
             footer_run.font.size = Pt(_pt(8))
             footer_run.font.color.rgb = palette["cover_text"] if role == "cover" else palette["muted"]
 
-        speaker_notes = str(slide_payload.get("speaker_notes") or "").strip()
-        if speaker_notes:
-            try:
-                notes_slide = slide.notes_slide
-                notes_frame = getattr(notes_slide, "notes_text_frame", None)
-                if notes_frame is not None:
-                    notes_frame.text = speaker_notes
-                    for paragraph in notes_frame.paragraphs:
-                        for run in paragraph.runs:
-                            run.font.size = Pt(_pt(12))
-            except Exception:
-                pass
-
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    presentation.save(str(output_path))
+    temp_path = output_path.with_name(f"{output_path.stem}.tmp{output_path.suffix}")
+    presentation.save(str(temp_path))
+
+    try:
+        checked = Presentation(str(temp_path))
+        if len(checked.slides) <= 0:
+            raise RuntimeError("rendered pptx contains no slides")
+        for slide in checked.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    _ = shape.text
+    except Exception:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+    os.replace(temp_path, output_path)

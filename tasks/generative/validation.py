@@ -265,6 +265,7 @@ def validate_coding_practice_payload(practice: dict) -> dict:
         code_files = []
 
     python_file_count = 0
+    code_file_paths = set()
     for index, item in enumerate(code_files, start=1):
         if not isinstance(item, dict):
             errors.append(f"code_file #{index} must be a dict")
@@ -276,6 +277,8 @@ def validate_coding_practice_payload(practice: dict) -> dict:
             continue
         if not _is_safe_relative_resource_path(file_path):
             errors.append(f"code_file #{index} path must be a safe relative path")
+        else:
+            code_file_paths.add(file_path.replace("\\", "/"))
         if not content.strip():
             errors.append(f"code_file #{index} missing content")
         if file_path.replace("\\", "/").endswith(".py"):
@@ -296,8 +299,12 @@ def validate_coding_practice_payload(practice: dict) -> dict:
         errors.append("run_guide missing entry_file")
     elif not _is_safe_relative_resource_path(entry_file):
         errors.append("run_guide entry_file must be a safe relative path")
+    elif entry_file.replace("\\", "/") not in code_file_paths:
+        errors.append("run_guide entry_file must reference a code_files path")
     if not command:
         errors.append("run_guide missing command")
+    elif entry_file and entry_file.replace("\\", "/").endswith(".py") and entry_file.replace("\\", "/") not in command.replace("\\", "/"):
+        errors.append("run_guide command must run the entry_file")
 
     if language == "python" and python_file_count == 0:
         errors.append("python coding practice must contain at least one .py code file")

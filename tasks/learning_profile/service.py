@@ -13,6 +13,7 @@ from tasks.learning_profile.agent_tools import _tool_load_existing_profile_conte
 from tasks.learning_profile.models import LearningProfileResult
 from tasks.learning_profile.storage import load_existing_profile, load_json_file, profile_has_required_identity
 
+
 def get_persisted_learning_profile(user_id: int, syllabus_id: int) -> Optional[dict]:
 	profile, profile_path = load_existing_profile(user_id, syllabus_id)
 	if not isinstance(profile, dict):
@@ -137,7 +138,14 @@ def build_learning_profile(
 	}
 	if syllabus_id is not None:
 		_tool_load_existing_profile_context(state)
-	result = run_learning_profile_agent(state)
+	try:
+		result = run_learning_profile_agent(state)
+	except Exception:
+		if state.get('profile'):
+			if syllabus_id is not None and not state.get('profile_saved'):
+				_tool_save_or_update_profile(state)
+			return state['profile']
+		raise
 	if state.get('profile'):
 		if syllabus_id is not None and not state.get('profile_saved'):
 			_tool_save_or_update_profile(state)
