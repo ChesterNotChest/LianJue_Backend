@@ -2,7 +2,7 @@
 
 概述：对比项目中文档与代码实现，核对主要模块的路由、任务入口与返回字段；优先关注学习画像、学习路径推荐、资源生成、学习成长树四个模块。
 
-**总体结论**: 核心调用链（路由 -> blueprint -> tasks -> 实现）与文档一致；主要差异为少数接口文件归属和蓝图层对响应做了外层包装（返回字段更具体）。无需必需的代码改动，建议同步更新文档示例响应以便前端对接。
+**总体结论**: 核心调用链（路由 -> blueprint -> tasks -> 实现）与文档一致；主要差异为少数接口文件归属和蓝图层对响应做了外层包装（返回字段更具体）。当前已补上总 Agent 的 HTTP 蓝图，建议同步更新文档示例响应以便前端对接。
 
 **检查项（按模块）**
 
@@ -36,6 +36,14 @@
   - **一致性**: 已实现并在 `app` 中注册；三条路由通过测试客户端返回 200，任务调用链与文档描述一致（rag_search → get_tree_context → derive_payload → build_changes → submit_changes）。
   - **差异**: 返回有轻微外层包装（`success` / `error_message`），文档示例可补充真实返回字段。
   - **建议**: 在文档里补充 `agent_run` 的请求示例与成功/失败的返回示例。
+
+- **总 Agent (Orchestration)**:
+  - **路由**: `GET /api/total_agent/detail`, `POST /api/total_agent/run`, `POST /api/total_agent/agent_run`。
+  - **实现文件**: [blueprint/total_agent_api.py](blueprint/total_agent_api.py#L1-L200)
+  - **任务入口**: `tasks.total_agent_task.run_total_agent`、`tasks.total_agent_task.run_total_agent_agent`、`tasks.total_agent_task.get_total_agent`（见 [tasks/total_agent_task.py](tasks/total_agent_task.py#L1-L120)）
+  - **一致性**: 调度链与文档一致；蓝图只做轻量参数解析和结果转发，不改变总 agent 的决策逻辑。
+  - **差异**: `detail` 接口返回的是 agent 元信息而非可执行对象；这与 HTTP 可序列化约束一致。
+  - **建议**: 文档中补充总 Agent 的输入示例、`tool_trace` 与 `tool_status_events` 示例，方便前端调试。
 
 
 

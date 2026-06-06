@@ -20,6 +20,7 @@
 2. 学习路径推荐模块：基于画像和课程大纲生成推荐路径。
 3. 资源生成模块：生成 documents / mindmap / quiz / coding_practice / ppt 等资源。
 4. 学习成长树模块：把学生事件、资源事件和 RAG 上下文沉淀到学习树。
+5. 总 Agent 模块：统一调度画像、推荐、资源生成和学习成长树，是跨模块编排入口，不直接产出教学内容。
 
 其中，`knowledge_build_api` 和 `file_transmit_api` 属于支撑链路，不是 4 个 agent 产物的主展示面。
 
@@ -35,12 +36,14 @@ flowchart TD
   B --> C3[knowledge_build_api]
   B --> C4[file_transmit_api]
   B --> C5[study_graph_api]
+  B --> C6[total_agent_api]
   C1 --> D1[learning_profile_task]
   C1 --> D2[personal_recommendation_task]
   C2 --> D3[generative_task]
   C3 --> D4[jobs_task / graph_task]
   C4 --> D5[file_task / syllabus_task]
   C5 --> D6[study_graph_task]
+  C6 --> D7[total_agent_task]
   A --> E[总 Agent / 内部任务]
   E --> D6[study_graph_task]
   D6 --> F1[Student Agent runtime]
@@ -63,7 +66,9 @@ flowchart TD
 | 前端 / API 客户端 | `blueprint.knowledge_build_api` | 用户创建图谱、创建作业、查看作业状态 | job、graph 管理信息 |
 | 前端 / API 客户端 | `blueprint.file_transmit_api` | 用户上传文件或查看下载 | file、syllabus 绑定信息 |
 | 前端 / API 客户端 | `blueprint.study_graph_api` | 查看学习树、查看特征、触发 Student Agent 更新 | 学习树、特征、变更轨迹 |
+| 前端 / API 客户端 | `blueprint.total_agent_api` | 统一调度学习画像、推荐、资源生成和学习树 | Total Agent 结果、tool_trace、状态事件 |
 | 总 Agent / 内部任务 | `tasks.study_graph_task` | 学生事件、资源事件、RAG 结果需要沉淀到学习树 | 学习树、特征、变更轨迹 |
+| 总 Agent / 内部任务 | `tasks.total_agent_task` | 统一路由学习画像、推荐、资源生成和学习树 | Total Agent 统一结果 |
 | `learning_api` | `learning_profile_task` | 画像构建、个人大纲读取与初始化 | profile、personal_syllabus |
 | `learning_api` | `run_recommendation_route_from_payload` | 需要生成学习路径推荐 | 推荐图、候选路径、选中路径 |
 | `generative_api` | `generative_task` | 需要批量或单条资源生成 | 资源 manifest、资源详情 |
@@ -78,6 +83,7 @@ flowchart TD
 | 学习路径推荐 | `/api/personal_recommendation` | `tasks.personal_recommendation_task` | `graph`、`candidates`、`selected`、`best_path` |
 | 资源生成 | `/api/generative_generate`、`/api/generative_list`、`/api/generative_detail` | `tasks.generative_task` | 资源 manifest、资源详情、渲染文件 |
 | 学习成长树 | `/api/study_graph/detail`、`/api/study_graph/features`、`/api/study_graph/agent_run` | `tasks.study_graph_task` | `tree`、`features`、`changes`、`tool_trace` |
+| 总 Agent | `/api/total_agent/detail`、`/api/total_agent/run`、`/api/total_agent/agent_run` | `tasks.total_agent_task` | `result`、`tool_trace`、`tool_status_events`、`suggested_next_action` |
 | 支撑作业 / 文件 | `/api/job_*`、`/api/file_*` | `tasks.jobs_task`、`tasks.file_task`、`tasks.syllabus_task`、`tasks.graph_task` | job、file、graph、syllabus 记录 |
 
 ## 4. 4 个模块的调用链
@@ -196,6 +202,31 @@ API 请求
 - 本次变更列表 `changes`。
 - 运行过程轨迹 `tool_trace`。
 
+### 4.5 总 Agent 模块
+
+外部接口：
+
+- `GET /api/total_agent/detail`
+- `POST /api/total_agent/run`
+- `POST /api/total_agent/agent_run`
+
+调用链：
+
+```text
+API 请求
+  -> total_agent_task.run_total_agent / run_total_agent_agent
+    -> load_total_context
+    -> infer_user_intent
+    -> route to learning_profile_task / personal_recommendation_task / generative_task / study_graph_task
+    -> 返回 TotalAgentResult + tool_trace + tool_status_events + suggested_next_action
+```
+
+适合前端展示的内容：
+
+- `intent` 与 `suggested_next_action`。
+- `tool_trace` 与 `tool_status_events`。
+- 统一的 `result`，其中可按意图读取画像、推荐、资源或答疑结果。
+
 ## 5. 支撑接口的定位
 
 ### 5.1 `knowledge_build_api`
@@ -294,6 +325,7 @@ API 请求
 
 - 不要把 `knowledge_build_api` 当成 agent 产品接口，它是作业与图谱构建管理接口。
 - 不要把 `file_transmit_api` 当成资源生成接口，它只负责文件进入系统。
+- `total_agent_api` 是跨模块编排入口，不直接替代具体的画像、推荐、资源或学习树蓝图。
 - `learning_ask_question` 和 `learning_update_personal_syllabus` 已经是 deprecated 路由，不应作为新链路入口。
 - 学习成长树当前主要通过任务层入口调用，不要凭空写成不存在的 HTTP 蓝图。
 
