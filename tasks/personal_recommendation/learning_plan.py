@@ -44,6 +44,37 @@ def _learning_plan_root() -> Path:
     return _backend_root() / LEARNING_PLAN_ROOT_DIR
 
 
+def _use_file_backend() -> bool:
+    return bool(os.getenv("PERSONAL_RECOMMENDATION_ROOT") or os.getenv("LEARNING_PLAN_FILE_BACKEND") == "1")
+
+
+def _db_available() -> bool:
+    try:
+        from flask import has_app_context
+
+        return bool(has_app_context())
+    except Exception:
+        return False
+
+
+def _require_db_backend() -> None:
+    if not _db_available():
+        raise RuntimeError("learning plan persistence requires a database app context; set PERSONAL_RECOMMENDATION_ROOT or LEARNING_PLAN_FILE_BACKEND=1 only for tests or offline artifacts")
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _json_loads(value: Any, default: Any = None) -> Any:
+    if value in (None, ""):
+        return default
+    try:
+        return json.loads(value)
+    except Exception:
+        return default
+
+
 def _normalize_positive_int(value: Any, field_name: str) -> int:
     try:
         normalized = int(value)
@@ -79,6 +110,9 @@ def _append_jsonl(path_value: Path, payload: dict) -> None:
 
 
 def load_learning_plan_manifest(user_id: int, syllabus_id: Optional[int] = None) -> List[dict]:
+    if not _use_file_backend():
+        _require_db_backend()
+        return _load_learning_plan_events_db(user_id, syllabus_id)
     path_value = _manifest_path(user_id, syllabus_id)
     if not path_value.exists():
         return []
@@ -104,8 +138,120 @@ def append_learning_plan_manifest_entry(user_id: int, entry: dict, syllabus_id: 
     if payload.get("syllabus_id") is not None or syllabus_id is not None:
         payload["syllabus_id"] = _normalize_positive_int(payload.get("syllabus_id") or syllabus_id, "syllabus_id")
     payload.setdefault("created_at", _utc_timestamp())
+    if not _use_file_backend():
+        _require_db_backend()
+        _append_learning_plan_event_db(payload)
+        return payload
     _append_jsonl(_manifest_path(payload["user_id"], payload.get("syllabus_id")), payload)
     return payload
+
+
+def _load_learning_plan_events_db(user_id: int, syllabus_id: Optional[int] = None) -> List[dict]:
+    from extensions import db
+    from schemas.agent_runtime_state import LearningPlanEvent
+
+    normalized_user_id = _normalize_positive_int(user_id, "user_id")
+    query = LearningPlanEvent.query.filter_by(user_id=normalized_user_id)
+    if syllabus_id is not None:
+        query = query.filter_by(syllabus_id=_normalize_positive_int(syllabus_id, "syllabus_id"))
+    rows = query.order_by(LearningPlanEvent.created_at.asc(), LearningPlanEvent.entry_id.asc()).all()
+    entries: list[dict] = []
+    for row in rows:
+        payload = _json_loads(row.payload_json, {})
+        entry = {
+            "entry_id": row.entry_id,
+            "schema_version": row.schema_version or LEARNING_PLAN_MANIFEST_VERSION,
+            "event_type": row.event_type,
+            "plan_id": row.plan_id,
+            "step_id": row.step_id,
+            "status": row.status,
+            "source": row.source,
+            "payload": payload if isinstance(payload, dict) else {},
+            "user_id": row.user_id,
+            "syllabus_id": row.syllabus_id,
+            "created_at": row.created_at,
+        }
+        entries.append({key: value for key, value in entry.items() if value is not None})
+    return entries
+
+
+def _append_learning_plan_event_db(payload: dict) -> None:
+    from extensions import db
+    from schemas.agent_runtime_state import LearningPlan, LearningPlanEvent, LearningPlanStep
+
+    event_type = str(payload.get("event_type") or "")
+    plan_id = str(payload.get("plan_id") or "")
+    if not plan_id:
+        return
+    now_ts = int(payload.get("created_at") or _utc_timestamp())
+    event = db.session.get(LearningPlanEvent, payload["entry_id"])
+    if event is None:
+        last_event = LearningPlanEvent.query.filter_by(plan_id=plan_id).order_by(LearningPlanEvent.created_at.desc()).first()
+        if last_event is not None:
+            now_ts = max(now_ts, int(last_event.created_at or 0) + 1)
+    if event is None:
+        event = LearningPlanEvent(entry_id=payload["entry_id"])
+        db.session.add(event)
+    event.plan_id = plan_id
+    event.user_id = int(payload["user_id"])
+    event.syllabus_id = payload.get("syllabus_id")
+    event.step_id = payload.get("step_id")
+    event.event_type = event_type
+    event.status = payload.get("status")
+    event.source = payload.get("source")
+    event.payload_json = _json_dumps(payload.get("payload") if isinstance(payload.get("payload"), dict) else {})
+    event.schema_version = payload.get("schema_version") or LEARNING_PLAN_MANIFEST_VERSION
+    event.created_at = now_ts
+
+    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+    if event_type == EVENT_PLAN_CREATED:
+        plan = db.session.get(LearningPlan, plan_id)
+        if plan is None:
+            plan = LearningPlan(plan_id=plan_id)
+            db.session.add(plan)
+        plan.user_id = int(payload["user_id"])
+        plan.syllabus_id = payload.get("syllabus_id")
+        plan.status = payload.get("status") or LEARNING_PLAN_STATUS_ACTIVE
+        plan.source = payload.get("source") or LEARNING_PLAN_SOURCE_RECOMMENDATION
+        plan.candidate_index = event_payload.get("candidate_index")
+        plan.path_json = _json_dumps(event_payload.get("path") or [])
+        plan.created_at = plan.created_at or now_ts
+        plan.updated_at = now_ts
+    elif event_type == EVENT_PLAN_SUPERSEDED:
+        plan = db.session.get(LearningPlan, plan_id)
+        if plan is not None:
+            plan.status = LEARNING_PLAN_STATUS_SUPERSEDED
+            plan.updated_at = now_ts
+    elif event_type == EVENT_STEPS_CREATED:
+        plan = db.session.get(LearningPlan, plan_id)
+        if plan is not None:
+            plan.updated_at = now_ts
+        for item in event_payload.get("steps") or []:
+            if not isinstance(item, dict) or not item.get("step_id"):
+                continue
+            step = db.session.get(LearningPlanStep, str(item.get("step_id")))
+            if step is None:
+                step = LearningPlanStep(step_id=str(item.get("step_id")))
+                db.session.add(step)
+            step.plan_id = plan_id
+            step.node_id = str(item.get("node_id") or "")
+            step.title = str(item.get("title") or "")
+            step.outcomes_json = _json_dumps(item.get("outcomes") or [])
+            step.order_index = int(item.get("order_index") or 0)
+            step.status = str(item.get("status") or LEARNING_PLAN_STEP_STATUS_PENDING)
+            step.resource_ids_json = _json_dumps(item.get("resource_ids") or [])
+            step.created_at = step.created_at or now_ts
+            step.updated_at = now_ts
+    elif event_type == EVENT_STEP_STATUS_CHANGED:
+        step_id = str(payload.get("step_id") or event_payload.get("step_id") or "")
+        step = db.session.get(LearningPlanStep, step_id) if step_id else None
+        if step is not None:
+            step.status = str(payload.get("status") or event_payload.get("status") or step.status)
+            step.updated_at = now_ts
+        plan = db.session.get(LearningPlan, plan_id)
+        if plan is not None:
+            plan.updated_at = now_ts
+    db.session.commit()
 
 
 def _select_path(recommendation_result: dict, candidate_index: Optional[int] = None) -> Optional[dict]:

@@ -75,6 +75,7 @@ def create_app():
             import schemas.syllabusgraph
             import schemas.user
             import schemas.user_syllabus
+            import schemas.agent_runtime_state
         except Exception:
             # models may already be imported elsewhere; ignore import errors here
             pass

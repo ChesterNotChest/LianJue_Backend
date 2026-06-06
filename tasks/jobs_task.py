@@ -8,7 +8,6 @@ from repositories.jobs_repo import create_job, update_job_status
 from repositories import jobs_repo
 from extensions import db
 from schemas.filegraph import FileGraph
-from schemas.material import Material
 from schemas.syllabus import Syllabus
 
 
@@ -87,8 +86,7 @@ def purge_job_record(job_id: int) -> bool:
         if file is not None:
             remaining_bindings = get_bindings_by_file_id(file_id)
             syllabus_ref = Syllabus.query.filter_by(file_id=file_id).first()
-            material_ref = Material.query.filter_by(file_id=file_id).first()
-            if not remaining_bindings and syllabus_ref is None and material_ref is None:
+            if not remaining_bindings and syllabus_ref is None:
                 paths_to_remove.append(getattr(file, 'path', None))
                 db.session.delete(file)
 

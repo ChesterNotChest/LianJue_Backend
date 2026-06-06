@@ -14,7 +14,6 @@ from repositories.graph_repo import get_graph_by_id, get_graph_by_graphId
 from repositories.user_syllabus_repo import create_user_syllabus, list_user_syllabuses, list_user_syllabuses_by_syllabus
 from schemas.syllabus import Syllabus
 from schemas.user_syllabus import UserSyllabus
-from schemas.material import Material
 from schemas.file import File
 from constant import SyllabusPermission
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
@@ -61,8 +60,6 @@ def _has_file_references(file_id: int) -> bool:
     if file_id is None:
         return False
     if Syllabus.query.filter_by(file_id=file_id).first() is not None:
-        return True
-    if Material.query.filter_by(file_id=file_id).first() is not None:
         return True
     try:
         from repositories.filegraph_repo import get_bindings_by_file_id
