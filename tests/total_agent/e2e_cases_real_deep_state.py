@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import shutil
@@ -100,6 +101,27 @@ def _write_artifact(root: Path, name: str, payload: dict) -> Path:
     path = root / name
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+def _stream_run(payload: dict) -> dict:
+    """E2E 内部：流式运行总 Agent，打印 LLM 文本 + 工具声明到 stdout，返回最终 result dict。"""
+    final_result: dict = {}
+
+    async def _run():
+        nonlocal final_result
+        async for event in tat.run_total_agent_agent(payload, stream=True):
+            t = event["type"]
+            d = event["data"]
+            if t == "text_start":
+                print(f"\n{d.get('content', '')}", end="", flush=True)
+            elif t == "text_delta":
+                print(d.get("content_delta", ""), end="", flush=True)
+            elif t == "final":
+                print(flush=True)
+                final_result = d
+
+    asyncio.run(_run())
+    return final_result
 
 
 def _load_fixture() -> dict:
@@ -276,14 +298,13 @@ def test_total_agent_e2e_real_deep_state_all_agents(monkeypatch, db_real_deep_st
 
     graph_name = os.getenv("PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME") or os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"
     reporter.emit("total agent", "calling continue flow")
-    continue_result = tat.run_total_agent_agent(
+    continue_result = _stream_run(
         {
             "user_id": state.user_id,
             "syllabus_id": state.syllabus_id,
             "message": state.messages["follow_up"][0],
             "graph_name": graph_name,
             "rag_top_k": 5,
-            "status_callback": reporter.emit_event,
         }
     )
     reporter.emit(
@@ -317,7 +338,7 @@ def test_total_agent_e2e_real_deep_state_all_agents(monkeypatch, db_real_deep_st
 
     current_step = resource_generation["next_task"]
     reporter.emit("total agent", "calling feedback flow")
-    feedback_result = tat.run_total_agent_agent(
+    feedback_result = _stream_run(
         {
             "user_id": state.user_id,
             "syllabus_id": state.syllabus_id,
@@ -328,7 +349,6 @@ def test_total_agent_e2e_real_deep_state_all_agents(monkeypatch, db_real_deep_st
             "status": prt.LEARNING_PLAN_STEP_STATUS_COMPLETED,
             "score": 0.86,
             "context": {"current_resource_id": generated_resource.get("resource_id")},
-            "status_callback": reporter.emit_event,
         }
     )
     reporter.emit(
@@ -393,14 +413,13 @@ def test_total_agent_e2e_real_deep_state_answer_learning_question(monkeypatch, d
     graph_name = os.getenv("PERSONAL_RECOMMENDATION_RAG_GRAPH_NAME") or os.getenv("SEARCH_TOOL_GRAPH_NAME") or "RAG"
 
     reporter.emit("total agent", "calling answer question flow")
-    answer_result = tat.run_total_agent_agent(
+    answer_result = _stream_run(
         {
             "user_id": state.user_id,
             "syllabus_id": state.syllabus_id,
             "message": "为什么 HBase RowKey 会出现热点？",
             "graph_name": graph_name,
             "rag_top_k": 5,
-            "status_callback": reporter.emit_event,
         }
     )
     reporter.emit(

@@ -411,7 +411,7 @@ def get_student_learning_tree(
             }
             for s in siblings
         ]
-    return result}
+    return result
 
 
 def get_learning_tree_features(user_id: int, syllabus_id: int, stale_days: int = 14) -> dict:

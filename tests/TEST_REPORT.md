@@ -624,7 +624,7 @@ recommendation_result fixture
 
 - 推荐成功后只返回候选和 `wait_user_acceptance`，不隐式创建 plan。
 - 用户确认或 `auto_accept=true` 时才执行 `accept_learning_plan`。
-- 已有 active plan 时，“继续学习”走 history-driven 当前 step，不重新随机推荐。
+- 已有 active plan 时，”继续学习”走 history-driven 当前 step，不重新随机推荐。
 - 反馈完成或跳过当前 step 后激活下一个 pending step。
 - `load_total_context` 读取 active plan、next task、持久化画像摘要和学习成长树摘要；读取失败只返回 warning，不伪造画像。
 - `generate_current_step_resource` 先构建 `resource_strategy`，再调用资源生成入口；单元测试通过 monkeypatch 隔离真实资源生成。
@@ -846,6 +846,10 @@ tests/artifacts/total_agent/e2e_real_deep_state/answer_learning_question_real_ra
 ```bash
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
 ```
+
+### 5.1 流式输出
+
+Total Agent 支持 `stream=True` 模式，LLM E2E 已接入 `run_total_agent_stream()`，配合 `--capture=tee-sys` 终端实时显示 LLM 逐 token 文本 + 工具状态。CI 由默认回归覆盖 mock 管道测试。前端可通过 SSE（`/api/total_agent/agent_run?stream=true`）消费。
 
 可选探究用例：
 

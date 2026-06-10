@@ -74,3 +74,9 @@ tests/_artifacts/
 
 *tmp
 tmp*
+
+# Temp script artifacts (quick tests, manual debugging)
+scripts/_stream_*.py
+
+# Generated resources (runtime artifacts)
+generative/*

@@ -183,6 +183,26 @@ TOTAL_AGENT_TOOL_ORDER = {
 }
 
 
+# ── 流式事件类型 ──────────────────────────────────────────────
+STREAM_EVENT_TEXT_DELTA = "text_delta"
+STREAM_EVENT_TEXT_START = "text_start"
+STREAM_EVENT_TOOL_CALL = "tool_call"
+STREAM_EVENT_TOOL_START = "tool_start"
+STREAM_EVENT_TOOL_END = "tool_end"
+STREAM_EVENT_TOOL_STATUS = "tool_status"
+STREAM_EVENT_FINAL = "final"
+
+STREAM_EVENT_TYPES = {
+    STREAM_EVENT_TEXT_DELTA,
+    STREAM_EVENT_TEXT_START,
+    STREAM_EVENT_TOOL_CALL,
+    STREAM_EVENT_TOOL_START,
+    STREAM_EVENT_TOOL_END,
+    STREAM_EVENT_TOOL_STATUS,
+    STREAM_EVENT_FINAL,
+}
+
+
 @dataclass
 class TotalAgentDeps:
     state: Dict[str, Any] = field(default_factory=dict)
