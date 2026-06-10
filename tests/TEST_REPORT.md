@@ -99,7 +99,13 @@ python -m pytest -q tests/test_personal_recommendation_task.py tests/test_person
 python -m pytest -q tests/test_total_agent_task.py tests/total_agent/test_process_contract.py
 ```
 
-### 1.k 集成测试 3 - 个人推荐路径 Agent 产物
+### 1.m 单元测试包 9 - Study Graph API
+
+```bash
+python -m pytest -q tests/test_study_graph_api.py -m mysql
+```
+
+### 1.n 集成测试 3 - 个人推荐路径 Agent 产物
 
 ```bash
 RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
@@ -655,6 +661,22 @@ tests/artifacts/total_agent/process_contract/
 `total_agent_deterministic_result.json` 同时保留两种对照场景：无持久化画像时 `profile_source=none`，以及测试侧通过 `learning_profile_task` 注入持久化画像时 `profile_source=persisted_profile`。后者应能看到资源策略从默认 `documents` 变为 `documents + quiz`，并把 `difficulty` 标记为 `targeted`。
 
 `total_agent_persisted_profile_read_result.json` 验证画像存储层保存后的 profile 能通过正式 `load_profile_summary -> get_persisted_learning_profile` 读取回来，属于单元级持久化边界检查，不调用真实 Profile Agent。
+
+### 2.m 单元测试包 9 - Study Graph API
+
+目标：验证 `/api/study_graph/detail` 端点的 `syllabus_id` 可选化行为。
+
+覆盖文件：
+
+- `test_study_graph_api.py`
+
+覆盖范围：
+
+- 缺失 `user_id` 时返回 400 + `missing_user_id`。
+- 有 `user_id` 但无 `syllabus_id` 时返回 200 + 终身学习总览（`tree.type=student`、`tree.syllabi` 列表）。
+- 总览接口仅读不写，不创建任何学习树或计划数据。
+
+这些测试标记 `@pytest.mark.mysql`，在 CI 中默认跳过；设置 `RUN_DB_TESTS=1` 后随全量回归运行。
 
 ### 2.k 集成测试 3 - 个人推荐路径 Agent
 

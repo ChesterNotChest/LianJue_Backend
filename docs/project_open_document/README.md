@@ -25,9 +25,8 @@
 | 6 | `06_data_and_database_design.md` | 数据结构、持久化目录、数据库与迁移建议 |
 | 7 | `07_interface_and_frontend_design.md` | API 对齐、前端交互、演示界面与状态流 |
 | 8 | `08_deployment_and_runtime.md` | 运行环境、配置、部署、模型与外部依赖 |
-| 9 | `09_testing_and_acceptance.md` | 测试体系、E2E 回归、验收标准 |
-| 10 | `10_innovation_and_value.md` | 技术创新、功能创新、应用价值 |
-| 11 | `11_development_plan_and_risks.md` | 开发计划、预算、风险与后续路线 |
+| 9 | `09_innovation_and_value.md` | 技术创新、功能创新、应用价值 |
+| — | `tests/TEST_REPORT.md` | 测试体系、E2E 回归、验收标准（独立维护） |
 
 ## 写作原则
 

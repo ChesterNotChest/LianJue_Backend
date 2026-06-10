@@ -354,7 +354,36 @@ def submit_learning_tree_changes(
     }
 
 
-def get_student_learning_tree(user_id: int, syllabus_id: int, include_debug: bool = False) -> dict:
+def get_student_lifelong_overview(user_id: int) -> dict:
+    from schemas.agent_runtime_state import StudyGraphTree
+
+    trees = StudyGraphTree.query.filter_by(user_id=user_id).order_by(StudyGraphTree.updated_at.desc()).all()
+    syllabi = []
+    for tree in trees:
+        node_count = len(list_nodes(tree.tree_id))
+        syllabi.append({
+            "syllabus_id": tree.syllabus_id,
+            "subject_title": tree.subject_title,
+            "tree_id": tree.tree_id,
+            "node_count": node_count,
+        })
+    return {
+        "success": True,
+        "tree": {
+            "tree_id": f"student_{user_id}",
+            "type": "student",
+            "user_id": user_id,
+            "syllabi": syllabi,
+        },
+    }
+
+
+def get_student_learning_tree(
+    user_id: int,
+    syllabus_id: int,
+    include_debug: bool = False,
+    include_siblings: bool = False,
+) -> dict:
     tree = get_tree(user_id, syllabus_id)
     if tree is None:
         tree = create_tree_if_missing(user_id, syllabus_id, title=None, now_ts=int(time()))
@@ -362,7 +391,27 @@ def get_student_learning_tree(user_id: int, syllabus_id: int, include_debug: boo
     tree["virtual_root"] = build_virtual_root(tree)
     if include_debug:
         tree["debug"] = {"change_log_exists": True}
-    return {"success": True, "tree": tree, "debug": tree.get("debug", {}) if include_debug else {}}
+    result: dict = {"success": True, "tree": tree, "debug": tree.get("debug", {}) if include_debug else {}}
+    if include_siblings:
+        from schemas.agent_runtime_state import StudyGraphTree
+        siblings = StudyGraphTree.query.filter(
+            StudyGraphTree.user_id == user_id,
+            StudyGraphTree.syllabus_id != syllabus_id,
+        ).order_by(StudyGraphTree.updated_at.desc()).all()
+        result["sibling_trees"] = [
+            {
+                "syllabus_id": s.syllabus_id,
+                "subject_title": s.subject_title,
+                "tree_id": s.tree_id,
+                "preview_nodes": [
+                    {"node_id": n.get("node_id"), "title": n.get("title")}
+                    for n in list_nodes(s.tree_id)[:2]
+                ],
+                "node_count": len(list_nodes(s.tree_id)),
+            }
+            for s in siblings
+        ]
+    return result}
 
 
 def get_learning_tree_features(user_id: int, syllabus_id: int, stale_days: int = 14) -> dict:

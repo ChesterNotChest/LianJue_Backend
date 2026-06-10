@@ -68,12 +68,14 @@
 | `learning_plan_step` | 学习计划步骤 | `step_id`, `plan_id`, `node_id`, `title`, `outcomes_json`, `order_index`, `status`, `resource_ids_json`, `created_at`, `updated_at` |
 | `learning_plan_event` | append-only 计划事件 | `entry_id`, `plan_id`, `user_id`, `syllabus_id`, `step_id`, `event_type`, `status`, `payload_json`, `created_at` |
 
-建议约束：
+约束：
 
-- `learning_plan.plan_id` 唯一。
-- `learning_plan_step.step_id` 唯一。
+- `learning_plan.user_id` → `user.user_id`（CASCADE）。
+- `learning_plan.syllabus_id` → `syllabus.syllabus_id`（SET NULL，可为空）。
+- `learning_plan_step.plan_id` → `learning_plan.plan_id`（NO ACTION）。
+- `learning_plan_event.plan_id` → `learning_plan.plan_id`（CASCADE）。
 - `learning_plan_step` 对同一 `plan_id` 的 `order_index` 唯一。
-- 同一 `user_id + syllabus_id` 同时只能有一个 `active` plan，可通过业务逻辑或数据库约束保证。
+- 同一 `user_id + syllabus_id` 同时只能有一个 `active` plan，通过业务逻辑保证。
 
 兼容与迁移说明：
 
@@ -127,11 +129,16 @@ study_graph/user_{user_id}/syllabus_{syllabus_id}/change_log.jsonl
 | `study_graph_edge` | 树边 | `edge_id`, `tree_id`, `source_node_id`, `target_node_id`, `edge_type`, `created_at`, `updated_at` |
 | `study_graph_change_log` | 变更请求和裁决结果 | `id`, `tree_id`, `client_change_id`, `status`, `request_json`, `result_json`, `reason`, `created_at` |
 
-建议约束：
+约束：
 
+- `study_graph_tree.user_id` → `user.user_id`（CASCADE）。
+- `study_graph_tree.syllabus_id` → `syllabus.syllabus_id`（CASCADE）。
 - `study_graph_tree`：`UNIQUE(user_id, syllabus_id)`。
+- `study_graph_node.tree_id` → `study_graph_tree.tree_id`（NO ACTION）。
 - `study_graph_node`：`UNIQUE(tree_id, normalized_title)`。
+- `study_graph_edge.tree_id` → `study_graph_tree.tree_id`（NO ACTION）。
 - `study_graph_edge`：`UNIQUE(tree_id, source_node_id, target_node_id, edge_type)`。
+- `study_graph_change_log.tree_id` → `study_graph_tree.tree_id`（NO ACTION）。
 - `study_graph_change_log`：`UNIQUE(tree_id, client_change_id)`。
 
 兼容与迁移说明：
