@@ -1,6 +1,6 @@
 # 学生学习成长树关闭报告
 
-本文档描述当前学生学习成长树的最终实现边界。目标是说明输入输出契约、内部核心逻辑、测试构造和持久化内容，便于后续接入总 Agent、前端接口或迁移 SQL。
+本文档描述当前学生学习成长树的最终实现边界。目标是说明输入输出契约、内部核心逻辑、测试构造和持久化内容，便于后续接入总 Agent、前端接口或数据库迁移维护。
 
 ## 当前同步状态
 
@@ -11,7 +11,7 @@ Study Graph 当前提供两类能力：学生个人学习成长树的读写，�
 当前边界：
 
 - 推荐模块只读 `study_graph_state`，不写入 study graph。
-- Total Agent 的 `record_learning_feedback` 可触发 study graph sync；sync 失败不回滚 learning plan manifest，但必须进入 warning / status event。
+- Total Agent 的 `record_learning_feedback` 可触发 study graph sync；sync 失败不回滚 learning plan 持久化状态，但必须进入 warning / status event。
 - 课程聚合摘要应保持隐私边界，只输出聚合统计、弱节点摘要和最小可用诊断，不输出其他学生明细。
 - `tool_status_events` 由 Total Agent 包装读取和同步阶段，前端可把它作为状态展示样本。
 
@@ -90,7 +90,7 @@ display:
 
 - `BasePath.STUDY_GRAPH_ROOT = "/study_graph"`
 
-当前没有新增数据库表。`study_graph/` 是 manifest 运行时目录，版本库只保留 `.gitkeep`，具体用户树数据被 `.gitignore` 忽略。
+当前已新增 Study Graph 生产数据库表；`study_graph/` manifest 仍作为测试、离线和显式文件后端使用，版本库只保留 `.gitkeep`，具体用户树数据被 `.gitignore` 忽略。
 
 ## 1. 影响的文件范围
 
@@ -110,8 +110,8 @@ display:
 - `tasks/study_graph/contracts.py`
   - ID、根节点、空树、掌握度标签、client change id 等契约函数。
 - `tasks/study_graph/storage.py`
-  - manifest 和 change log 的文件存储。
-  - `user_id + syllabus_id` 路径隔离。
+  - 数据库 / manifest 双后端存储。
+  - `user_id + syllabus_id` 隔离。
 - `tasks/study_graph/tree_builder.py`
   - 变更候选标准化。
   - 节点归并、父节点裁决、掌握度更新、展示状态计算。
@@ -187,7 +187,7 @@ run_student_agent(payload)
     -> submit_changes
        -> study_graph_task.submit_learning_tree_changes
           -> validate_change_request
-          -> create_tree_if_missing / load manifest
+          -> create_tree_if_missing / load tree storage
           -> normalize_change_candidates
           -> apply_learning_tree_changes
           -> upsert_node / upsert_edge / append_change_log
@@ -397,7 +397,7 @@ submit_learning_tree_changes(
 内部逻辑：
 
 - 校验 `user_id/syllabus_id/changes`。
-- 初始化或读取 `study_graph/user_{user_id}/syllabus_{syllabus_id}/manifest.json`。
+- 初始化或读取数据库中的 `study_graph_tree`；显式文件后端下读取 `study_graph/user_{user_id}/syllabus_{syllabus_id}/manifest.json`。
 - `subject_title` 用于生成：
   - `subject_title = 大数据概论`
   - `title = 大数据概论学习成长树`
@@ -456,8 +456,8 @@ submit_learning_tree_changes(
 
 内部逻辑：
 
-- 如果 manifest 不存在，创建空树。
-- 读取完整 manifest。
+- 如果树不存在，创建空树。
+- 生产默认读取数据库 tree；显式文件后端读取完整 manifest。
 - 回填 `virtual_root`。
 
 ### 3.7 `get_learning_tree_features(user_id, syllabus_id, stale_days=14) -> dict`
@@ -486,7 +486,7 @@ submit_learning_tree_changes(
 
 内部逻辑：
 
-- 读取 manifest。
+- 读取数据库 tree 或显式文件后端 manifest。
 - 遍历 nodes。
 - 根据 mastery label 和更新时间生成 Agent 摘要。
 
@@ -575,15 +575,41 @@ tests/artifacts/study_graph/integration_multi_payload_tree/
 
 ## 5. 新增的持久化内容
 
-### 5.1 运行时 manifest
+### 5.1 生产数据库表
 
-路径：
+Study Graph 生产默认使用数据库后端，表定义位于 `schemas/agent_runtime_state.py`：
+
+```text
+study_graph_tree
+study_graph_node
+study_graph_edge
+study_graph_change_log
+```
+
+核心约束：
+
+- `study_graph_tree`：`UNIQUE(user_id, syllabus_id)`
+- `study_graph_node`：`UNIQUE(tree_id, normalized_title)`
+- `study_graph_edge`：`UNIQUE(tree_id, source_node_id, target_node_id, edge_type)`
+- `study_graph_change_log`：`UNIQUE(tree_id, client_change_id)`
+
+实现细节：
+
+- `tasks/study_graph/storage.py` 生产读写必须依赖数据库 app context；没有数据库 app context 时不会静默写入 repo 下的 `study_graph/`。
+- `study_graph_tree.manifest_json` 保留完整 tree 快照，便于兼容原 manifest 读取语义。
+- `study_graph_node` 和 `study_graph_edge` 保存可查询的节点/边当前态。
+- `study_graph_change_log` 保存幂等变更事件，`client_change_id` 用于去重。
+
+### 5.2 显式文件后端 manifest
+
+测试、离线 artifact 必须显式设置 `STUDY_GRAPH_FILE_BACKEND=1` 才使用文件后端：
 
 ```text
 study_graph/user_{user_id}/syllabus_{syllabus_id}/manifest.json
+study_graph/user_{user_id}/syllabus_{syllabus_id}/change_log.jsonl
 ```
 
-核心结构：
+manifest 核心结构：
 
 ```json
 {
@@ -602,29 +628,6 @@ study_graph/user_{user_id}/syllabus_{syllabus_id}/manifest.json
 }
 ```
 
-### 5.2 运行时 change log
-
-路径：
-
-```text
-study_graph/user_{user_id}/syllabus_{syllabus_id}/change_log.jsonl
-```
-
-每行是一条 JSON：
-
-```json
-{
-  "client_change_id": "...",
-  "status": "accepted",
-  "request": {},
-  "result": {},
-  "created_at": 1760000000,
-  "tree_id": "study_tree:20:29"
-}
-```
-
-### 5.3 版本库目录策略
-
 `.gitignore` 中忽略真实运行数据：
 
 ```gitignore
@@ -639,15 +642,6 @@ tests/artifacts/
 study_graph/.gitkeep
 ```
 
-### 5.4 SQL 迁移目标
-
-当前不新增 SQL 表。后续迁移时建议保持以下约束：
-
-- `study_graph_tree`：`UNIQUE(user_id, syllabus_id)`
-- `study_graph_node`：`UNIQUE(tree_id, normalized_title)`
-- `study_graph_edge`：`UNIQUE(tree_id, source_node_id, target_node_id, edge_type)`
-- `study_graph_change_log`：`UNIQUE(tree_id, client_change_id)`
-
 ## 6. 文档事实源
 
 `docs/study_graph_dev_doc.md` 是学习成长树模块唯一事实源。旧 `study_graph_tools_small_plan.md` 和 `study_graph_tools_contract.md` 的有效内容已经按真实代码实现融合进本文：
@@ -655,7 +649,7 @@ study_graph/.gitkeep
 - 每个学生每个大纲一棵个人成长树。
 - 只维护已触达知识节点和 `parent_of` 树边。
 - Student Agent 只提交变更候选，tool/service 层负责裁决和落盘。
-- `manifest.json` / `change_log.jsonl` 文件边界、SQL 迁移约束和只读 features 接口。
+- 生产数据库表、显式文件后端 `manifest.json` / `change_log.jsonl`、只读 features 接口。
 - Total Agent 只消费个人 features 和课程聚合摘要，不在推荐阶段写树。
 
 旧阶段文档可删除；如果后续发现旧文档仍有有效事实，应先融合进本文或测试，再删除旧文档。

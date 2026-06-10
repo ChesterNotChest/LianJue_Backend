@@ -56,7 +56,14 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 | `coding_practice` | 最小可运行代码实操 | `practice.json`、`practice.md`、代码文件 | `markdown` | `validate_coding_practice_payload` |
 | `ppt` | 结构化课件 | `ppt.json`、`ppt.md`、`ppt.pptx` | `markdown` | `validate_ppt_payload` |
 
-`coding_practice` 当前会把 `code_files` 写入资源目录下的安全相对路径，并在 manifest `main_files.entry_file_path` 中记录入口文件；不提供真实沙箱执行。`quiz` 当前会生成可读 markdown，并在渲染层清理选项前缀，避免模型输出 `A. xxx` 时展示成 `A. A. xxx`。
+`coding_practice` 当前会把 `code_files` 写入资源目录下的安全相对路径，并在 `main_files.entry_file_path` 中记录入口文件；不提供真实沙箱执行。`quiz` 当前会生成可读 markdown，并在渲染层清理选项前缀，避免模型输出 `A. xxx` 时展示成 `A. A. xxx`。
+
+持久化后端：
+
+- `schemas/agent_runtime_state.py` 定义 `GeneratedResource` 和 `GeneratedResourceFile`。
+- 生产读写必须依赖数据库 app context，并写入 `generated_resource` / `generated_resource_file` 数据库表。
+- 资源实际文件仍写入 `/generative/user_{user_id}/...`，数据库只保存路径、metadata、validation 和 main files。
+- 设置 `GENERATIVE_FILE_BACKEND=1` 或 `GENERATOR_FILE_BACKEND=1` 时使用文件 manifest；该模式仅用于测试和离线 artifacts，生产路径不做静默文件 fallback。
 
 各类型真实 schema 摘要：
 
@@ -114,7 +121,7 @@ ppt
 - `RESOURCE_AGENT_SCHEMA_VERSION = "generative_agent.v1"`
 - `RESOURCE_GENERATION_TOOL_ORDER = ("read_generation_request", "read_generation_plan", "retrieve_generation_materials", "write_generation_draft", "generate_resource_payload", "persist_generated_resource")`
 
-当前资源模块没有新增数据库表。资源落盘、校验、索引更新和 `pptx` 导出都由文件系统完成，运行时目录统一收口到 `/generative`。
+资源模块已新增生产数据库 metadata 后端。资源正文、Markdown、PPTX、SVG 和代码文件仍由文件系统或后续对象存储承载；数据库保存资源索引、校验结果、metadata 和 main files 路径。测试或显式文件后端仍可使用 `/generative` manifest。
 
 ## 1. 影响的文件范围
 
@@ -125,9 +132,10 @@ ppt
   - 资源 list/detail HTTP 入口。
 - `blueprint/syllabus_material_api.py`
   - 旧 `syllabus_material_*` URL 的兼容层。生成资源详情和列表已改为委托 `generative_task`；旧 `material_id` 草稿、更新、发布、状态、详情业务返回 `410 deprecated`。
+  - 旧 `material` / `syllabusmaterials` 表、schema 和 repository 已清退；旧流程生成的材料和文件不再作为有效业务数据来源。
 - `tasks/generative_task.py`
   - 模块间统一入口和兼容包装层。
-  - 生成资源 manifest 列表、分组和 detail 包装入口。
+  - 生成资源数据库/manifest 列表、分组和 detail 包装入口。
 - `tasks/generative/resource_generation_agent.py`
   - 资源生成外层聚合、输入归一化和 OpenAI-compatible 内容 Agent。
   - 输入归一化。
@@ -147,7 +155,7 @@ ppt
   - 统一构造 OpenAI-compatible pydantic-ai 模型。
   - 处理工具型 Agent 的供应商参数兼容。
 - `tasks/generative/resource_persistence.py`
-  - 落盘、校验、manifest 更新、`pptx` 导出。
+  - 落盘、校验、数据库 metadata / manifest 更新、`pptx` 导出。
 - `tasks/generative/storage.py`
   - 路径、目录、归一化工具。
 - `tasks/generative/contracts.py`
@@ -201,6 +209,7 @@ get_generated_resource_detail(...)
 - `tasks/generative/` 只放包内实现，外部 API 或其他 Agent 不应直接依赖包内函数。
 - `tasks/material_task.py` 已废弃并删除；原先读取 manifest 并包装前端 detail 的能力迁入 `generative_task`。
 - 旧教师产出习题 / material draft / material publish 业务已经停止维护，对应旧 URL 返回 `410 deprecated`。
+- 旧 `material` 与 `syllabusmaterials` 表不再由后端模型注册，也不再参与文件列表、文件删除保护、资源展示或生成链路。真实 MySQL 可在确认无外部依赖后执行备份并 drop。
 
 外部输入契约：
 
@@ -321,7 +330,7 @@ flowchart LR
   C --> D[resource_agent_tools]
   D --> E[generate_resource_payload]
   E --> F[persist_generated_resource]
-  F --> G[manifest.json / 资源文件 / pptx]
+  F --> G[generated_resource DB metadata / manifest.json / 资源文件 / pptx]
 ```
 
 模块输出契约：
@@ -362,7 +371,7 @@ flowchart LR
 - `planning_trace`
 - `tool_trace`
 
-manifest 和 detail 的稳定摘要字段由 `tasks/generative_task._resource_summary_from_entry` 统一包装：
+数据库/manifest entry 和 detail 的稳定摘要字段由 `tasks/generative_task._resource_summary_from_entry` 统一包装：
 
 ```json
 {
@@ -623,7 +632,7 @@ tests/artifacts/resources_generative_real_search_real_llm_workspace/
 - 不写入项目正式 `generative/` 目录。
 - 测试结束后这些临时文件不会作为正式结果保留。
 
-这些测试不依赖数据库持久化，也不会因为数据库开启而把生成结果写回数据库。它们主要验证的是 agent / tool / file system 这条链。
+这些测试主要验证 agent / tool / file system 这条链。新增 `tests/test_agent_runtime_db_persistence.py` 覆盖 Flask app context 下资源 metadata 写入数据库。
 
 补充：
 
@@ -676,8 +685,8 @@ tests/artifacts/resources_generative_real_search_real_llm_workspace/
 `docs/resource_generation_dev_doc.md` 是资源生成模块唯一事实源。旧 `generative_*_small_plan.md` 和 `generative_*_contract.md` 的有效内容已经按真实代码实现融合进本文：
 
 - 资源类型：`documents`、`mindmap`、`quiz`、`coding_practice`、`ppt`。
-- 每类资源的 schema 摘要、校验入口、渲染入口、落盘文件和 manifest/detail 字段。
+- 每类资源的 schema 摘要、校验入口、渲染入口、落盘文件和数据库/manifest detail 字段。
 - 工具型 Resource Generation Agent 的输入归一化、计划/检索/草稿/payload/持久化链路。
-- 旧静态资源阶段的文件系统边界和 manifest 定位。
+- 旧静态资源阶段的文件系统边界、数据库 metadata 和 manifest 测试后端定位。
 
 旧阶段文档可删除；如果后续发现旧文档仍有有效事实，应先融合进本文或测试，再删除旧文档。

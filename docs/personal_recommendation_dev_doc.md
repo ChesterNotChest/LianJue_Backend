@@ -27,7 +27,7 @@ API/Agent payload
 ```text
 recommendation result
   -> accept_recommendation_path
-  -> learning_plan manifest.jsonl
+  -> learning_plan DB tables / test manifest.jsonl
   -> active plan + ordered steps
   -> optional step status update
   -> optional study_graph progress sync
@@ -637,7 +637,7 @@ PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
 职责：
 
 - 将用户或总 Agent 采纳的推荐路径写成 active learning plan。
-- 旧 active plan 通过 manifest 事件标记为 `superseded`。
+- 旧 active plan 通过 learning plan event 标记为 `superseded`。
 - 为路径节点生成有序 plan steps。
 
 输出：
@@ -666,7 +666,7 @@ PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
 职责：
 
 - 更新 learning plan step 状态。
-- 默认只追加 manifest 事件，不写 `study_graph`。
+- 默认只追加 learning plan event，不写 `study_graph`。
 - 当调用方显式开启 `sync_study_graph` 时，才把 step 进度同步给 `study_graph_task`。
 
 ## 4. 测试用例的构建描述
@@ -775,14 +775,26 @@ python experiments/learning_path_recommendation/benchmarks/benchmark_perf.py --n
 
 ## 5. 新增的持久化内容
 
-本功能没有新增运行时数据库表。
+推荐生成结果当前作为 API/Task 返回值即时生成，不直接持久化为推荐结果表。已有 syllabus JSON 由现有 syllabus 存储链路提供，推荐 task 只读取，不修改。
 
-推荐生成结果当前作为 API/Task 返回值即时生成，不写入数据库。已有 syllabus JSON 由现有 syllabus 存储链路提供，推荐 task 只读取，不修改。
+被用户或 Total Agent 确认采纳的路径会写入 learning plan 持久化层。生产默认口径为数据库表；测试或显式文件后端仍可使用 manifest。
 
-被用户或总 Agent 确认采纳的路径可以写入独立 learning plan manifest：
+生产数据库表：
 
 ```text
-learning_plan/user_{user_id}/syllabus_{syllabus_id}/manifest.jsonl
+learning_plan
+learning_plan_step
+learning_plan_event
+```
+
+当前实现细节：
+
+- `schemas/agent_runtime_state.py` 定义 `LearningPlan`、`LearningPlanStep`、`LearningPlanEvent`。
+- `tasks/personal_recommendation/learning_plan.py` 生产读写必须依赖数据库 app context。
+- 测试、artifact 和离线运行必须显式通过 `PERSONAL_RECOMMENDATION_ROOT` 或 `LEARNING_PLAN_FILE_BACKEND=1` 使用 append-only manifest；生产路径不做静默文件 fallback：
+
+```text
+personal_recommendation/learning_plan/user_{user_id}/syllabus_{syllabus_id}/manifest.jsonl
 ```
 
 持久化边界：
@@ -791,7 +803,7 @@ learning_plan/user_{user_id}/syllabus_{syllabus_id}/manifest.jsonl
 - 每个 plan step 保存 `node_id`、`title`、`outcomes`、`order_index`、`status` 和 `resource_ids`。
 - 新 plan 创建时，旧 active plan 通过 `plan_superseded` 事件逻辑失效，不物理覆盖历史。
 - `update_learning_plan_step_status(...)` 只更新 plan step 状态；如调用方显式开启同步，才把 step 进度传给 `study_graph_task`。
-- manifest 是当前过渡形态，后续统一 `manifest -> MySQL` 时再迁移为正式表。
+- 数据库事件写入保持可 replay 语义；同一秒内连续事件会补单调 `created_at`，避免 DB 排序丢失 JSONL 行顺序。
 
 实验输出保存在：
 
@@ -808,4 +820,4 @@ experiments/learning_path_recommendation/benchmarks/results/
 - `KnowLionGraphAdapter` 属于后续真实图谱接入边界，当前主测试覆盖的是内存图适配器和 syllabus 转换链路。
 - RAG/多路检索属于 Agent 工具层，不写入推荐算法内部。这样后续可以替换为五路检索、reasoning path 检索或 mock 检索，而不影响剪枝、评分和选择算法。
 - `P` 偏好评分目前为占位实现，后续可接入学习画像中的偏好、节奏、资源类型倾向。
-- learning plan 当前只做 manifest 级路径确认和执行状态记录；正式落库、审计、A/B 对比和跨设备恢复应在后续 `manifest -> MySQL` 迁移中统一完成。
+- learning plan 已具备数据库后端；审计、A/B 对比和跨设备恢复可继续基于 `learning_plan_event` 扩展。
