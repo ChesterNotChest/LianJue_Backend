@@ -5,8 +5,8 @@ class LearningPlan(db.Model):
     __tablename__ = "learning_plan"
 
     plan_id = db.Column(db.String(80), primary_key=True)
-    user_id = db.Column(db.Integer, nullable=False, index=True)
-    syllabus_id = db.Column(db.Integer, nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey("syllabus.syllabus_id", ondelete="SET NULL"), nullable=True, index=True)
     status = db.Column(db.String(40), nullable=False, default="active", index=True)
     source = db.Column(db.String(80), nullable=False, default="recommendation")
     candidate_index = db.Column(db.Integer, nullable=True)
@@ -38,7 +38,7 @@ class LearningPlanEvent(db.Model):
     __tablename__ = "learning_plan_event"
 
     entry_id = db.Column(db.String(80), primary_key=True)
-    plan_id = db.Column(db.String(80), nullable=False, index=True)
+    plan_id = db.Column(db.String(80), db.ForeignKey("learning_plan.plan_id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = db.Column(db.Integer, nullable=False, index=True)
     syllabus_id = db.Column(db.Integer, nullable=True, index=True)
     step_id = db.Column(db.String(80), nullable=True, index=True)
@@ -88,8 +88,8 @@ class StudyGraphTree(db.Model):
     __tablename__ = "study_graph_tree"
 
     tree_id = db.Column(db.String(120), primary_key=True)
-    user_id = db.Column(db.Integer, nullable=False, index=True)
-    syllabus_id = db.Column(db.Integer, nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey("syllabus.syllabus_id", ondelete="CASCADE"), nullable=False, index=True)
     subject_title = db.Column(db.String(255), nullable=True)
     title = db.Column(db.String(255), nullable=True)
     summary_json = db.Column(db.Text, nullable=True)
