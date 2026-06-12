@@ -2,6 +2,8 @@ from flask import Flask
 import importlib
 import logging
 import os
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
 from sqlalchemy import inspect, text
 
@@ -94,6 +96,7 @@ def create_app():
         ("blueprint.study_graph_api", "bp"),
         ("blueprint.syllabus_material_api", "bp"),
         ("blueprint.user_api", "bp"),
+        ("blueprint.study_buddy_api", "bp"),
     ]
 
     for module_name, attr_name in blueprint_targets:
@@ -104,4 +107,28 @@ def create_app():
         except Exception:
             logger.exception(f"register blueprint failed: {module_name}.{attr_name}")
 
+    # ── 按日滚动日志 ──
+    _setup_file_logging()
+
     return app
+
+
+def _setup_file_logging():
+    log_dir = Path(__file__).resolve().parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    handler = TimedRotatingFileHandler(
+        str(log_dir / "service.log"),
+        when="midnight",
+        interval=1,
+        backupCount=30,
+        encoding="utf-8",
+    )
+    handler.suffix = "%Y-%m-%d"
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    ))
+    handler.setLevel(logging.INFO)
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)

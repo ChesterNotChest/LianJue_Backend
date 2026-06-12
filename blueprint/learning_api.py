@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from repositories.user_syllabus_repo import get_user_syllabus
 from tasks import learning_profile_task
+from tasks.common.search_tool import search_tool
 from tasks.personal_recommendation_task import (
     RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
     RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
@@ -283,3 +284,83 @@ def accept_recommendation_api(recommendation_id):
     if result.get('error_code') == 'recommendation_snapshot_not_found':
         status_code = 404
     return jsonify(result), status_code
+
+
+@bp.route('/knowledge/search', methods=['GET'])
+def knowledge_search():
+    """知识库检索 — search_tool + 文件匹配。
+
+    Query params: q (required), graph_name (default RAG), top_k (default 5), match_files (default true)
+    """
+    import re
+    from extensions import db
+    from schemas.agent_runtime_state import GeneratedResource
+
+    query = str(request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'success': False, 'results': [], 'error': 'missing q'}), 400
+    graph_name = str(request.args.get('graph_name') or 'RAG').strip()
+    top_k = int(request.args.get('top_k') or 5)
+    match_files = str(request.args.get('match_files') or '1') in ('1', 'true', 'yes')
+
+    try:
+        result = search_tool(query, graph_name=graph_name, top_k=top_k)
+    except Exception as exc:
+        return jsonify({'success': False, 'results': [], 'error': str(exc)}), 500
+
+    # ── 文件匹配：从 paragraphs 中提取 [文件名]，匹配知识源 + 生成资源 ──
+    matched_sources: list[dict] = []
+    if match_files and result.get("success"):
+        source_names: set[str] = set()
+        for p in result.get("paragraphs", []):
+            for m in re.finditer(r'\(\[(.+?)\]\)', str(p)):
+                source_names.add(m.group(1))
+        if source_names:
+            try:
+                # 1) 知识源文件（可下载的原始文档）
+                from schemas.file import File as KnowledgeFile
+                for src in source_names:
+                    rows = KnowledgeFile.query.filter(
+                        KnowledgeFile.path.contains(src)
+                    ).limit(3).all()
+                    for row in rows:
+                        matched_sources.append({
+                            "kind": "knowledge_source",
+                            "file_id": row.file_id,
+                            "path": row.path or "",
+                            "matched_source": src,
+                            "download_url": f"/api/file_download?file_id={row.file_id}",
+                        })
+            except Exception:
+                pass
+
+            try:
+                # 2) 生成资源（学生可用的学习资料）
+                for src in source_names:
+                    rows = GeneratedResource.query.filter(
+                        db.or_(
+                            GeneratedResource.title.contains(src),
+                            GeneratedResource.topic.contains(src),
+                        )
+                    ).limit(5).all()
+                    for row in rows:
+                        main_files = {}
+                        try:
+                            main_files = __import__("json").loads(row.main_files_json or "{}")
+                        except Exception:
+                            pass
+                        matched_sources.append({
+                            "kind": "generated_resource",
+                            "resource_id": row.resource_id,
+                            "resource_type": row.resource_type,
+                            "title": row.title or "",
+                            "topic": row.topic or "",
+                            "matched_source": src,
+                            "main_files": main_files,
+                            "created_at": row.created_at,
+                        })
+            except Exception:
+                pass
+
+    result["matched_sources"] = matched_sources[:15]
+    return jsonify(result)

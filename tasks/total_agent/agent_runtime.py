@@ -298,7 +298,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     elif intent == INTENT_ANSWER_LEARNING_QUESTION or terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
         suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
 
-    return build_total_agent_result(
+    final = build_total_agent_result(
         state,
         success=success,
         intent=intent,
@@ -307,6 +307,28 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         error_code=error_code,
         error_message=error_message,
     )
+
+    # ── 触发学伴主动消息 ──
+    try:
+        from tasks.study_buddy_task import trigger_study_buddy
+        payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
+        uid = int(payload.get("user_id") or 0)
+        sid = int(payload.get("syllabus_id") or 0) if payload.get("syllabus_id") else None
+        if uid:
+            plan = result.get("accept_learning_plan", {}).get("plan") if isinstance(
+                result.get("accept_learning_plan"), dict
+            ) else None
+            buddy_msg = trigger_study_buddy(
+                user_id=uid,
+                syllabus_id=sid or 0,
+                plan=plan,
+            )
+            if buddy_msg:
+                final["buddy_message"] = buddy_msg
+    except Exception:
+        pass  # 学伴失败不影响主链路
+
+    return final
 
 
 def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False, stream: bool = False):
