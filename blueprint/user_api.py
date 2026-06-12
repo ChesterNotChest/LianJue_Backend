@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 
+from extensions import db
+from schemas.user import User
 from tasks.user_task import (
     register,
     login,
@@ -392,3 +394,29 @@ def learning_profile_refresh_api():
     if isinstance(profile, dict):
         profile['profile_refreshed'] = True
     return _learning_profile_response(profile)
+
+
+@bp.route('/demo_students', methods=['GET'])
+def demo_students_api():
+    """返回最新的演示学生列表（按创建时间倒序）。"""
+    users = (
+        User.query
+        .filter(User.user_name.like('demo_%'))
+        .order_by(User.create_time.desc())
+        .limit(12)
+        .all()
+    )
+    return jsonify({
+        'success': True,
+        'students': [
+            {
+                'user_id': u.user_id,
+                'user_name': u.user_name,
+                'email': u.email,
+                'created_at': u.create_time.isoformat() if u.create_time else None,
+            }
+            for u in users
+        ],
+        'error_code': '',
+        'error_message': '',
+    })

@@ -184,6 +184,24 @@ def _append_learning_plan_event_db(payload: dict) -> None:
     if not plan_id:
         return
     now_ts = int(payload.get("created_at") or _utc_timestamp())
+    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
+
+    # 确保父记录 LearningPlan 先于 LearningPlanEvent 入库，避免 autoflush FK 约束失败
+    if event_type == EVENT_PLAN_CREATED:
+        plan = db.session.get(LearningPlan, plan_id)
+        if plan is None:
+            plan = LearningPlan(plan_id=plan_id)
+            db.session.add(plan)
+        plan.user_id = int(payload["user_id"])
+        plan.syllabus_id = payload.get("syllabus_id")
+        plan.status = payload.get("status") or LEARNING_PLAN_STATUS_ACTIVE
+        plan.source = payload.get("source") or LEARNING_PLAN_SOURCE_RECOMMENDATION
+        plan.candidate_index = event_payload.get("candidate_index")
+        plan.path_json = _json_dumps(event_payload.get("path") or [])
+        plan.created_at = plan.created_at or now_ts
+        plan.updated_at = now_ts
+        db.session.flush()  # 字段设完后 flush，确保 plan 先入库
+
     event = db.session.get(LearningPlanEvent, payload["entry_id"])
     if event is None:
         last_event = LearningPlanEvent.query.filter_by(plan_id=plan_id).order_by(LearningPlanEvent.created_at.desc()).first()
@@ -199,25 +217,10 @@ def _append_learning_plan_event_db(payload: dict) -> None:
     event.event_type = event_type
     event.status = payload.get("status")
     event.source = payload.get("source")
-    event.payload_json = _json_dumps(payload.get("payload") if isinstance(payload.get("payload"), dict) else {})
+    event.payload_json = _json_dumps(event_payload)
     event.schema_version = payload.get("schema_version") or LEARNING_PLAN_MANIFEST_VERSION
     event.created_at = now_ts
-
-    event_payload = payload.get("payload") if isinstance(payload.get("payload"), dict) else {}
-    if event_type == EVENT_PLAN_CREATED:
-        plan = db.session.get(LearningPlan, plan_id)
-        if plan is None:
-            plan = LearningPlan(plan_id=plan_id)
-            db.session.add(plan)
-        plan.user_id = int(payload["user_id"])
-        plan.syllabus_id = payload.get("syllabus_id")
-        plan.status = payload.get("status") or LEARNING_PLAN_STATUS_ACTIVE
-        plan.source = payload.get("source") or LEARNING_PLAN_SOURCE_RECOMMENDATION
-        plan.candidate_index = event_payload.get("candidate_index")
-        plan.path_json = _json_dumps(event_payload.get("path") or [])
-        plan.created_at = plan.created_at or now_ts
-        plan.updated_at = now_ts
-    elif event_type == EVENT_PLAN_SUPERSEDED:
+    if event_type == EVENT_PLAN_SUPERSEDED:
         plan = db.session.get(LearningPlan, plan_id)
         if plan is not None:
             plan.status = LEARNING_PLAN_STATUS_SUPERSEDED

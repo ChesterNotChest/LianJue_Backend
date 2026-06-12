@@ -268,6 +268,7 @@ def _append_manifest_entry_db(user_id: int, entry: dict) -> None:
     row.main_files_json = _json_dumps(main_files)
     row.created_at = int(payload.get("created_at") or row.created_at or now_ts)
     row.updated_at = int(payload.get("updated_at") or now_ts)
+    db.session.flush()  # 确保 resource 先入库，避免子表 FK 约束失败
     for role, path_or_url in main_files.items():
         if not path_or_url:
             continue

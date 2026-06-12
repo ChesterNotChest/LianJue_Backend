@@ -80,3 +80,9 @@ scripts/_stream_*.py
 
 # Generated resources (runtime artifacts)
 generative/*
+
+# Runtime user data — DB or file backend
+personal_recommendation/learning_plan/*
+!personal_recommendation/learning_plan/.gitkeep
+personal_recommendation/recommendation_snapshot/*
+!personal_recommendation/recommendation_snapshot/.gitkeep

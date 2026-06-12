@@ -142,6 +142,31 @@ PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG
 PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K=5
 ```
 
+### 1.o 演示学生播种
+
+播种 3 个演示学生（低/中/高进度），全量真实 LLM + RAG + DB：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 pytest tests/total_agent/test_seed_demo_students.py -v
+```
+
+只播种中进度学生：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 pytest tests/total_agent/test_seed_demo_students.py -v -k demo_medium
+```
+
+产物：
+- 画像 → `<CWD>/profiles/<sid>-<uid>.json`
+- 学习计划 → `personal_recommendation/learning_plan/user_{uid}/...`
+- 学习树 → `study_graph/user_{uid}/...`
+- 生成资源 → `generative/user_{uid}/...`
+- 摘要 → `tests/artifacts/total_agent/demo_students/summary.json`
+
+播种后在登录页输入用户名 + 密码 `demo123` 即可进入。
+
+每个用户以 `demo_{level}_{uuid}` 命名，多次运行不冲突。
+
 ## 2 用例描述
 
 ### 2.a 全量默认单元回归
@@ -713,6 +738,29 @@ tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_
 ```
 
 该产物保留总 Agent 模拟 payload、工具调用顺序、每个工具返回、推荐摘要、最终 `PersonalRecommendationResult`，以及 mock accept 链路的学习计划 manifest。
+
+### 2.o 演示学生播种
+
+目标：生成 3 个有真实学习数据的持久化演示学生（低/中/高进度），供前端登录页选择并展示完整平台能力。
+
+覆盖文件：
+
+- `tests/total_agent/test_seed_demo_students.py`
+
+覆盖范围：
+
+- 画像：低/中/高三级不同的 `profile_input_records`，通过真实 LLM Agent 构建并持久化到 `<CWD>/profiles/`
+- 学习计划（中/高）：真实推荐 Agent → deterministic fallback → snapshot → accept，落 `manifest.jsonl`
+- 学习树（中/高）：`submit_learning_tree_changes` 写入批次变更（Medium 5 batches / High 9 batches）
+- 生成资源（中/高）：`generate_resources_from_request` 产出 documents/mindmap
+- Summary 输出：`tests/artifacts/total_agent/demo_students/summary.json`
+
+不可 monkeypatch，所有数据落到生产路径。多次运行不冲突（`demo_{level}_{uuid}` 命名）。
+
+播种后使用方式：
+
+- 前端登录页输入用户名 + 密码 `demo123`
+- 或调用 `GET /api/demo_students` 获取最新学生列表
 
 ## 3 生成文件说明
 

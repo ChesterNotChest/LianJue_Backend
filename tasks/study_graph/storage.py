@@ -386,6 +386,7 @@ def _save_tree_manifest_db(user_id: int, syllabus_id: int, manifest: dict) -> di
     row.manifest_json = _json_dumps(manifest)
     row.created_at = int(manifest.get("created_at") or row.created_at or now_ts)
     row.updated_at = int(manifest.get("updated_at") or now_ts)
+    db.session.flush()  # 确保 tree 先入库，避免子表 FK 约束失败
 
     for node in manifest.get("nodes") or []:
         if not isinstance(node, dict) or not node.get("node_id"):
