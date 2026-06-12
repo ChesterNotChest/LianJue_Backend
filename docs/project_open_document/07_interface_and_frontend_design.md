@@ -12,7 +12,79 @@
 - 下一步可点击动作。
 - 错误、warning 和降级原因。
 
-## 7.2 Total Agent 前端消费结构
+## 7.2 前端 API 边界
+
+前端接口按业务 task 粒度组织。读取类接口应只读取当前持久化状态，不隐式触发 Agent；构建、刷新、推荐、生成、反馈类接口才允许进入 Agent 或工具链。这样前端能明确区分“页面展示读取”和“用户动作触发计算”。
+
+### 7.2.1 学习画像 API
+
+学习画像提供两个主接口：
+
+| 场景 | HTTP 入口 | 语义 | 是否触发画像 Agent |
+|---|---|---|---|
+| 读取当前画像 | `POST /api/learning_profile_detail` | 只读已持久化画像，用于页面初始化、右侧画像栏和演示回放 | 否 |
+| 刷新画像 | `POST /api/learning_profile_refresh` | 根据学习记录、答题记录、资源使用记录显式构建或刷新画像 | 是 |
+
+读取画像请求：
+
+```json
+{
+  "user_id": 126,
+  "syllabus_id": 29
+}
+```
+
+读取画像响应：
+
+```json
+{
+  "success": true,
+  "profile": {},
+  "profile_path": "profiles/29-126.json",
+  "profile_saved": true,
+  "profile_refreshed": false,
+  "error_message": "",
+  "error_code": ""
+}
+```
+
+刷新画像请求可携带新增学习证据：
+
+```json
+{
+  "user_id": 126,
+  "syllabus_id": 29,
+  "learning_goal": "掌握 HBase RowKey 热点规避",
+  "answer_records": [
+    {
+      "question": "RowKey 如何避免写入热点？",
+      "correct": false,
+      "time_spent_seconds": 170,
+      "meta": {"knowledge_points": ["RowKey 热点", "加盐前缀"]}
+    }
+  ],
+  "resource_usage": [
+    {
+      "resource_id": "quiz-rowkey-hotspot-001",
+      "resource_type": "quiz",
+      "action": "submit",
+      "score": 0.6,
+      "meta": {"knowledge_points": ["RowKey 热点", "预分区"]}
+    }
+  ]
+}
+```
+
+刷新画像响应与读取接口保持同一外层结构，但 `profile_refreshed` 应为 `true`。前端在普通页面加载时使用 `learning_profile_detail`；只有用户完成测验、提交学习记录或明确要求重新分析时，才使用 `learning_profile_refresh`。
+
+### 7.2.2 接口使用约束
+
+- 前端不应为了读取画像而调用刷新接口。
+- 前端不应依赖 `refresh_profile` 作为业务语义；画像 API 只有读和重算两个入口。
+- 答题卡片可以先本地判分并展示解析，再静默调用刷新接口提交 `answer_records`。
+- Total Agent 后续对话读取到的是已持久化画像，不要求前端在每次对话前刷新画像。
+
+## 7.3 Total Agent 前端消费结构
 
 前端重点消费：
 
@@ -44,7 +116,7 @@
 }
 ```
 
-## 7.3 多 Agent 状态流设计
+## 7.4 多 Agent 状态流设计
 
 建议采用“主回答 + Agent cards”的结构：
 
@@ -70,7 +142,7 @@
 
 待补图：Agent cards 交互稿。
 
-## 7.4 学习工作台设计
+## 7.5 学习工作台设计
 
 学习工作台建议包含：
 
@@ -82,7 +154,7 @@
 
 待补图：学习工作台主界面。
 
-## 7.5 资源展示设计
+## 7.6 资源展示设计
 
 资源类型展示建议：
 
@@ -94,7 +166,7 @@
 
 待补图：资源详情页。
 
-## 7.6 降级交互设计
+## 7.7 降级交互设计
 
 前端必须自然接住后端降级：
 
@@ -103,7 +175,7 @@
 - 资源生成中：显示进度而不是空白等待。
 - Study Graph sync warning：提示学习记录已保存，但成长树同步待检查。
 
-## 7.7 演示路径设计
+## 7.8 演示路径设计
 
 建议演示一条完整路径：
 
