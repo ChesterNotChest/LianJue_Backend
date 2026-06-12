@@ -382,3 +382,41 @@ def test_period_concept_decomposer_real_llm_rag_optional():
     assert result.get("tool_trace") == prar.CONCEPT_DECOMPOSITION_TOOL_ORDER
     assert result.get("concepts")
     assert artifact["decomposition_summary"]["concept_count"] > 0
+
+    syllabus_json = {
+        "period": payload["periods"],
+    }
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(prs, "get_syllabus_by_id", lambda syllabus_id: type("Syllabus", (), {"syllabus_path": "unused"})())
+        monkeypatch.setattr(prs, "load_json_file", lambda path: syllabus_json)
+        monkeypatch.setattr(
+            prs,
+            "build_recommendation_profile",
+            lambda user_id, syllabus_id=None: {
+                "knowledge_levels": {},
+                "preferences": {},
+                "constraints": {"max_total_time": 100},
+            },
+        )
+        route_result = prs.run_recommendation_route(
+            user_id=12345,
+            syllabus_id=payload["syllabus_id"],
+            goals=["热点规避", "RowKey设计"],
+            L_max=6,
+            K=10,
+            beam_width=6,
+            rag_context=result.get("debug", {}).get("rag_context_summary") if isinstance(result.get("debug"), dict) else {"success": True},
+            concept_decomposer=lambda _payload: result,
+            decomposer_mode="agent",
+        )
+    finally:
+        monkeypatch.undo()
+
+    route_diagnostics = route_result.get("debug", {}).get("graph_diagnostics", {})
+    artifact["route_result"] = route_result
+    artifact["route_summary"] = _recommendation_summary(route_result)
+    _write_artifact(artifact_root, "concept_decomposer_real_rag_result.json", artifact)
+    assert route_result.get("success") is True
+    assert route_diagnostics.get("learning_tree", {}).get("agent_node_count", 0) > 0
+    assert route_diagnostics.get("output_graph", {}).get("agent_node_count", 0) > 0

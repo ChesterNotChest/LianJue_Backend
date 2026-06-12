@@ -494,6 +494,11 @@ def test_recommendation_route_uses_agent_decomposed_concepts(monkeypatch):
     rowkey_node = next(node for node in graph_nodes.values() if node["title"] == "RowKey")
     assert rowkey_node["decomposition_method"] == "agent"
     assert rowkey_node["fallback_tag"] == ""
+    diagnostics = result["debug"]["graph_diagnostics"]
+    assert diagnostics["learning_tree"]["agent_node_count"] == 2
+    assert diagnostics["recommendation_graph_tree"]["agent_node_count"] == 2
+    assert diagnostics["output_graph"]["agent_node_count"] == 2
+    assert diagnostics["output_graph"]["node_count"] == len(result["graph"]["nodes"])
 
 
 def test_recommendation_route_reports_fallback_dependency(monkeypatch):
@@ -542,6 +547,70 @@ def test_run_recommendation_route_from_payload_accepts_max_candidates_alias(monk
     prt.run_recommendation_route_from_payload({"user_id": 1, "max_candidates": 7})
 
     assert captured["K"] == 7
+
+
+def test_run_recommendation_route_from_payload_auto_injects_agent_decomposer_with_rag(monkeypatch):
+    captured = {}
+
+    def fake_load(syllabus_id=None, *, concept_decomposer=None, rag_context=None):
+        captured["concept_decomposer"] = concept_decomposer
+        captured["rag_context"] = rag_context
+        return {
+            "n1": {
+                "title": "Intro",
+                "outcomes": ["intro"],
+                "prerequisites": [],
+                "learning_time_est": 1,
+                "difficulty": 1,
+            }
+        }
+
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", fake_load)
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+
+    result = prt.run_recommendation_route_from_payload(
+        {
+            "user_id": 1,
+            "syllabus_id": 20,
+            "goals": ["intro"],
+            "rag_context": {"success": True, "paragraphs": []},
+        }
+    )
+
+    assert result["success"] is True
+    assert callable(captured["concept_decomposer"])
+    assert captured["rag_context"]["success"] is True
+
+
+def test_run_recommendation_route_agent_decomposer_mode_rejects_silent_fallback(monkeypatch):
+    def fake_load(syllabus_id=None, *, concept_decomposer=None, rag_context=None):
+        return {
+            "n1": {
+                "title": "Intro",
+                "outcomes": ["intro"],
+                "prerequisites": [],
+                "learning_time_est": 1,
+                "difficulty": 1,
+                "decomposition_method": "rule_fallback",
+                "fallback_tag": "period_concept_rule_fallback",
+            }
+        }
+
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", fake_load)
+
+    result = prt.run_recommendation_route_from_payload(
+        {
+            "user_id": 1,
+            "syllabus_id": 20,
+            "goals": ["intro"],
+            "rag_context": {"success": True, "paragraphs": []},
+            "decomposer_mode": "agent",
+        }
+    )
+
+    assert result["success"] is False
+    assert result["error_code"] == "agent_decomposer_required"
+    assert result["candidates"] == []
 
 
 def test_recommendation_depth_strategy_rejects_unknown_value(monkeypatch):

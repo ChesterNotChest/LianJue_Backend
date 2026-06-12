@@ -43,7 +43,12 @@ def build_resource_generation_agent() -> Agent:
             "retrieve_generation_materials, write_generation_draft, generate_resource_payload, "
             "persist_generated_resource. Do not invent the final persisted resource yourself. "
             "The final resource must come from persist_generated_resource. Return only a JSON object "
-            "matching the ResourceGenerationAgentResult schema."
+            "matching the ResourceGenerationAgentResult schema. "
+            "Before calling retrieve_generation_materials, compose a focused search_query: "
+            "extract key concepts from the topic and learning goal, translate meta-instructions "
+            "(e.g. '请生成文档') into concrete knowledge terms, and include both Chinese and "
+            "English technical keywords. The search_query should be a single concise string "
+            "(max 200 chars) that targets the specific knowledge needed for the resource."
         ),
         name="resource_generation_agent",
         description="Tool-calling agent for generating and persisting learning resources",
@@ -60,8 +65,8 @@ def build_resource_generation_agent() -> Agent:
         return tool_read_generation_plan(ctx.deps.state)
 
     @agent.tool(sequential=True)
-    def retrieve_generation_materials(ctx: RunContext[ResourceGenerationDeps]) -> dict:
-        return tool_retrieve_generation_materials(ctx.deps.state)
+    def retrieve_generation_materials(ctx: RunContext[ResourceGenerationDeps], search_query: str = "") -> dict:
+        return tool_retrieve_generation_materials(ctx.deps.state, search_query=search_query)
 
     @agent.tool(sequential=True)
     def write_generation_draft(ctx: RunContext[ResourceGenerationDeps]) -> dict:

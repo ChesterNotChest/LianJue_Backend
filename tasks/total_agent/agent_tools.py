@@ -151,6 +151,20 @@ def _safe_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items() if not callable(item)}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple) or isinstance(value, set):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if callable(value):
+        return f"<callable:{getattr(value, '__name__', value.__class__.__name__)}>"
+    return _safe_text(value)
+
+
 def _positive_int(value: Any) -> Optional[int]:
     try:
         result = int(value)
@@ -182,7 +196,7 @@ def _extend_status_events(target_state: Dict[str, Any], source_state_or_result: 
 
 def _tool_result(tool_name: str, success: bool = True, state: Optional[Dict[str, Any]] = None, **payload: Any) -> dict:
     result = {"tool": tool_name, "success": bool(success)}
-    result.update(payload)
+    result.update(_json_safe(payload))
     result.setdefault("error_code", "" if success else "tool_failed")
     result.setdefault("error_message", "")
     if state is not None:
@@ -207,7 +221,7 @@ def build_total_agent_result(
     error_code: str = "",
     error_message: str = "",
 ) -> dict:
-    return {
+    return _json_safe({
         "success": bool(success),
         "schema_version": TOTAL_AGENT_SCHEMA_VERSION,
         "intent": _safe_text(intent),
@@ -217,7 +231,7 @@ def build_total_agent_result(
         "suggested_next_action": _safe_text(suggested_next_action),
         "error_code": _safe_text(error_code),
         "error_message": _safe_text(error_message),
-    }
+    })
 
 
 def _plan_steps(plan: Any) -> List[dict]:
@@ -1989,6 +2003,7 @@ def _annotate_resource_status_events(events: Any, *, resource_type: str, task_id
 
 def plan_resource_type_tasks(request_payload: dict) -> list[dict]:
     base_request = deepcopy(_safe_dict(request_payload))
+    base_request.pop("status_callback", None)
     resource_types = _unique_texts(_safe_list(base_request.get("resource_types"))) or [RESOURCE_STRATEGY_DEFAULT_TYPE]
     tasks: list[dict] = []
     for resource_type in resource_types:
@@ -2176,9 +2191,28 @@ def aggregate_resource_generation_results(resource_tasks: list[dict]) -> dict:
 
 
 def process_resource_generation_request(state: Dict[str, Any], request_payload: dict) -> dict:
-    resource_tasks = plan_resource_type_tasks(request_payload)
+    execution_payload = deepcopy(_safe_dict(request_payload))
+    status_callback = execution_payload.pop("status_callback", None)
+    resource_tasks = plan_resource_type_tasks(execution_payload)
     state["resource_type_tasks"] = deepcopy(resource_tasks)
-    generation_result = run_resource_type_tasks(state, resource_tasks)
+    execution_tasks = deepcopy(resource_tasks)
+    if callable(status_callback):
+        for task in execution_tasks:
+            request = task.get("request")
+            if isinstance(request, dict):
+                request["status_callback"] = status_callback
+    generation_result = run_resource_type_tasks(state, execution_tasks)
+    if isinstance(generation_result, dict):
+        safe_tasks = []
+        for task in _safe_list(generation_result.get("resource_tasks")):
+            if not isinstance(task, dict):
+                continue
+            safe_task = deepcopy(task)
+            request = safe_task.get("request")
+            if isinstance(request, dict):
+                request.pop("status_callback", None)
+            safe_tasks.append(safe_task)
+        generation_result["resource_tasks"] = safe_tasks
     state["resource_type_tasks"] = deepcopy(_safe_list(generation_result.get("resource_tasks")))
     if isinstance(generation_result, dict):
         _extend_status_events(state, generation_result)
@@ -2207,9 +2241,9 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
     state["resource_strategy"] = resource_strategy
     request_payload = _build_resource_request(state, next_task, resource_strategy)
     request_payload["run_id"] = state.get("run_id") or ""
-    request_payload["status_callback"] = state.get("status_callback")
-    generation_result = process_resource_generation_request(state, request_payload)
-    request_payload.pop("status_callback", None)
+    execution_payload = deepcopy(request_payload)
+    execution_payload["status_callback"] = state.get("status_callback")
+    generation_result = process_resource_generation_request(state, execution_payload)
     resources = _normalize_resources(_safe_dict(generation_result))
     state["resource_generation_request"] = request_payload
     state["resource_generation_result"] = generation_result

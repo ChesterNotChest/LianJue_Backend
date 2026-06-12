@@ -197,6 +197,7 @@ def _snapshot_payload(
             "best_path": _as_dict(recommendation_result.get("best_path")),
             "rag_overlay": _as_dict(recommendation_result.get("rag_overlay")),
             "planning_hints": _as_dict(recommendation_result.get("planning_hints")),
+            "debug": _as_dict(recommendation_result.get("debug")),
         },
         "summary": _build_result_summary(recommendation_result),
         "accepted_plan_id": accepted_plan_id,
@@ -237,6 +238,7 @@ def _row_to_snapshot(row: Any) -> dict:
         "best_path": _json_loads(row.best_path_json, {}) or {},
         "rag_overlay": _json_loads(row.rag_overlay_json, {}) or {},
         "planning_hints": _json_loads(row.planning_hints_json, {}) or {},
+        "debug": {},
     }
     return {
         "recommendation_id": row.recommendation_id,
@@ -419,6 +421,7 @@ def _recommendation_result_from_snapshot(snapshot: dict) -> dict:
         "best_path": _as_dict(recommendation.get("best_path")),
         "rag_overlay": _as_dict(recommendation.get("rag_overlay")),
         "planning_hints": _as_dict(recommendation.get("planning_hints")),
+        "debug": _as_dict(recommendation.get("debug")),
     }
 
 

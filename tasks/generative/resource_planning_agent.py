@@ -61,7 +61,13 @@ def _tool_write_generation_plan(state: dict, resource_type: str, plan: dict) -> 
     return dict(state["plans"][resource_type])
 
 
-def _tool_retrieve_generation_materials(state: dict, resource_type: str, search_fn: Optional[Callable[..., Dict[str, Any]]]) -> dict:
+def _tool_retrieve_generation_materials(
+    state: dict,
+    resource_type: str,
+    search_fn: Optional[Callable[..., Dict[str, Any]]],
+    *,
+    query_override: str = "",
+) -> dict:
     state["tool_trace"].append("retrieve_generation_materials")
     existing = state["request"].get("retrieval_context")
     if isinstance(existing, dict) and (
@@ -75,14 +81,17 @@ def _tool_retrieve_generation_materials(state: dict, resource_type: str, search_
     if not search_fn or not graph_name:
         return {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}
 
-    query_parts = [
-        state["request"].get("question"),
-        state["request"].get("topic"),
-        " ".join(_normalize_str_list(state["request"].get("knowledge_items"))),
-        " ".join(_normalize_str_list(state["request"].get("weak_points"))),
-        resource_type,
-    ]
-    query = " ".join(_safe_text(item) for item in query_parts if _safe_text(item))
+    if query_override:
+        query = query_override
+    else:
+        query_parts = [
+            state["request"].get("question"),
+            state["request"].get("topic"),
+            " ".join(_normalize_str_list(state["request"].get("knowledge_items"))),
+            " ".join(_normalize_str_list(state["request"].get("weak_points"))),
+            resource_type,
+        ]
+        query = " ".join(_safe_text(item) for item in query_parts if _safe_text(item))
     if not query:
         return {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}
     return search_fn(query, graph_name=graph_name, top_k=3)
