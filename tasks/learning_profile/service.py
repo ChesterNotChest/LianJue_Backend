@@ -83,6 +83,71 @@ def load_personal_syllabus_rows(user_id: int, syllabus_id: Optional[int] = None)
 		)
 	return loaded
 
+def _tool_ensure_personal_syllabus(state):
+	"""Ensure a personal syllabus exists for the profile scope, creating one if missing."""
+	from tasks.learning_profile.personal_syllabus import init_profile_personal_syllabus
+	from tasks.learning_profile_task import read_profile_personal_syllabus
+
+	sid = state.get('syllabus_id')
+	if sid is None:
+		return
+	uid = int(state['user_id'])
+	sid = int(sid)
+	existing = read_profile_personal_syllabus(uid, sid)
+	if isinstance(existing, dict):
+		return
+	init_profile_personal_syllabus(uid, sid)
+
+
+def _merge_weeks_into_profile(state):
+	"""Best-effort: sync knowledge_point scores to week competence and merge into profile.
+
+	Updates personal syllabus on disk, then rebuilds week_signals and merges them
+	into state['profile']['knowledge_mastery']. Does NOT save the profile JSON
+	(that happens afterwards via _tool_save_or_update_profile).
+	"""
+	sid = state.get('syllabus_id')
+	if sid is None or not state.get('profile'):
+		return
+	try:
+		uid = int(state['user_id'])
+		sid = int(sid)
+
+		# 1. Sync knowledge points -> personal syllabus weeks
+		from tasks.learning_profile.personal_syllabus import (
+			read_profile_personal_syllabus,
+			sync_knowledge_to_weeks,
+		)
+		from tasks.learning_profile import profile_builder
+
+		result = sync_knowledge_to_weeks(uid, sid)
+		if not result or not result.get('synced_weeks'):
+			return
+
+		# 2. Re-read updated personal syllabus
+		personal = read_profile_personal_syllabus(uid, sid, hydrate=False)
+		if not isinstance(personal, dict):
+			return
+
+		# 3. Rebuild week_signals from updated personal syllabus
+		syllabus = get_syllabus_by_id(sid)
+		syllabus_json = load_json_file(getattr(syllabus, 'syllabus_path', None)) if syllabus else None
+		if not isinstance(syllabus_json, dict):
+			return
+		week_signals = profile_builder.build_week_signals(personal, syllabus_json)
+
+		# 4. Merge into state['profile'] (does not save — caller saves)
+		profile = state['profile']
+		km = profile.setdefault('knowledge_mastery', {})
+		km['overall_score'] = week_signals['overall_score']
+		km['overall_level'] = week_signals['overall_level']
+		km['week_items'] = week_signals['week_items']
+		km['mastered_weeks'] = week_signals['mastered_weeks']
+		km['weak_weeks'] = week_signals['weak_weeks']
+	except Exception:
+		pass
+
+
 def build_learning_profile(
 	user_id: int,
 	syllabus_id: Optional[int] = None,
@@ -99,6 +164,14 @@ def build_learning_profile(
 	user_syllabuses = list_user_syllabuses(user_id)
 	if syllabus_id is not None:
 		user_syllabuses = [row for row in user_syllabuses if getattr(row, 'syllabus_id', None) == syllabus_id]
+
+
+		# Ensure personal syllabus exists before capturing its path in profile_scope
+		if syllabus_id is not None:
+			_tool_ensure_personal_syllabus({user_id: user_id, syllabus_id: syllabus_id})
+			# re-read UserSyllabus to pick up the path set by init
+			user_syllabuses = list_user_syllabuses(user_id)
+			user_syllabuses = [row for row in user_syllabuses if getattr(row, 'syllabus_id', None) == syllabus_id]
 
 	profile_scope = []
 	for row in user_syllabuses:
@@ -143,19 +216,21 @@ def build_learning_profile(
 	except Exception:
 		if state.get('profile'):
 			if syllabus_id is not None and not state.get('profile_saved'):
+				_merge_weeks_into_profile(state)
 				_tool_save_or_update_profile(state)
 			return state['profile']
 		raise
 	if state.get('profile'):
 		if syllabus_id is not None and not state.get('profile_saved'):
+			_merge_weeks_into_profile(state)
 			_tool_save_or_update_profile(state)
 		return state['profile']
 	if isinstance(result, LearningProfileResult):
 		if isinstance(result.profile, dict):
 			state['profile'] = result.profile
 			if syllabus_id is not None and not state.get('profile_saved'):
+				_merge_weeks_into_profile(state)
 				_tool_save_or_update_profile(state)
-			return state['profile']
 		return result.profile
 	return None
 

@@ -142,6 +142,8 @@ def get_period_concept_decomposer_agent() -> Agent:
             "Do not generate learning paths. Do not persist data. "
             "The decompose_period_concepts tool must receive a JSON object with concepts and edges. "
             "Each concept should include title, source_period.week_index, prerequisite_titles, confidence, matched_by, and reason. "
+            "Concept titles must be ONLY ONE noun or phrase regarding the point of KNOWLEDGE (≤10 Chinese characters | NO symbols). "
+            "Outcomes should also be short noun phrases, no more than a sentence. "
             "Return only the validated concept graph result."
         ),
         name="period_concept_decomposer_agent",

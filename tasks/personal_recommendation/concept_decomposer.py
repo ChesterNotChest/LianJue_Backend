@@ -66,7 +66,9 @@ class ConceptItem(BaseModel):
     @field_validator("title", mode="before")
     @classmethod
     def _normalize_title(cls, value: Any) -> str:
-        return str(value or "").strip()
+        # Hard cap at 50 chars (~25 Chinese chars) as safety net;
+        # the agent prompt already asks for ≤20 Chinese chars.
+        return str(value or "").strip()[:50]
 
     @field_validator("confidence", mode="before")
     @classmethod

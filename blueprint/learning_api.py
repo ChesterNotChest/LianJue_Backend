@@ -7,6 +7,7 @@ from tasks.personal_recommendation_task import (
     RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
     RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
     accept_recommendation_snapshot_path,
+    get_active_learning_plan,
     get_recommendation_snapshot,
     list_recommendation_snapshots,
     run_recommendation_route_from_payload,
@@ -284,6 +285,37 @@ def accept_recommendation_api(recommendation_id):
     if result.get('error_code') == 'recommendation_snapshot_not_found':
         status_code = 404
     return jsonify(result), status_code
+
+
+@bp.route('/learning_plan', methods=['GET'])
+def learning_plan_api():
+    """返回用户当前激活的学习计划。
+
+    Query params: user_id (required), syllabus_id (optional)
+    """
+    user_id = _positive_int_or_none(request.args.get('user_id'))
+    if user_id is None:
+        return jsonify({
+            'success': False,
+            'plan': None,
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+    syllabus_id = _positive_int_or_none(request.args.get('syllabus_id'))
+    plan = get_active_learning_plan(user_id, syllabus_id)
+    if plan is None:
+        return jsonify({
+            'success': True,
+            'plan': {'steps': []},
+            'error_message': '',
+            'error_code': ''
+        })
+    return jsonify({
+        'success': True,
+        'plan': plan,
+        'error_message': '',
+        'error_code': ''
+    })
 
 
 @bp.route('/knowledge/search', methods=['GET'])

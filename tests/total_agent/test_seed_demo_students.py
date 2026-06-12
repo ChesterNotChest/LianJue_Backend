@@ -316,11 +316,10 @@ def _run_recommendation_for_demo(user_id: int, syllabus_id: int, graph_name: str
     if not (isinstance(recommendation, dict) and recommendation.get("best_path")):
         return {"recommendation": recommendation, "snapshot": None, "plan": None, "flow": flow, "error": "no_best_path"}
 
-    # Step 3: snapshot
+    # Step 3: snapshot (proposed only — do NOT auto-accept; demo users should
+    # see the candidate-selection UI before a plan is confirmed)
     snapshot = prt.save_recommendation_snapshot(user_id, syllabus_id, recommendation, request_payload=payload)
-    # Step 4: accept
-    accepted = prt.accept_recommendation_path(user_id, syllabus_id, recommendation, candidate_index=0)
-    return {"recommendation": recommendation, "snapshot": snapshot, "plan": accepted, "flow": flow}
+    return {"recommendation": recommendation, "snapshot": snapshot, "plan": None, "flow": flow}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -600,14 +599,24 @@ def test_seed_demo_medium_student(monkeypatch, demo_db_env):
         learning_goal=records["learning_goal"],
         question="我想深入学习HBase分布式数据库的核心概念和应用。",
     )
-    assert rec_result["plan"] is not None, f"Recommendation failed: {rec_result.get('error')}"
+    assert rec_result["recommendation"] is not None, f"Recommendation failed: {rec_result.get('error')}"
+    recommendation = rec_result["recommendation"]
 
-    plan = rec_result["plan"]["plan"] if isinstance(rec_result["plan"].get("plan"), dict) else rec_result["plan"]
-    active_step = next(
-        (s for s in plan.get("steps", []) if s.get("status") == "active"),
-        plan.get("steps", [{}])[0] if plan.get("steps") else {},
-    )
-    assert active_step, "No active step in plan"
+    # Derive active step from best_path (no auto-accept — demo users see candidate selection)
+    best_path = recommendation.get("best_path") if isinstance(recommendation, dict) else {}
+    path_node_ids = best_path.get("path") if isinstance(best_path, dict) else []
+    graph_nodes = recommendation.get("graph", {}).get("nodes") if isinstance(recommendation, dict) else []
+    node_by_id = {n.get("id"): n for n in (graph_nodes or []) if isinstance(n, dict)}
+    first_node = node_by_id.get(path_node_ids[0]) if path_node_ids else None
+    active_step = {
+        "step_id": "seed-step-0",
+        "node_id": path_node_ids[0] if path_node_ids else "",
+        "title": (first_node.get("title") if isinstance(first_node, dict) else "") or (path_node_ids[0] if path_node_ids else ""),
+        "outcomes": (first_node.get("outcomes") if isinstance(first_node, dict) else []) or [],
+        "order_index": 0,
+        "status": "active",
+    } if path_node_ids else {}
+    assert active_step, "No active step derived from best_path"
 
     # Phase 3: Study graph
     graph_result = _submit_study_batches_for_demo(
@@ -629,7 +638,7 @@ def test_seed_demo_medium_student(monkeypatch, demo_db_env):
         "level": level, "user_id": user.user_id, "user_name": user.user_name,
         "syllabus_id": syllabus.syllabus_id, "password": DEMO_PASSWORD,
         "profile_path": persisted.get("profile_path"),
-        "learning_plan_id": plan.get("plan_id"),
+        "learning_plan_id": None,
         "recommendation_snapshot_id": snapshot_id,
         "study_graph_node_count": graph_result["node_count"],
         "generated_resource_id": resource_id,
@@ -670,14 +679,24 @@ def test_seed_demo_high_student(monkeypatch, demo_db_env):
         learning_goal=records["learning_goal"],
         question="我已经学完了大部分核心课程，想针对RowKey热点和预分区策略进行复习巩固。",
     )
-    assert rec_result["plan"] is not None, f"Recommendation failed: {rec_result.get('error')}"
+    assert rec_result["recommendation"] is not None, f"Recommendation failed: {rec_result.get('error')}"
+    recommendation = rec_result["recommendation"]
 
-    plan = rec_result["plan"]["plan"] if isinstance(rec_result["plan"].get("plan"), dict) else rec_result["plan"]
-    active_step = next(
-        (s for s in plan.get("steps", []) if s.get("status") == "active"),
-        plan.get("steps", [{}])[0] if plan.get("steps") else {},
-    )
-    assert active_step, "No active step in plan"
+    # Derive active step from best_path (no auto-accept — demo users see candidate selection)
+    best_path = recommendation.get("best_path") if isinstance(recommendation, dict) else {}
+    path_node_ids = best_path.get("path") if isinstance(best_path, dict) else []
+    graph_nodes = recommendation.get("graph", {}).get("nodes") if isinstance(recommendation, dict) else []
+    node_by_id = {n.get("id"): n for n in (graph_nodes or []) if isinstance(n, dict)}
+    first_node = node_by_id.get(path_node_ids[0]) if path_node_ids else None
+    active_step = {
+        "step_id": "seed-step-0",
+        "node_id": path_node_ids[0] if path_node_ids else "",
+        "title": (first_node.get("title") if isinstance(first_node, dict) else "") or (path_node_ids[0] if path_node_ids else ""),
+        "outcomes": (first_node.get("outcomes") if isinstance(first_node, dict) else []) or [],
+        "order_index": 0,
+        "status": "active",
+    } if path_node_ids else {}
+    assert active_step, "No active step derived from best_path"
 
     # Phase 3: Study graph
     graph_result = _submit_study_batches_for_demo(
@@ -699,7 +718,7 @@ def test_seed_demo_high_student(monkeypatch, demo_db_env):
         "level": level, "user_id": user.user_id, "user_name": user.user_name,
         "syllabus_id": syllabus.syllabus_id, "password": DEMO_PASSWORD,
         "profile_path": persisted.get("profile_path"),
-        "learning_plan_id": plan.get("plan_id"),
+        "learning_plan_id": None,
         "recommendation_snapshot_id": snapshot_id,
         "study_graph_node_count": graph_result["node_count"],
         "generated_resource_id": resource_id,

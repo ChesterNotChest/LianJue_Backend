@@ -396,14 +396,25 @@ def learning_profile_refresh_api():
     return _learning_profile_response(profile)
 
 
+def _guess_level(user_name: str) -> str:
+    name = (user_name or "").lower()
+    if "high" in name:
+        return "high"
+    if "medium" in name:
+        return "medium"
+    if "low" in name:
+        return "low"
+    return "unknown"
+
+
 @bp.route('/demo_students', methods=['GET'])
 def demo_students_api():
-    """返回最新的演示学生列表（按创建时间倒序）。"""
+    """返回最新的 3 个演示学生（按创建时间倒序）。"""
     users = (
         User.query
         .filter(User.user_name.like('demo_%'))
         .order_by(User.create_time.desc())
-        .limit(12)
+        .limit(3)
         .all()
     )
     return jsonify({
@@ -412,7 +423,7 @@ def demo_students_api():
             {
                 'user_id': u.user_id,
                 'user_name': u.user_name,
-                'email': u.email,
+                'level': _guess_level(u.user_name),
                 'created_at': u.create_time.isoformat() if u.create_time else None,
             }
             for u in users
