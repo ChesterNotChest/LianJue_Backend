@@ -111,7 +111,7 @@ personal_recommendation_task
   -> append / update learning_plan manifest
 
 generative_task
-  -> generate_resources_from_request
+  -> generate_resources_from_request through process_resource_generation_request
 
 study_graph_task
   -> get_learning_tree_features
@@ -133,6 +133,9 @@ study_graph_task
 - `build_current_step_resource_strategy` 根据 message、当前 step、profile 和 study graph 生成资源策略。
 - 用户显式 `resource_types` 优先，不被 profile 偏好覆盖。
 - 当前 step 命中画像或学习树弱点时，资源策略会倾向 `targeted`，并可扩展到 `documents + quiz + mindmap`。
+- `tool_generate_current_step_resource` 不直接逐个等待 Resource Agent。它只调用一次 `process_resource_generation_request`；处理器先冻结完整 `resource_type_tasks`，再并行调用多个单类型 Resource Agent。
+- 每个单类型 Resource Agent 只能生成 `assigned_resource_type` 对应资源；自然语言 message/question 不能新增或覆盖结构化资源类型。
+- 资源生成结果除扁平 `resources` 外，还返回 `resource_tasks`、`resource_results`、`failed_resource_types` 和 `overall_status`，供前端展示每类资源状态。
 - `record_learning_feedback` 先写 learning plan manifest，再推进 step，并尝试同步 study graph。
 - study graph sync 失败不回滚 learning plan 事件，但必须记录 warning。
 - 所有失败返回结构化 `error_code/error_message`。
@@ -279,13 +282,15 @@ study_graph
 
 ```text
 Total Agent resource_strategy
-  -> generative_task.generate_resources_from_request
-  -> resource agent planning / retrieval / draft
+  -> process_resource_generation_request
+  -> freeze resource_type_tasks
+  -> parallel single-type generative_task.generate_resources_from_request calls
+  -> resource agent planning / retrieval / draft per type
   -> OpenAI-compatible pydantic-ai content Agent
   -> persist_generated_resource
 ```
 
-不保留 LiteLLM fallback。RAG 增强也由资源 Agent 承担检索与编排，内容落盘由资源 Agent 完成。
+不保留 LiteLLM fallback。RAG 增强也由资源 Agent 承担检索与编排，内容落盘由资源 Agent 完成。Resource Agent 的 `tool_status_events` 会被聚合回 Total Agent 结果，并携带 `payload.resource_type` / `payload.task_id`，用于前端生成状态回显。
 
 当前全真实 E2E 已生成并校验：
 

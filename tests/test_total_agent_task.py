@@ -68,6 +68,7 @@ def _accept_plan(user_id: int = 8, syllabus_id: int = 20) -> dict:
 
 
 def _fake_generation(request_payload: dict) -> dict:
+    resource_type = (request_payload.get("resource_types") or [request_payload.get("resource_type") or "documents"])[0]
     return {
         "success": True,
         "tool_status_events": [
@@ -76,13 +77,13 @@ def _fake_generation(request_payload: dict) -> dict:
                 agent="resource_agent",
                 stage="generate_resource_payload",
                 status=status_events.STATUS_SUCCEEDED,
-                payload={"resource_type": "documents"},
+                payload={"resource_type": resource_type},
             )
         ],
         "resources": [
             {
-                "resource_id": "documents-total-agent-test",
-                "resource_type": "documents",
+                "resource_id": f"{resource_type}-total-agent-test",
+                "resource_type": resource_type,
                 "status": "ready",
                 "topic": request_payload.get("topic"),
             }
@@ -484,12 +485,12 @@ def test_total_agent_writes_contract_artifact(monkeypatch, tmp_path):
             "missing_profile_case": {
                 "description": "No persisted profile is available; runtime returns empty profile_summary with warnings and does not mock profile data.",
                 "result": missing_profile_result,
-                "captured_request": captured_requests[0],
+                "captured_requests": captured_requests[:1],
             },
             "profile_injected_case": {
                 "description": "Test side injects a persisted profile through learning_profile_task; formal Total Agent consumes it and changes resource strategy.",
                 "result": profile_injected_result,
-                "captured_request": captured_requests[1],
+                "captured_requests": captured_requests[1:],
             },
             "comparison": {
                 "missing_profile_source": missing_profile_result["result"]["context"]["profile_summary"]["profile_source"],
@@ -509,6 +510,164 @@ def test_total_agent_writes_contract_artifact(monkeypatch, tmp_path):
         "documents",
         "quiz",
     ]
+    assert [request["resource_types"] for request in captured_requests] == [["documents"], ["documents"], ["quiz"]]
+
+
+def test_total_agent_resource_processor_plans_single_type_tasks():
+    tasks = tagt.plan_resource_type_tasks(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "topic": "HBase Basics",
+            "resource_types": ["ppt", "documents", "quiz", "documents"],
+            "status_callback": lambda event: None,
+        }
+    )
+
+    assert [task["resource_type"] for task in tasks] == ["ppt", "documents", "quiz"]
+    assert [task["task_id"] for task in tasks] == ["resource_task:ppt", "resource_task:documents", "resource_task:quiz"]
+    for task in tasks:
+        request = task["request"]
+        assert request["resource_types"] == [task["resource_type"]]
+        assert request["assigned_resource_type"] == task["resource_type"]
+        assert request["single_type_mode"] is True
+        assert request["resource_task_id"] == task["task_id"]
+
+
+def test_total_agent_resource_processor_runs_once_per_type_and_preserves_status(monkeypatch):
+    captured_requests = []
+
+    def fake_generation(request_payload: dict) -> dict:
+        captured_requests.append(dict(request_payload))
+        resource_type = request_payload["resource_types"][0]
+        return {
+            "success": True,
+            "resources": [
+                {
+                    "resource_id": f"{resource_type}-processor-test",
+                    "resource_type": resource_type,
+                    "status": "ready",
+                }
+            ],
+            "tool_status_events": [
+                status_events.create_status_event(
+                    run_id=request_payload.get("run_id"),
+                    agent="resource_agent",
+                    stage="generate_resource_payload",
+                    status=status_events.STATUS_SUCCEEDED,
+                    payload={},
+                )
+            ],
+        }
+
+    monkeypatch.setattr(tagt, "generate_resources_from_request", fake_generation)
+    state = {"tool_status_events": [], "run_id": "run-resource-processor-test"}
+    result = tagt.process_resource_generation_request(
+        state,
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "topic": "HBase Basics",
+            "resource_types": ["documents", "quiz", "ppt"],
+            "run_id": "run-resource-processor-test",
+        },
+    )
+
+    assert result["success"] is True
+    assert result["overall_status"] == tac.RESOURCE_GENERATION_OVERALL_SUCCEEDED
+    assert {request["resource_types"][0] for request in captured_requests} == {"documents", "quiz", "ppt"}
+    assert all(len(request["resource_types"]) == 1 for request in captured_requests)
+    assert {resource["resource_type"] for resource in result["resources"]} == {"documents", "quiz", "ppt"}
+    assert set(result["resource_results"]) == {"documents", "quiz", "ppt"}
+    assert len(result["tool_status_events"]) == 3
+    for event in result["tool_status_events"]:
+        assert event["agent"] == "resource_agent"
+        assert event["payload"]["resource_type"] in {"documents", "quiz", "ppt"}
+        assert event["payload"]["task_id"] == f"resource_task:{event['payload']['resource_type']}"
+    assert state["tool_status_events"] == result["tool_status_events"]
+
+
+def test_total_agent_resource_processor_partial_failure_keeps_successful_resources(monkeypatch):
+    def fake_generation(request_payload: dict) -> dict:
+        resource_type = request_payload["resource_types"][0]
+        if resource_type == "quiz":
+            return {
+                "success": False,
+                "resources": [],
+                "tool_status_events": [
+                    status_events.create_status_event(
+                        run_id=request_payload.get("run_id"),
+                        agent="resource_agent",
+                        stage="generate_resource_payload",
+                        status=status_events.STATUS_FAILED,
+                    )
+                ],
+                "error_code": "generation_failed",
+                "error_message": "quiz failed",
+            }
+        return {
+            "success": True,
+            "resources": [
+                {
+                    "resource_id": f"{resource_type}-partial-test",
+                    "resource_type": resource_type,
+                    "status": "ready",
+                }
+            ],
+            "tool_status_events": [],
+        }
+
+    monkeypatch.setattr(tagt, "generate_resources_from_request", fake_generation)
+
+    result = tagt.process_resource_generation_request(
+        {"tool_status_events": [], "run_id": "run-resource-partial-test"},
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "topic": "HBase Basics",
+            "resource_types": ["documents", "quiz", "ppt"],
+            "run_id": "run-resource-partial-test",
+        },
+    )
+
+    assert result["success"] is True
+    assert result["overall_status"] == tac.RESOURCE_GENERATION_OVERALL_PARTIAL_SUCCESS
+    assert result["failed_resource_types"] == ["quiz"]
+    assert {resource["resource_type"] for resource in result["resources"]} == {"documents", "ppt"}
+    assert result["resource_results"]["quiz"]["error_code"] == "generation_failed"
+
+
+def test_total_agent_resource_processor_filters_unassigned_resource_type(monkeypatch):
+    def fake_generation(request_payload: dict) -> dict:
+        resource_type = request_payload["resource_types"][0]
+        return {
+            "success": True,
+            "resources": [
+                {
+                    "resource_id": f"{resource_type}-ok",
+                    "resource_type": resource_type,
+                    "status": "ready",
+                },
+                {
+                    "resource_id": "quiz-wrong",
+                    "resource_type": "quiz" if resource_type != "quiz" else "documents",
+                    "status": "ready",
+                },
+            ],
+            "tool_status_events": [],
+        }
+
+    monkeypatch.setattr(tagt, "generate_resources_from_request", fake_generation)
+
+    result = tagt.process_resource_generation_request(
+        {"tool_status_events": []},
+        {"user_id": 8, "syllabus_id": 20, "topic": "HBase Basics", "resource_types": ["documents"]},
+    )
+
+    assert result["success"] is True
+    assert [resource["resource_id"] for resource in result["resources"]] == ["documents-ok"]
+    assert "resource_type_mismatch" in result["warnings"]
+    assert "resource_type_mismatch" in result["resource_results"]["documents"]["warnings"]
 
 
 def test_total_agent_load_profile_summary_reads_persisted_profile(monkeypatch):
@@ -743,10 +902,10 @@ def test_total_agent_context_read_failures_are_warnings(monkeypatch, tmp_path):
 def test_total_agent_resource_strategy_uses_profile_and_study_graph(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
     _accept_plan()
-    captured = {}
+    captured_requests = []
 
     def fake_generation(request_payload: dict) -> dict:
-        captured["request"] = request_payload
+        captured_requests.append(dict(request_payload))
         return _fake_generation(request_payload)
 
     monkeypatch.setattr(tagt, "generate_resources_from_request", fake_generation)
@@ -778,16 +937,17 @@ def test_total_agent_resource_strategy_uses_profile_and_study_graph(monkeypatch,
     assert result["success"] is True
     assert resource_generation["resource_strategy"]["resource_types"][:2] == ["documents", "quiz"]
     assert resource_generation["resource_strategy"]["difficulty"] == tac.RESOURCE_STRATEGY_DIFFICULTY_TARGETED
-    assert captured["request"]["resource_types"][:2] == ["documents", "quiz"]
-    assert captured["request"]["resource_strategy"]["profile_source"] == tac.PROFILE_SOURCE_PERSISTED
-    assert captured["request"]["strategy_signals"]["matched_profile_weak_point"] is True
-    assert captured["request"]["strategy_signals"]["matched_study_graph_weak_node"] is True
+    assert [request["resource_types"] for request in captured_requests] == [["documents"], ["quiz"]]
+    assert all(request["assigned_resource_type"] == request["resource_types"][0] for request in captured_requests)
+    assert captured_requests[0]["resource_strategy"]["profile_source"] == tac.PROFILE_SOURCE_PERSISTED
+    assert captured_requests[0]["strategy_signals"]["matched_profile_weak_point"] is True
+    assert captured_requests[0]["strategy_signals"]["matched_study_graph_weak_node"] is True
     _write_artifact(
         "total_agent_profile_strategy_result.json",
         {
             "test_name": "test_total_agent_resource_strategy_uses_profile_and_study_graph",
             "result": result,
-            "captured_request": captured["request"],
+            "captured_requests": captured_requests,
         },
     )
 
@@ -795,10 +955,10 @@ def test_total_agent_resource_strategy_uses_profile_and_study_graph(monkeypatch,
 def test_total_agent_resource_strategy_respects_explicit_resource_types(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
     _accept_plan()
-    captured = {}
+    captured_requests = []
 
     def fake_generation(request_payload: dict) -> dict:
-        captured["request"] = request_payload
+        captured_requests.append(dict(request_payload))
         return _fake_generation(request_payload)
 
     monkeypatch.setattr(tagt, "generate_resources_from_request", fake_generation)
@@ -828,8 +988,8 @@ def test_total_agent_resource_strategy_respects_explicit_resource_types(monkeypa
     )
 
     assert result["success"] is True
-    assert captured["request"]["resource_types"] == ["documents"]
-    assert captured["request"]["strategy_signals"]["explicit_resource_types"] is True
+    assert [request["resource_types"] for request in captured_requests] == [["documents"]]
+    assert captured_requests[0]["strategy_signals"]["explicit_resource_types"] is True
     assert result["result"]["resource_generation"]["resource_strategy"]["reason"] == "user explicitly requested resource types"
 
 

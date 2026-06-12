@@ -209,6 +209,13 @@ def normalize_generation_request(payload: dict) -> dict:
             resource_types.append(resource_type)
     if not resource_types:
         raise ValueError("resource_types is required")
+    assigned_resource_type = payload.get("assigned_resource_type")
+    if assigned_resource_type not in (None, ""):
+        assigned_resource_type = _normalize_resource_type(assigned_resource_type)
+        if assigned_resource_type not in resource_types:
+            raise ValueError("assigned_resource_type must be included in resource_types")
+    elif len(resource_types) == 1:
+        assigned_resource_type = resource_types[0]
 
     syllabus_id = payload.get("syllabus_id")
     if syllabus_id not in (None, ""):
@@ -229,6 +236,8 @@ def normalize_generation_request(payload: dict) -> dict:
         "subject": _safe_text(payload.get("subject")),
         "graph_name": _safe_text(payload.get("graph_name")),
         "resource_types": resource_types,
+        "assigned_resource_type": assigned_resource_type or "",
+        "single_type_mode": len(resource_types) == 1,
         "selected_weeks": _normalize_int_list(payload.get("selected_weeks") or payload.get("week_indices")),
         "knowledge_items": _normalize_str_list(payload.get("knowledge_items")),
         "weak_points": _normalize_str_list(payload.get("weak_points")),
@@ -248,6 +257,9 @@ def build_single_resource_payload(request_payload: dict, resource_type: str) -> 
     payload = dict(request_payload)
     payload.pop("status_callback", None)
     payload["resource_type"] = normalized_type
+    payload["resource_types"] = [normalized_type]
+    payload["assigned_resource_type"] = normalized_type
+    payload["single_type_mode"] = True
     if normalized_type == "mindmap" and not payload.get("knowledge_items"):
         payload["knowledge_items"] = payload.get("weak_points") or [payload["topic"]]
     return payload

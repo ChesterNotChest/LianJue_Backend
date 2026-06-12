@@ -4,7 +4,7 @@
 
 ## 当前同步状态
 
-资源生成模块当前承担“生成并持久化资源”的职责，不承担学习路径推荐、个人资源复用决策或即时答疑决策。Total Agent 会先在自身上下文中生成 `resource_strategy`，再调用 `generative_task.generate_resources_from_request`；资源模块只消费已经收口的 `resource_types`、`difficulty`、`knowledge_items`、`learning_goal`、`current_step` 和检索上下文。
+资源生成模块当前承担“生成并持久化资源”的职责，不承担学习路径推荐、个人资源复用决策或即时答疑决策。Total Agent 会先在自身上下文中生成 `resource_strategy`，再调用自身工具层的 `process_resource_generation_request`。该处理器一次性冻结 `resource_types` 对应的单类型任务，并行调用 `generative_task.generate_resources_from_request`，每次调用只允许生成一个被指派的 `assigned_resource_type`。资源模块只消费已经收口的 `resource_types`、`assigned_resource_type`、`difficulty`、`knowledge_items`、`learning_goal`、`current_step` 和检索上下文。
 
 当前默认链路是工具型 Resource Generation Agent：
 
@@ -19,7 +19,7 @@ read_generation_request
 
 资源内容生成统一走 OpenAI-compatible / pydantic-ai 内容 Agent。旧 `LLMResourceGenerationAgent` 类名保留为兼容入口，但不再作为外部主控 Agent。当前真实支持的资源类型、落盘文件、校验字段和 detail 返回以 `tasks/generative/*` 实现为准，本 dev_doc 承载当前对外可依赖的实现边界；旧 small_plan / contract 只可作为历史参考。
 
-`tool_status_events` 已从资源工具层透出，并由 Total Agent 汇总到最终结果；这可作为前端展示“读取请求 / 检索材料 / 写草稿 / 生成 payload / 持久化”的状态样本，但正式 streaming/SSE 协议仍应单独设计。
+`tool_status_events` 已从资源工具层透出，并由 Total Agent 汇总到最终结果；多资源生成时，处理器会给每个 Resource Agent 事件补齐 `payload.resource_type` 和 `payload.task_id`，前端可按资源类型展示“读取请求 / 检索材料 / 写草稿 / 生成 payload / 持久化”的状态样本，但正式 streaming/SSE 协议仍应单独设计。
 
 Total Agent 触发资源生成的统一 E2E 回归入口是：
 
@@ -516,7 +516,8 @@ flowchart LR
 内部逻辑：
 
 - 作为兼容包装层，直接委托给 `run_resource_generation_agent(...)`。
-- 该函数主要用于旧调用方和测试代码。
+- Total Agent 多资源生成处理器会对每个单类型 task 调用一次该函数；进入该函数的 `resource_types` 长度应为 1，`assigned_resource_type` 应与唯一资源类型一致。
+- 该函数仍保留为旧调用方和测试代码的兼容入口。
 
 ### 3.7 `LLMResourceGenerationAgent.generate_resource_content(request_payload: dict, resource_type: str, planning_bundle: dict) -> dict`
 

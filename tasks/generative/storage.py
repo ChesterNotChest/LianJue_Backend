@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
@@ -7,6 +8,9 @@ from uuid import uuid4
 
 from constant import BasePath
 from tasks.generative.contracts import GENERATIVE_MANIFEST_VERSION, GENERATIVE_RESOURCE_TYPES
+
+
+_MANIFEST_FILE_LOCK = threading.RLock()
 
 
 def _get_backend_root() -> Path:
@@ -178,9 +182,10 @@ def append_manifest_entry(user_id: int, entry: dict) -> dict:
         _require_db_backend()
         _append_manifest_entry_db(user_id, entry)
         return entry
-    manifest = load_manifest(user_id)
-    manifest["resources"].append(entry)
-    save_manifest(user_id, manifest)
+    with _MANIFEST_FILE_LOCK:
+        manifest = load_manifest(user_id)
+        manifest["resources"].append(entry)
+        save_manifest(user_id, manifest)
     return entry
 
 

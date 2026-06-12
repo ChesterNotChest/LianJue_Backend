@@ -13,6 +13,9 @@ from schemas.agent_runtime_state import (
 )
 from tasks import generative_task as gt
 from tasks import personal_recommendation_task as prt
+from tasks.common import status_events
+from tasks.total_agent import agent_contracts as tac
+from tasks.total_agent import agent_tools as tagt
 from tasks.study_graph import storage as study_graph_storage
 from tasks.study_graph_task import build_study_graph_changes_from_student_payload, get_student_learning_tree, submit_learning_tree_changes
 
@@ -21,6 +24,17 @@ def _make_sqlite_app():
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
+    return app
+
+
+def _make_threaded_sqlite_app(tmp_path):
+    app = Flask(__name__)
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + str(tmp_path / "threaded-runtime.db")
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"check_same_thread": False}}
     db.init_app(app)
     with app.app_context():
         db.create_all()
@@ -85,6 +99,62 @@ def test_generated_resource_metadata_uses_database_backend_when_app_context(monk
         assert manifest["resource_count"] == 1
         assert manifest["resources"][0]["main_files"]["md_path"] == "resource.md"
         assert GeneratedResource.query.count() == 1
+
+
+def test_resource_processor_parallel_tasks_keep_database_app_context(monkeypatch, tmp_path):
+    monkeypatch.delenv("GENERATIVE_FILE_BACKEND", raising=False)
+    monkeypatch.delenv("GENERATOR_FILE_BACKEND", raising=False)
+    app = _make_threaded_sqlite_app(tmp_path)
+
+    def fake_generation(request_payload: dict) -> dict:
+        resource_type = request_payload["resource_types"][0]
+        entry = {
+            "resource_id": f"{resource_type}-threaded-db",
+            "resource_type": resource_type,
+            "title": f"{resource_type} resource",
+            "topic": request_payload.get("topic") or "Intro",
+            "user_id": request_payload["user_id"],
+            "syllabus_id": request_payload["syllabus_id"],
+            "status": "ready",
+            "resource_dir": f"generative/user_{request_payload['user_id']}/{resource_type}/{resource_type}-threaded-db",
+            "main_files": {"json_path": "resource.json"},
+            "validation": {"valid": True},
+            "metadata": {"step_id": "step_1"},
+            "created_at": 1780000000,
+            "updated_at": 1780000001,
+        }
+        gt.append_manifest_entry(request_payload["user_id"], entry)
+        return {
+            "success": True,
+            "resources": [entry],
+            "tool_status_events": [
+                status_events.create_status_event(
+                    run_id=request_payload.get("run_id"),
+                    agent="resource_agent",
+                    stage="persist_generated_resource",
+                    status=status_events.STATUS_SUCCEEDED,
+                )
+            ],
+        }
+
+    monkeypatch.setattr(tagt, "generate_resources_from_request", fake_generation)
+
+    with app.app_context():
+        result = tagt.process_resource_generation_request(
+            {"tool_status_events": [], "run_id": "run-threaded-db"},
+            {
+                "user_id": 707,
+                "syllabus_id": 808,
+                "topic": "Intro",
+                "resource_types": ["documents", "quiz", "ppt"],
+                "run_id": "run-threaded-db",
+            },
+        )
+
+        assert result["success"] is True
+        assert result["overall_status"] == tac.RESOURCE_GENERATION_OVERALL_SUCCEEDED
+        assert GeneratedResource.query.count() == 3
+        assert {row.resource_type for row in GeneratedResource.query.all()} == {"documents", "quiz", "ppt"}
 
 
 def test_study_graph_uses_database_backend_when_app_context(monkeypatch):
