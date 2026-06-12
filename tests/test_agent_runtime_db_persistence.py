@@ -7,6 +7,7 @@ from schemas.agent_runtime_state import (
     LearningPlan,
     LearningPlanEvent,
     LearningPlanStep,
+    RecommendationSnapshot,
     StudyGraphChangeLog,
     StudyGraphNode,
     StudyGraphTree,
@@ -55,6 +56,19 @@ def _recommendation_result():
     }
 
 
+def _recommendation_snapshot_result():
+    result = _recommendation_result()
+    result.update(
+        {
+            "success": True,
+            "selected": [result["best_path"]],
+            "rag_overlay": {"used": True},
+            "planning_hints": {"path_depth": 2},
+        }
+    )
+    return result
+
+
 def test_learning_plan_uses_database_backend_when_app_context(monkeypatch):
     monkeypatch.delenv("PERSONAL_RECOMMENDATION_ROOT", raising=False)
     monkeypatch.delenv("LEARNING_PLAN_FILE_BACKEND", raising=False)
@@ -69,6 +83,27 @@ def test_learning_plan_uses_database_backend_when_app_context(monkeypatch):
         assert LearningPlan.query.count() == 1
         assert LearningPlanStep.query.count() == 2
         assert LearningPlanEvent.query.count() == 2
+
+
+def test_recommendation_snapshot_uses_database_backend_when_app_context(monkeypatch):
+    monkeypatch.delenv("PERSONAL_RECOMMENDATION_ROOT", raising=False)
+    monkeypatch.delenv("RECOMMENDATION_SNAPSHOT_FILE_BACKEND", raising=False)
+    app = _make_sqlite_app()
+    with app.app_context():
+        saved = prt.save_recommendation_snapshot(
+            111,
+            222,
+            _recommendation_snapshot_result(),
+            request_payload={"goals": ["a"], "session_id": "sess-db"},
+        )
+        detail = prt.get_recommendation_snapshot(saved["recommendation_id"])
+        listing = prt.list_recommendation_snapshots(111, 222)
+
+        assert saved["success"] is True
+        assert detail["success"] is True
+        assert detail["snapshot"]["recommendation"]["graph"]["nodes"][0]["id"] == "n1"
+        assert listing["snapshots"][0]["candidate_count"] == 1
+        assert RecommendationSnapshot.query.count() == 1
 
 
 def test_generated_resource_metadata_uses_database_backend_when_app_context(monkeypatch):
@@ -202,3 +237,5 @@ def test_runtime_persistence_does_not_silently_fallback_to_manifest(monkeypatch)
         gt.load_manifest(1)
     with pytest.raises(RuntimeError, match="study graph persistence requires a database app context"):
         study_graph_storage.load_tree_manifest(1, 2)
+    with pytest.raises(RuntimeError, match="recommendation snapshot persistence requires a database app context"):
+        prt.get_recommendation_snapshot("recommendation_missing")

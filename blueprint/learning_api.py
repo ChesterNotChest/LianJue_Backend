@@ -2,7 +2,15 @@ from flask import Blueprint, jsonify, request
 
 from repositories.user_syllabus_repo import get_user_syllabus
 from tasks import learning_profile_task
-from tasks.personal_recommendation_task import run_recommendation_route_from_payload
+from tasks.personal_recommendation_task import (
+    RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
+    RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
+    accept_recommendation_snapshot_path,
+    get_recommendation_snapshot,
+    list_recommendation_snapshots,
+    run_recommendation_route_from_payload,
+    save_recommendation_snapshot,
+)
 
 
 bp = Blueprint('learning_api', __name__, url_prefix='/api')
@@ -63,6 +71,14 @@ def _get_personal_syllabus_detail_for_display(user_id: int, syllabus_id: int):
         return personal
     fallback = created.get("personal_syllabus")
     return fallback if isinstance(fallback, dict) else None
+
+
+def _positive_int_or_none(value):
+    try:
+        normalized = int(value)
+    except Exception:
+        return None
+    return normalized if normalized > 0 else None
 
 
 @bp.route('/learning_init_personal_syllabus', methods=['POST'])
@@ -196,5 +212,74 @@ def personal_recommendation_api():
     """
     data = request.get_json(silent=True) or {}
     result = run_recommendation_route_from_payload(data)
+    if (
+        result.get('success')
+        and data.get('persist_snapshot') is not False
+        and isinstance(result.get('graph'), dict)
+        and isinstance(result.get('graph', {}).get('nodes'), list)
+    ):
+        try:
+            snapshot = save_recommendation_snapshot(
+                int(data.get('user_id')),
+                int(data['syllabus_id']) if data.get('syllabus_id') else None,
+                result,
+                request_payload=data,
+                session_id=data.get('session_id'),
+                status=RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
+            )
+            if snapshot.get('success'):
+                result['recommendation_id'] = snapshot.get('recommendation_id')
+                result['snapshot_status'] = snapshot.get('status')
+            else:
+                warnings = result.setdefault('warnings', [])
+                if isinstance(warnings, list):
+                    warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
+        except Exception:
+            warnings = result.setdefault('warnings', [])
+            if isinstance(warnings, list):
+                warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
     status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
+
+
+@bp.route('/recommendations', methods=['GET'])
+def list_recommendations_api():
+    user_id = _positive_int_or_none(request.args.get('user_id'))
+    if user_id is None:
+        return jsonify({
+            'success': False,
+            'snapshots': [],
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+    syllabus_id = _positive_int_or_none(request.args.get('syllabus_id'))
+    limit = _positive_int_or_none(request.args.get('limit')) or 20
+    result = list_recommendation_snapshots(user_id, syllabus_id, limit)
+    status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
+
+
+@bp.route('/recommendations/<recommendation_id>', methods=['GET'])
+def get_recommendation_api(recommendation_id):
+    result = get_recommendation_snapshot(recommendation_id)
+    status_code = 200 if result.get('success') else 404
+    return jsonify(result), status_code
+
+
+@bp.route('/recommendations/<recommendation_id>/accept', methods=['POST'])
+def accept_recommendation_api(recommendation_id):
+    data = request.get_json(silent=True) or {}
+    user_id = _positive_int_or_none(data.get('user_id'))
+    if user_id is None:
+        return jsonify({
+            'success': False,
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+    syllabus_id = _positive_int_or_none(data.get('syllabus_id'))
+    candidate_index = data.get('candidate_index')
+    result = accept_recommendation_snapshot_path(user_id, syllabus_id, recommendation_id, candidate_index)
+    status_code = 200 if result.get('success') else 400
+    if result.get('error_code') == 'recommendation_snapshot_not_found':
+        status_code = 404
     return jsonify(result), status_code

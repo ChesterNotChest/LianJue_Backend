@@ -33,9 +33,27 @@ recommendation result
   -> optional study_graph progress sync
 ```
 
+推荐生成结果可由 API 层保存为 Recommendation Snapshot，用作前端展示缓存：展示推荐大网、刷新后回放推荐结果，以及让用户手选候选路径。它不属于 Agent 后续学习推进状态：
+
+```text
+POST /api/personal_recommendation
+  -> run_recommendation_route_from_payload
+  -> save_recommendation_snapshot
+  -> return recommendation_id + graph + candidates
+
+GET /api/recommendations/<recommendation_id>
+  -> get_recommendation_snapshot
+  -> recover graph + candidates + best_path
+
+POST /api/recommendations/<recommendation_id>/accept
+  -> accept_recommendation_snapshot_path
+  -> accept_recommendation_path
+  -> active learning plan
+```
+
 ## 当前同步状态
 
-本模块当前仍是学习路径推荐的唯一 task 门户。Total Agent 通过 `run_recommendation_route_from_payload` 触发推荐，通过 `accept_recommendation_path` 创建 active learning plan；推荐本身不直接写入 study graph，只有后续 plan step 状态更新时才由调用方显式同步学习成长树。
+本模块当前仍是学习路径推荐的唯一 task 门户。Total Agent 通过 `run_recommendation_route_from_payload` 触发推荐，通过 `accept_recommendation_path` 创建 active learning plan；推荐本身不直接写入 study graph，只有后续 plan step 状态更新时才由调用方显式同步学习成长树。`run_recommendation_route` 和 `run_recommendation_route_from_payload` 保持纯计算，不默认写推荐快照；快照保存由 API 层或显式 task 函数触发，语义是前端展示缓存，不是学习状态。
 
 系统职责按“画像描述状态、路径决定顺序、资源服务当前节点”分层：
 
@@ -115,6 +133,7 @@ tasks/personal_recommendation/
   sample_data.py
   selector_ib_grpo.py
   service.py
+  snapshot.py
   syllabus_adapter.py
 ```
 
@@ -175,7 +194,21 @@ run_personal_recommendation_agent
 POST /api/personal_recommendation
   -> run_recommendation_route_from_payload
   -> run_recommendation_route
-  -> return recommendation result
+  -> if success and persist_snapshot is not false:
+       save_recommendation_snapshot
+       return recommendation result + recommendation_id
+     else:
+       return recommendation result
+
+GET /api/recommendations
+  -> list_recommendation_snapshots
+
+GET /api/recommendations/<recommendation_id>
+  -> get_recommendation_snapshot
+
+POST /api/recommendations/<recommendation_id>/accept
+  -> accept_recommendation_snapshot_path
+  -> accept_recommendation_path
 ```
 
 入口边界：
@@ -775,7 +808,27 @@ python experiments/learning_path_recommendation/benchmarks/benchmark_perf.py --n
 
 ## 5. 新增的持久化内容
 
-推荐生成结果当前作为 API/Task 返回值即时生成，不直接持久化为推荐结果表。已有 syllabus JSON 由现有 syllabus 存储链路提供，推荐 task 只读取，不修改。
+推荐生成结果作为 API/Task 返回值即时生成；API 层默认把成功推荐保存为 Recommendation Snapshot。Snapshot 保存完整推荐展示图和候选路径，用于前端回放和手选路径。它是展示缓存，不属于学生学习事实，不写入 study graph，也不作为 Total Agent 后续推进的状态输入。
+
+生产数据库表：
+
+```text
+recommendation_snapshot
+```
+
+当前实现细节：
+
+- `schemas/agent_runtime_state.py` 定义 `RecommendationSnapshot`。
+- `tasks/personal_recommendation/snapshot.py` 负责保存、读取、列表和从 snapshot 采纳路径。
+- `run_recommendation_route(...)` 和 `run_recommendation_route_from_payload(...)` 保持纯计算，不产生数据库副作用。
+- `POST /api/personal_recommendation` 成功后默认保存 snapshot；payload 显式 `persist_snapshot=false` 时不保存。
+- `recommendation_snapshot` 保存 `graph_json`、`candidates_json`、`selected_json`、`best_path_json`、`rag_overlay_json`、`planning_hints_json` 和 `result_summary_json`。
+- 采纳 snapshot 只调用现有 `accept_recommendation_path(...)`，不复制 learning plan 创建逻辑。
+- 测试、artifact 和离线运行必须显式通过 `PERSONAL_RECOMMENDATION_ROOT` 或 `RECOMMENDATION_SNAPSHOT_FILE_BACKEND=1` 使用文件快照；生产路径不做静默文件 fallback：
+
+```text
+personal_recommendation/recommendation_snapshot/user_{user_id}/syllabus_{syllabus_id}/{recommendation_id}.json
+```
 
 被用户或 Total Agent 确认采纳的路径会写入 learning plan 持久化层。生产默认口径为数据库表；测试或显式文件后端仍可使用 manifest。
 

@@ -50,6 +50,31 @@ class LearningPlanEvent(db.Model):
     created_at = db.Column(db.Integer, nullable=False, default=0)
 
 
+class RecommendationSnapshot(db.Model):
+    __tablename__ = "recommendation_snapshot"
+
+    recommendation_id = db.Column(db.String(120), primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    syllabus_id = db.Column(db.Integer, nullable=True, index=True)
+    session_id = db.Column(db.String(120), nullable=True, index=True)
+    status = db.Column(db.String(40), nullable=False, default="proposed", index=True)
+    schema_version = db.Column(db.String(60), nullable=False, default="recommendation_snapshot.v1")
+    goal_json = db.Column(db.Text, nullable=True)
+    query_text = db.Column(db.Text, nullable=True)
+    graph_json = db.Column(db.Text, nullable=True)
+    candidates_json = db.Column(db.Text, nullable=True)
+    selected_json = db.Column(db.Text, nullable=True)
+    best_path_json = db.Column(db.Text, nullable=True)
+    rag_overlay_json = db.Column(db.Text, nullable=True)
+    planning_hints_json = db.Column(db.Text, nullable=True)
+    result_summary_json = db.Column(db.Text, nullable=True)
+    accepted_plan_id = db.Column(db.String(80), nullable=True, index=True)
+    accepted_candidate_index = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.Integer, nullable=False, default=0)
+    expires_at = db.Column(db.Integer, nullable=True)
+
+
 class GeneratedResource(db.Model):
     __tablename__ = "generated_resource"
 

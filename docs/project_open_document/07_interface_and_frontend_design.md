@@ -84,6 +84,79 @@
 - 答题卡片可以先本地判分并展示解析，再静默调用刷新接口提交 `answer_records`。
 - Total Agent 后续对话读取到的是已持久化画像，不要求前端在每次对话前刷新画像。
 
+### 7.2.3 推荐快照 API
+
+推荐页使用 Recommendation Snapshot 支撑推荐大网展示、刷新回放和手选候选路径。它是前端展示缓存，不是学习状态；推荐算法核心函数保持纯计算，API 层在推荐成功后默认保存该展示缓存。
+
+| 场景 | HTTP 入口 | 语义 | 是否创建学习计划 |
+|---|---|---|---|
+| 生成推荐并保存展示缓存 | `POST /api/personal_recommendation` | 返回推荐大网、候选路径、`recommendation_id` | 否 |
+| 列出推荐快照 | `GET /api/recommendations?user_id=...&syllabus_id=...` | 返回最近推荐摘要，不返回完整大图 | 否 |
+| 读取推荐快照详情 | `GET /api/recommendations/<recommendation_id>` | 返回完整 `graph/candidates/selected/best_path` | 否 |
+| 采纳候选路径 | `POST /api/recommendations/<recommendation_id>/accept` | 按 `candidate_index` 创建 active learning plan | 是 |
+
+生成推荐请求：
+
+```json
+{
+  "user_id": 126,
+  "syllabus_id": 29,
+  "goals": ["掌握 HBase RowKey 热点规避"],
+  "session_id": "sess_demo_001",
+  "persist_snapshot": true
+}
+```
+
+生成推荐响应：
+
+```json
+{
+  "success": true,
+  "recommendation_id": "recommendation_20260610191033_d27634",
+  "snapshot_status": "proposed",
+  "graph": {},
+  "candidates": [],
+  "selected": [],
+  "best_path": {},
+  "planning_hints": {},
+  "error_message": "",
+  "error_code": ""
+}
+```
+
+快照列表只返回摘要：
+
+```json
+{
+  "success": true,
+  "snapshots": [
+    {
+      "recommendation_id": "recommendation_...",
+      "status": "proposed",
+      "candidate_count": 3,
+      "node_count": 12,
+      "edge_count": 14,
+      "best_path": ["hbase_intro", "rowkey_design"],
+      "best_path_titles": ["HBase 基础", "HBase RowKey 设计"],
+      "accepted_plan_id": null,
+      "created_at": 1781118633
+    }
+  ]
+}
+```
+
+采纳候选路径请求：
+
+```json
+{
+  "user_id": 126,
+  "syllabus_id": 29,
+  "candidate_index": 1
+}
+```
+
+采纳响应返回现有 learning plan 结构，并追加 `snapshot_status`、`accepted_plan_id` 和 `accepted_candidate_index`。前端应把推荐大网理解为“建议网络/展示缓存”，只有采纳后的路径才进入学习计划；推荐快照不会直接改变学生成长树，也不会成为 Total Agent 后续学习推进的状态来源。
+
 ## 7.3 Total Agent 前端消费结构
 
 前端重点消费：

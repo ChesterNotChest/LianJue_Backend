@@ -59,6 +59,32 @@ def _write_artifact(root: Path, name: str, payload: dict) -> Path:
     return path
 
 
+def _write_recommendation_snapshot_artifact(
+    *,
+    artifact_root: Path,
+    user,
+    syllabus,
+    recommendation: dict,
+    request_payload: dict | None = None,
+) -> dict:
+    saved = prt.save_recommendation_snapshot(
+        int(user.user_id),
+        int(syllabus.syllabus_id),
+        recommendation,
+        request_payload=request_payload,
+    )
+    assert saved.get("success") is True, saved
+    detail = prt.get_recommendation_snapshot(str(saved.get("recommendation_id") or ""))
+    assert detail.get("success") is True, detail
+    payload = {
+        "schema_version": "recommendation_snapshot_artifact.v1",
+        "saved": saved,
+        "snapshot": detail.get("snapshot") or {},
+    }
+    _write_artifact(artifact_root, "recommendation_snapshot_detail.json", payload)
+    return payload
+
+
 def _emit_e2e_status(agent: str, action: str, *, status: str = "running", **details) -> None:
     detail_text = ""
     if details:
@@ -489,6 +515,14 @@ def test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db(monkeypatch, d
     assert isinstance(recommendation, dict), recommendation_attempts
     assert recommendation.get("success") is True, recommendation_attempts
     assert recommendation.get("best_path"), recommendation_attempts
+    snapshot_artifact = _write_recommendation_snapshot_artifact(
+        artifact_root=artifact_root,
+        user=user,
+        syllabus=syllabus,
+        recommendation=recommendation,
+        request_payload=graph_aligned_payload if recommendation_flow == "graph_aligned_deterministic_retry" else natural_recommendation_payload,
+    )
+    assert snapshot_artifact["snapshot"]["recommendation"]["graph"]["nodes"]
 
     _run_current_step_resource_and_feedback(
         artifact_root=artifact_root,
@@ -545,6 +579,14 @@ def test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph(mo
     assert isinstance(recommendation, dict) and recommendation.get("best_path"), recommendation_attempts
     best_path = recommendation["best_path"]["path"]
     assert any(str(node_id).startswith("rowkey_") for node_id in best_path)
+    snapshot_artifact = _write_recommendation_snapshot_artifact(
+        artifact_root=artifact_root,
+        user=user,
+        syllabus=syllabus,
+        recommendation=recommendation,
+        request_payload=payload,
+    )
+    assert snapshot_artifact["snapshot"]["recommendation"]["candidates"]
 
     result = _run_current_step_resource_and_feedback(
         artifact_root=artifact_root,

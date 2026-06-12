@@ -38,6 +38,8 @@ def test_personal_recommendation_api_with_syllabus(tmp_path):
     assert isinstance(data["candidates"], list)
     assert isinstance(data["selected"], list)
     assert "best_path" in data
+    assert data.get("recommendation_id")
+    assert data.get("snapshot_status") == "proposed"
 
 
 def test_personal_recommendation_api_requires_user_id():
@@ -51,3 +53,103 @@ def test_personal_recommendation_api_requires_user_id():
     data = response.get_json()
     assert data["success"] is False
     assert data["error_code"] == "missing_fields"
+
+
+def _recommendation_result() -> dict:
+    return {
+        "success": True,
+        "schema_version": "personal_recommendation.v2",
+        "graph": {
+            "nodes": [
+                {"id": "n1", "title": "Intro", "outcomes": ["a"]},
+                {"id": "n2", "title": "Default Next", "outcomes": ["b"]},
+                {"id": "n3", "title": "Alternative Next", "outcomes": ["c"]},
+            ],
+            "edges": [
+                {"source": "n1", "target": "n2"},
+                {"source": "n1", "target": "n3"},
+            ],
+        },
+        "candidates": [
+            {"path": ["n1", "n2"], "skills": ["a", "b"], "rank": 1},
+            {"path": ["n1", "n3"], "skills": ["a", "c"], "rank": 2},
+        ],
+        "selected": [{"path": ["n1", "n2"], "skills": ["a", "b"]}],
+        "best_path": {"path": ["n1", "n2"], "skills": ["a", "b"]},
+        "planning_hints": {"path_depth": 2},
+        "error_code": "",
+        "error_message": "",
+    }
+
+
+def test_personal_recommendation_api_can_disable_snapshot(monkeypatch):
+    from blueprint import learning_api
+
+    app = create_app()
+    app.testing = True
+    client = app.test_client()
+    monkeypatch.setattr(learning_api, "run_recommendation_route_from_payload", lambda data: _recommendation_result())
+
+    response = client.post(
+        "/api/personal_recommendation",
+        json={"user_id": 12345, "syllabus_id": 29, "persist_snapshot": False},
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    assert "recommendation_id" not in data
+    assert "snapshot_status" not in data
+
+
+def test_recommendation_snapshot_detail_and_list_api(monkeypatch):
+    from blueprint import learning_api
+
+    app = create_app()
+    app.testing = True
+    client = app.test_client()
+    monkeypatch.setattr(learning_api, "run_recommendation_route_from_payload", lambda data: _recommendation_result())
+
+    created = client.post(
+        "/api/personal_recommendation",
+        json={"user_id": 12345, "syllabus_id": 29, "goals": ["learn hbase"]},
+    ).get_json()
+    recommendation_id = created["recommendation_id"]
+
+    detail = client.get(f"/api/recommendations/{recommendation_id}")
+    listing = client.get("/api/recommendations?user_id=12345&syllabus_id=29")
+
+    assert detail.status_code == 200
+    detail_data = detail.get_json()
+    assert detail_data["success"] is True
+    assert detail_data["snapshot"]["recommendation"]["graph"]["nodes"][0]["id"] == "n1"
+    assert listing.status_code == 200
+    list_data = listing.get_json()
+    assert list_data["success"] is True
+    assert list_data["snapshots"][0]["recommendation_id"] == recommendation_id
+    assert "recommendation" not in list_data["snapshots"][0]
+
+
+def test_recommendation_snapshot_accept_api_creates_plan(monkeypatch):
+    from blueprint import learning_api
+
+    app = create_app()
+    app.testing = True
+    client = app.test_client()
+    monkeypatch.setattr(learning_api, "run_recommendation_route_from_payload", lambda data: _recommendation_result())
+
+    created = client.post(
+        "/api/personal_recommendation",
+        json={"user_id": 12345, "syllabus_id": 29, "goals": ["learn hbase"]},
+    ).get_json()
+    accepted = client.post(
+        f"/api/recommendations/{created['recommendation_id']}/accept",
+        json={"user_id": 12345, "syllabus_id": 29, "candidate_index": 1},
+    )
+
+    assert accepted.status_code == 200
+    data = accepted.get_json()
+    assert data["success"] is True
+    assert data["snapshot_status"] == "accepted"
+    assert data["accepted_candidate_index"] == 1
+    assert [step["node_id"] for step in data["steps"]] == ["n1", "n3"]

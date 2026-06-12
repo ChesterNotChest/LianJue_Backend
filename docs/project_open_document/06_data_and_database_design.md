@@ -16,6 +16,7 @@
 
 - 用户与课程：`user`、`syllabus`、`user_syllabus`。
 - 学习画像：profile summary、weak points、preferences、personal syllabus。
+- 推荐快照：recommendation snapshot、候选路径摘要、已采纳 plan 引用。
 - 学习计划：plan、plan step、plan event。
 - 资源：resource metadata、resource file、resource validation、resource feedback。
 - 成长树：tree、node、edge、change log、features summary。
@@ -56,7 +57,29 @@
 - `learning_profile`：`UNIQUE(user_id, syllabus_id)`。
 - `profile_json` 保留完整结构，常用字段如 `learning_goal`、`risk_level` 可冗余为列便于查询。
 
-## 6.5 学习计划表
+## 6.5 推荐快照表
+
+推荐快照保存推荐生成后的完整推荐大网和候选路径，用于前端展示、刷新回放和用户手选候选路径。它是展示缓存，不是学生学习事实，不写入成长树，也不作为 Total Agent 后续学习推进的状态来源；用户采纳后才通过 learning plan 形成执行计划。
+
+当前表：
+
+| 表 | 说明 | 关键字段 |
+| --- | --- | --- |
+| `recommendation_snapshot` | 推荐结果快照 | `recommendation_id`, `user_id`, `syllabus_id`, `session_id`, `status`, `graph_json`, `candidates_json`, `selected_json`, `best_path_json`, `rag_overlay_json`, `planning_hints_json`, `result_summary_json`, `accepted_plan_id`, `accepted_candidate_index`, `created_at`, `updated_at` |
+
+约束：
+
+- `recommendation_id` 是主键。
+- `user_id + syllabus_id + created_at` 用于读取最近推荐快照。
+- `accepted_plan_id` 记录采纳后生成的 learning plan；第一阶段不要求旧数据回填。
+
+兼容与迁移说明：
+
+- 生产读写必须依赖数据库 app context；`PERSONAL_RECOMMENDATION_ROOT` 或 `RECOMMENDATION_SNAPSHOT_FILE_BACKEND=1` 仅用于测试、离线和显式文件后端。
+- 文件快照路径为 `personal_recommendation/recommendation_snapshot/user_{user_id}/syllabus_{syllabus_id}/{recommendation_id}.json`。
+- 列表接口只返回 `result_summary_json` 派生摘要，不返回完整大图，避免页面初始化过重。
+
+## 6.6 学习计划表
 
 当前学习计划生产后端写入数据库表，并保留 `personal_recommendation/learning_plan/.../manifest.jsonl` 作为测试、离线和显式文件后端。JSONL 事件结构已经映射到事件表，同时维护 plan / step 当前态表便于查询。
 
@@ -84,7 +107,7 @@
 - `get_active_learning_plan` 可从事件 replay 得到状态；数据库后端同时维护 `learning_plan` / `learning_plan_step` 当前态表提升查询效率。
 - 同一 plan 的事件写入会保证 `created_at` 单调递增，避免同秒事件 replay 顺序漂移。
 
-## 6.6 资源数据表
+## 6.7 资源数据表
 
 资源生成生产后端使用数据库保存 resource metadata 和主文件索引，实际 Markdown、JSON、PPTX、SVG 等产物继续保存在文件系统或对象存储中。`generative/user_{user_id}/manifest.json` 和资源目录保留为测试、离线和显式文件后端。
 
@@ -109,7 +132,7 @@
 - 生产读写必须依赖数据库 app context；`GENERATIVE_FILE_BACKEND=1` 或 `GENERATOR_FILE_BACKEND=1` 仅用于测试、离线和显式文件后端。
 - 旧 manifest 的 `resources[]` 可以批量迁入 `generated_resource`，`main_files` 可迁入 `generated_resource_file`。
 
-## 6.7 学生成长树表
+## 6.8 学生成长树表
 
 学生成长树生产后端使用数据库保存树、节点、边和变更日志，并保留以下文件后端用于测试、离线和显式文件模式：
 
@@ -148,7 +171,7 @@ study_graph/user_{user_id}/syllabus_{syllabus_id}/change_log.jsonl
 - `change_log.jsonl` 已具备幂等键 `client_change_id`，适合迁入事件表。
 - 生产读写必须依赖数据库 app context；`STUDY_GRAPH_FILE_BACKEND=1` 仅用于测试、离线和显式文件后端。
 
-## 6.8 Agent 运行状态表
+## 6.9 Agent 运行状态表
 
 为了支持生产级前端展示和问题排查，建议将关键 Agent 运行记录入库。
 
@@ -170,7 +193,7 @@ study_graph/user_{user_id}/syllabus_{syllabus_id}/change_log.jsonl
 - 难度低。
 - 当前 `tool_status_events` 已是结构化列表，可直接写入事件表。
 
-## 6.9 RAG 证据与查询记录
+## 6.10 RAG 证据与查询记录
 
 RAG 证据可不作为长期业务主数据，但生产环境建议保留轻量调用记录，用于可解释性和调试。
 
@@ -187,11 +210,12 @@ RAG 证据可不作为长期业务主数据，但生产环境建议保留轻量�
 - 只保存轻量摘要和 source metadata。
 - 涉及隐私或版权内容时应保留可清理策略。
 
-## 6.10 当前实现与生产数据库的关系
+## 6.11 当前实现与生产数据库的关系
 
 | 数据 | 当前实现 | 生产目标 | 兼容说明 |
 | --- | --- | --- | --- |
 | 学习画像 | JSON/模块持久化 | `learning_profile` + event | 保留 JSON 字段并抽常用列 |
+| 推荐快照 | DB 后端 + JSON 文件后端 | recommendation snapshot 表 | 生产默认 DB；文件快照仅测试/离线/显式文件后端 |
 | 学习计划 | DB 后端 + JSONL manifest 文件后端 | plan + step + event 表 | 生产默认 DB；manifest 仅测试/离线/显式文件后端 |
 | 生成资源 | DB metadata 后端 + manifest 文件后端 + 文件目录 | resource metadata 表 + 文件对象存储 | 生产默认 DB metadata；文件内容留对象存储或文件系统 |
 | 成长树 | DB 后端 + manifest/change_log 文件后端 | tree + node + edge + change_log 表 | 生产默认 DB；manifest 仅测试/离线/显式文件后端 |
@@ -201,12 +225,12 @@ RAG 证据可不作为长期业务主数据，但生产环境建议保留轻量�
 
 Manifest 扫描结论：
 
-- 已纳入本轮生产数据库化的 manifest：learning plan `manifest.jsonl`、generative resource `manifest.json`、study graph `manifest.json` / `change_log.jsonl`。
+- 已纳入本轮生产数据库化的 manifest：recommendation snapshot JSON、learning plan `manifest.jsonl`、generative resource `manifest.json`、study graph `manifest.json` / `change_log.jsonl`。
 - 测试目录下的 manifest / JSONL 是 fixture 或 artifact，不作为生产持久化事实源。
 - `profiles/` 和 `schedule/student_alt` 当前属于学习画像与个性化大纲的文件型实现，是否入库应跟随 Learning Profile / Personal Syllabus 模块单独收口，不混入本轮 runtime state 迁移。
 - `pdfs`、`markdowns`、`triples`、`knowledge` 等路径属于课程资料导入、RAG 中间产物或知识库构建结果，不等同于用户运行态 manifest。
 
-## 6.11 数据安全与隐私边界
+## 6.12 数据安全与隐私边界
 
 课程聚合摘要只输出聚合统计、弱节点摘要和最小可用诊断，不输出其他学生明细。个人成长树、学习画像、学习计划、资源反馈应按 `user_id + syllabus_id` 隔离。
 
