@@ -184,3 +184,33 @@ class StudyGraphChangeLog(db.Model):
         db.UniqueConstraint("tree_id", "client_change_id", name="uq_study_graph_change_client"),
     )
 
+
+class ChatSession(db.Model):
+    __tablename__ = "chat_session"
+
+    session_id = db.Column(db.String(120), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey("syllabus.syllabus_id", ondelete="SET NULL"), nullable=True, index=True)
+    title = db.Column(db.String(255), nullable=True)
+    turn_count = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.Index("ix_chat_session_user_updated", "user_id", "updated_at"),
+    )
+
+
+class ChatTurn(db.Model):
+    __tablename__ = "chat_turn"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    session_id = db.Column(db.String(120), db.ForeignKey("chat_session.session_id", ondelete="CASCADE"), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.Index("ix_chat_turn_session_order", "session_id", "id"),
+    )
+

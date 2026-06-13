@@ -1777,14 +1777,29 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
             payload={"user_id": user_id, "syllabus_id": payload.get("syllabus_id")},
         )
 
+    prt.ensure_recommendation_snapshot(
+        user_id,
+        _positive_int(payload.get("syllabus_id")) or None,
+        recommendation,
+        request_payload=payload,
+        session_id=payload.get("session_id"),
+        persist_snapshot=payload.get("persist_snapshot") is not False,
+        allow_proposed_resave=True,
+    )
     state["recommendation_result"] = recommendation
-    has_best_path = bool(_safe_dict(recommendation).get("best_path"))
+    best_path = _safe_dict(recommendation).get("best_path")
+    has_best_path = isinstance(best_path, dict) and bool(best_path.get("path"))
     suggested = ACTION_WAIT_USER_ACCEPTANCE if has_best_path else ACTION_ASK_GOAL_CLARIFICATION
     return _tool_result(
         TOOL_RUN_LEARNING_RECOMMENDATION,
         bool(_safe_dict(recommendation).get("success", True)),
         state=state,
         recommendation=recommendation,
+        recommendation_id=_safe_text(_safe_dict(recommendation).get("recommendation_id")),
+        snapshot=_safe_dict(recommendation).get("snapshot"),
+        snapshot_status=_safe_text(_safe_dict(recommendation).get("snapshot_status")),
+        snapshot_save_error_code=_safe_text(_safe_dict(recommendation).get("snapshot_save_error_code")),
+        snapshot_save_error_message=_safe_text(_safe_dict(recommendation).get("snapshot_save_error_message")),
         has_best_path=has_best_path,
         suggested_next_action=suggested,
         error_code=_safe_text(_safe_dict(recommendation).get("error_code")),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime, timezone
 from functools import lru_cache
 from uuid import uuid4
@@ -331,6 +332,200 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
 
     return final
 
+# ── Chat history persistence (session-isolated, DB + file fallback) ──────────
+
+def _now_ts():
+    return int(datetime.now(timezone.utc).timestamp())
+
+
+def _resolve_session_id(payload):
+    sid = str(payload.get('session_id') or payload.get('sessionId') or '')
+    return sid.strip()
+
+
+def _chat_history_path(user_id, syllabus_id, session_id):
+    history_dir = os.path.join(os.getcwd(), 'history')
+    return os.path.join(history_dir, f'{syllabus_id}_{user_id}_{session_id}_chat.json')
+
+
+def _load_chat_history_db(user_id, syllabus_id, session_id, max_turns=20):
+    from schemas.agent_runtime_state import ChatTurn
+    rows = (
+        ChatTurn.query
+        .filter_by(session_id=session_id)
+        .order_by(ChatTurn.id.desc())
+        .limit(max_turns)
+        .all()
+    )
+    rows.reverse()
+    return [{'role': r.role, 'content': r.content, 'timestamp': r.created_at} for r in rows]
+
+
+def _load_chat_history_file(user_id, syllabus_id, session_id, max_turns=20):
+    if not session_id:
+        return []
+    path = _chat_history_path(user_id, syllabus_id, session_id)
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return [t for t in data if isinstance(t, dict)][-max_turns:]
+    except Exception:
+        return []
+    return []
+
+
+def _load_chat_history(user_id, syllabus_id, session_id, max_turns=20):
+    if not session_id:
+        return []
+    try:
+        return _load_chat_history_db(user_id, syllabus_id, session_id, max_turns)
+    except Exception:
+        return _load_chat_history_file(user_id, syllabus_id, session_id, max_turns)
+
+
+def _append_chat_turn_db(_user_id, _syllabus_id, session_id, role, content):
+    from extensions import db
+    from schemas.agent_runtime_state import ChatSession, ChatTurn
+    if not content or not session_id:
+        return
+    now = _now_ts()
+    sess = ChatSession.query.get(session_id)
+    if not sess:
+        title = (content[:40] + ('...' if len(content) > 40 else '')) if role == 'user' else '新对话'
+        sess = ChatSession(
+            session_id=session_id, user_id=_user_id, syllabus_id=_syllabus_id,
+            title=title, turn_count=0, created_at=now, updated_at=now,
+        )
+        db.session.add(sess)
+    else:
+        sess.updated_at = now
+        if role == 'user' and (not sess.title or sess.title == '新对话'):
+            sess.title = content[:40] + ('...' if len(content) > 40 else '')
+    sess.turn_count = (sess.turn_count or 0) + 1
+    turn = ChatTurn(session_id=session_id, role=role, content=content, created_at=now)
+    db.session.add(turn)
+    db.session.commit()
+
+
+def _append_chat_turn_file(user_id, syllabus_id, session_id, role, content):
+    if not content or not session_id:
+        return
+    path = _chat_history_path(user_id, syllabus_id, session_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    history = []
+    if os.path.exists(path):
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                history = data
+        except Exception:
+            pass
+    history.append({'role': role, 'content': content, 'timestamp': _now_ts()})
+    history = history[-50:]
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
+def _append_chat_turn(user_id, syllabus_id, session_id, role, content):
+    if not content or not session_id:
+        return
+    try:
+        _append_chat_turn_db(user_id, syllabus_id, session_id, role, content)
+    except Exception:
+        _append_chat_turn_file(user_id, syllabus_id, session_id, role, content)
+
+
+def _ensure_session_created(payload):
+    uid = payload.get('user_id')
+    sid = payload.get('syllabus_id')
+    session_id = _resolve_session_id(payload)
+    if not uid or not sid or not session_id:
+        return
+    try:
+        uid = int(uid)
+        sid = int(sid)
+    except (TypeError, ValueError):
+        return
+    user_msg = str(payload.get('message') or payload.get('question') or '')
+    title = (user_msg[:40] + ('...' if len(user_msg) > 40 else '')) if user_msg else '新对话'
+    now = _now_ts()
+    try:
+        from flask import has_app_context
+        if has_app_context():
+            from extensions import db
+            from schemas.agent_runtime_state import ChatSession
+            sess = ChatSession.query.get(session_id)
+            if sess and sess.user_id != uid:
+                sess = None
+            if not sess:
+                sess = ChatSession(
+                    session_id=session_id, user_id=uid, syllabus_id=sid,
+                    title=title, turn_count=0, created_at=now, updated_at=now,
+                )
+                db.session.add(sess)
+            else:
+                sess.updated_at = now
+                if sess.title == '新对话' and user_msg:
+                    sess.title = title
+            db.session.commit()
+    except Exception:
+        pass
+
+
+def _inject_chat_history(payload):
+    _ensure_session_created(payload)
+    uid = payload.get('user_id')
+    sid = payload.get('syllabus_id')
+    session_id = _resolve_session_id(payload)
+    if not uid or not sid or not session_id:
+        return payload
+    try:
+        uid = int(uid)
+        sid = int(sid)
+    except (TypeError, ValueError):
+        return payload
+    disk_history = _load_chat_history(uid, sid, session_id)
+    context = payload.get('context')
+    if not isinstance(context, dict):
+        context = {}
+        payload['context'] = context
+    frontend_history = context.get('conversation_history') or context.get('session_history') or []
+    if not isinstance(frontend_history, list):
+        frontend_history = []
+    disk_set = {json.dumps(t, ensure_ascii=False, sort_keys=True) for t in disk_history}
+    merged = list(disk_history)
+    for turn in frontend_history:
+        if json.dumps(turn, ensure_ascii=False, sort_keys=True) not in disk_set:
+            merged.append(turn)
+    context['conversation_history'] = merged
+    return payload
+
+
+def _save_chat_exchange(payload, state):
+    uid = payload.get('user_id')
+    sid = payload.get('syllabus_id')
+    session_id = _resolve_session_id(payload)
+    if not uid or not sid or not session_id:
+        return
+    try:
+        uid = int(uid)
+        sid = int(sid)
+    except (TypeError, ValueError):
+        return
+    user_msg = str(payload.get('message') or payload.get('question') or '')
+    _append_chat_turn(uid, sid, session_id, 'user', user_msg)
+    terminal = state.get('terminal_tool_result') if isinstance(state.get('terminal_tool_result'), dict) else {}
+    agent_reply = str(terminal.get('reply') or terminal.get('message') or terminal.get('summary') or '')
+    if not agent_reply:
+        ctx = state.get('total_context') if isinstance(state.get('total_context'), dict) else {}
+        agent_reply = str(ctx.get('reply') or ctx.get('message') or '')
+    _append_chat_turn(uid, sid, session_id, 'agent', agent_reply)
+
+
 
 def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False, stream: bool = False):
     """运行总 agent（统一入口）。
@@ -343,6 +538,7 @@ def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False, stream: b
     Returns:
         dict（非流式）或 AsyncGenerator[dict, None]（流式）。
     """
+    _inject_chat_history(payload)
     if use_llm:
         return run_total_agent_agent(payload, stream=stream)
     return deterministic_run_total_agent(payload)
@@ -519,6 +715,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         if isinstance(raw, TotalAgentResult):
             model_output = raw
 
+    _save_chat_exchange(payload, state)
     final = _build_agent_final_result(state, model_output)
     yield {"type": STREAM_EVENT_FINAL, "data": final, "timestamp": _ts()}
 
@@ -535,6 +732,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         if isinstance(raw, TotalAgentResult):
             model_output = raw
 
+    _save_chat_exchange(payload, state)
     final = _build_agent_final_result(state, model_output)
     yield {"type": STREAM_EVENT_FINAL, "data": final, "timestamp": _ts()}
 
@@ -568,4 +766,6 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
     agent = get_total_agent()
     result = agent.run_sync(build_total_agent_user_prompt(state), deps=deps)
     output = result.output if isinstance(result.output, TotalAgentResult) else None
-    return _build_agent_final_result(state, output)
+    final = _build_agent_final_result(state, output)
+    _save_chat_exchange(payload, state)
+    return final

@@ -75,9 +75,11 @@ def total_agent_run_api():
 
     def generate():
         async def _consume():
-            async for event in async_gen:
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            yield "event: close\ndata: {}\n\n"
+            try:
+                async for event in async_gen:
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            finally:
+                yield "event: close\ndata: {}\n\n"
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -89,6 +91,9 @@ def total_agent_run_api():
                     yield chunk
                 except StopAsyncIteration:
                     break
+                except Exception:
+                    yield "event: close\ndata: {}\n\n"
+                    break
         finally:
             loop.close()
 
@@ -97,6 +102,47 @@ def total_agent_run_api():
         mimetype="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ── Chat session history APIs ──────────────────────────────────────────────
+
+def _chat_positive_int_or_none(value):
+    try:
+        v = int(value)
+        return v if v > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+@bp.route("/chat/sessions", methods=["GET"])
+def list_chat_sessions_api():
+    user_id = _chat_positive_int_or_none(request.args.get("user_id"))
+    syllabus_id = _chat_positive_int_or_none(request.args.get("syllabus_id"))
+    if not user_id:
+        return jsonify({"success": False, "sessions": [], "error_message": "user_id required"}), 400
+    from schemas.agent_runtime_state import ChatSession
+    q = ChatSession.query.filter_by(user_id=user_id)
+    if syllabus_id:
+        q = q.filter_by(syllabus_id=syllabus_id)
+    rows = q.order_by(ChatSession.updated_at.desc()).limit(50).all()
+    sessions = [{
+        "session_id": r.session_id,
+        "title": r.title,
+        "turn_count": r.turn_count,
+        "created_at": r.created_at,
+        "updated_at": r.updated_at,
+    } for r in rows]
+    return jsonify({"success": True, "sessions": sessions})
+
+
+@bp.route("/chat/sessions/<session_id>/turns", methods=["GET"])
+def get_chat_turns_api(session_id):
+    if not session_id:
+        return jsonify({"success": False, "turns": [], "error_message": "session_id required"}), 400
+    from schemas.agent_runtime_state import ChatTurn
+    rows = ChatTurn.query.filter_by(session_id=session_id).order_by(ChatTurn.id.asc()).limit(200).all()
+    turns = [{"role": r.role, "content": r.content, "timestamp": r.created_at} for r in rows]
+    return jsonify({"success": True, "turns": turns})
 
 
 @bp.route("/total_agent/agent_run", methods=["POST"])
@@ -129,9 +175,11 @@ def total_agent_agent_run_api():
 
     def generate():
         async def _consume():
-            async for event in async_gen:
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            yield "event: close\ndata: {}\n\n"
+            try:
+                async for event in async_gen:
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            finally:
+                yield "event: close\ndata: {}\n\n"
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -142,6 +190,9 @@ def total_agent_agent_run_api():
                     chunk = loop.run_until_complete(agen.__anext__())
                     yield chunk
                 except StopAsyncIteration:
+                    break
+                except Exception:
+                    yield "event: close\ndata: {}\n\n"
                     break
         finally:
             loop.close()
