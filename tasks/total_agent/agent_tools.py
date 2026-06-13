@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -81,11 +82,18 @@ from tasks.total_agent.agent_contracts import (
     RESOURCE_QUALITY_LOW_QUALITY,
     RESOURCE_QUALITY_NEEDS_REVIEW,
     RESOURCE_QUALITY_USABLE,
+    RESOURCE_GENERATION_OVERALL_FAILED,
+    RESOURCE_GENERATION_OVERALL_PARTIAL_SUCCESS,
+    RESOURCE_GENERATION_OVERALL_SUCCEEDED,
     RESOURCE_RECOMMENDATION_GENERATE_ALL,
     RESOURCE_RECOMMENDATION_GENERATE_MISSING,
     RESOURCE_RECOMMENDATION_REUSE_EXISTING,
     RESOURCE_REUSE_MIN_MATCH_SCORE,
     RESOURCE_REUSE_REPEATED_FAILURE_THRESHOLD,
+    RESOURCE_TASK_STATUS_FAILED,
+    RESOURCE_TASK_STATUS_PENDING,
+    RESOURCE_TASK_STATUS_RUNNING,
+    RESOURCE_TASK_STATUS_SUCCEEDED,
     REUSE_REJECT_EXPIRED_RESOURCE,
     REUSE_REJECT_INVALID_RESOURCE,
     REUSE_REJECT_REPEATED_FAILURE,
@@ -143,6 +151,20 @@ def _safe_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items() if not callable(item)}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple) or isinstance(value, set):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if callable(value):
+        return f"<callable:{getattr(value, '__name__', value.__class__.__name__)}>"
+    return _safe_text(value)
+
+
 def _positive_int(value: Any) -> Optional[int]:
     try:
         result = int(value)
@@ -174,7 +196,7 @@ def _extend_status_events(target_state: Dict[str, Any], source_state_or_result: 
 
 def _tool_result(tool_name: str, success: bool = True, state: Optional[Dict[str, Any]] = None, **payload: Any) -> dict:
     result = {"tool": tool_name, "success": bool(success)}
-    result.update(payload)
+    result.update(_json_safe(payload))
     result.setdefault("error_code", "" if success else "tool_failed")
     result.setdefault("error_message", "")
     if state is not None:
@@ -199,7 +221,7 @@ def build_total_agent_result(
     error_code: str = "",
     error_message: str = "",
 ) -> dict:
-    return {
+    return _json_safe({
         "success": bool(success),
         "schema_version": TOTAL_AGENT_SCHEMA_VERSION,
         "intent": _safe_text(intent),
@@ -209,7 +231,7 @@ def build_total_agent_result(
         "suggested_next_action": _safe_text(suggested_next_action),
         "error_code": _safe_text(error_code),
         "error_message": _safe_text(error_message),
-    }
+    })
 
 
 def _plan_steps(plan: Any) -> List[dict]:
@@ -1956,6 +1978,247 @@ def _normalize_resources(generation_result: dict) -> list[dict]:
     return []
 
 
+def _resource_task_id(resource_type: str) -> str:
+    return f"resource_task:{_safe_text(resource_type)}"
+
+
+def _resource_type_from_item(item: dict) -> str:
+    return _safe_text(_safe_dict(item).get("resource_type") or _safe_dict(item).get("type"))
+
+
+def _annotate_resource_status_events(events: Any, *, resource_type: str, task_id: str) -> list[dict]:
+    annotated: list[dict] = []
+    for event in _safe_list(events):
+        if not isinstance(event, dict):
+            continue
+        item = deepcopy(event)
+        payload = dict(_safe_dict(item.get("payload")))
+        payload.setdefault("resource_type", resource_type)
+        payload.setdefault("task_id", task_id)
+        item["payload"] = payload
+        item.setdefault("agent", "resource_agent")
+        annotated.append(item)
+    return annotated
+
+
+def plan_resource_type_tasks(request_payload: dict) -> list[dict]:
+    base_request = deepcopy(_safe_dict(request_payload))
+    base_request.pop("status_callback", None)
+    resource_types = _unique_texts(_safe_list(base_request.get("resource_types"))) or [RESOURCE_STRATEGY_DEFAULT_TYPE]
+    tasks: list[dict] = []
+    for resource_type in resource_types:
+        normalized_type = _safe_text(resource_type)
+        if not normalized_type:
+            continue
+        task_request = deepcopy(base_request)
+        task_request["resource_types"] = [normalized_type]
+        task_request["resource_type"] = normalized_type
+        task_request["assigned_resource_type"] = normalized_type
+        task_request["single_type_mode"] = True
+        task_id = _resource_task_id(normalized_type)
+        task_request["resource_task_id"] = task_id
+        tasks.append(
+            {
+                "task_id": task_id,
+                "resource_type": normalized_type,
+                "status": RESOURCE_TASK_STATUS_PENDING,
+                "request": task_request,
+                "result": {},
+                "error_code": "",
+                "error_message": "",
+            }
+        )
+    return tasks
+
+
+def _run_single_resource_task(task: dict) -> dict:
+    result_task = deepcopy(task)
+    result_task["status"] = RESOURCE_TASK_STATUS_RUNNING
+    resource_type = _safe_text(result_task.get("resource_type"))
+    task_id = _safe_text(result_task.get("task_id"))
+    try:
+        generation_result = generate_resources_from_request(deepcopy(_safe_dict(result_task.get("request"))))
+    except Exception as exc:
+        generation_result = {
+            "success": False,
+            "resources": [],
+            "tool_status_events": [],
+            "error_code": "resource_generation_exception",
+            "error_message": _safe_text(exc),
+        }
+
+    if not isinstance(generation_result, dict):
+        generation_result = {
+            "success": False,
+            "resources": [],
+            "tool_status_events": [],
+            "error_code": "invalid_generation_result",
+            "error_message": "resource generation returned a non-dict result",
+        }
+
+    resources = []
+    warnings = _unique_texts(_safe_list(generation_result.get("warnings")))
+    for resource in _normalize_resources(generation_result):
+        if not isinstance(resource, dict):
+            continue
+        if _resource_type_from_item(resource) != resource_type:
+            warnings.append("resource_type_mismatch")
+            continue
+        resources.append(resource)
+
+    generation_result = dict(generation_result)
+    generation_result["resources"] = resources
+    generation_result["resource_count"] = len(resources)
+    generation_result["warnings"] = _unique_texts(warnings)
+    generation_result["tool_status_events"] = _annotate_resource_status_events(
+        generation_result.get("tool_status_events"),
+        resource_type=resource_type,
+        task_id=task_id,
+    )
+
+    success = bool(generation_result.get("success")) and bool(resources)
+    result_task["status"] = RESOURCE_TASK_STATUS_SUCCEEDED if success else RESOURCE_TASK_STATUS_FAILED
+    result_task["result"] = generation_result
+    result_task["error_code"] = _safe_text(generation_result.get("error_code"))
+    result_task["error_message"] = _safe_text(generation_result.get("error_message"))
+    return result_task
+
+
+def _current_flask_app_or_none() -> Any:
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context():
+            return current_app._get_current_object()
+    except Exception:
+        return None
+    return None
+
+
+def _run_single_resource_task_with_app_context(task: dict, app: Any = None) -> dict:
+    if app is None:
+        return _run_single_resource_task(task)
+    with app.app_context():
+        return _run_single_resource_task(task)
+
+
+def run_resource_type_tasks(state: Dict[str, Any], resource_tasks: list[dict]) -> dict:
+    tasks = [deepcopy(task) for task in resource_tasks if isinstance(task, dict)]
+    if not tasks:
+        return {
+            "success": False,
+            "overall_status": RESOURCE_GENERATION_OVERALL_FAILED,
+            "resources": [],
+            "resource_results": {},
+            "resource_tasks": [],
+            "failed_resource_types": [],
+            "tool_status_events": [],
+            "error_code": "no_resource_tasks",
+            "error_message": "no resource tasks to execute",
+        }
+
+    max_workers = max(1, len(tasks))
+    ordered_results: list[Optional[dict]] = [None] * len(tasks)
+    app = _current_flask_app_or_none()
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_index = {
+            executor.submit(_run_single_resource_task_with_app_context, task, app): index for index, task in enumerate(tasks)
+        }
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            try:
+                ordered_results[index] = future.result()
+            except Exception as exc:
+                failed_task = deepcopy(tasks[index])
+                failed_task["status"] = RESOURCE_TASK_STATUS_FAILED
+                failed_task["result"] = {
+                    "success": False,
+                    "resources": [],
+                    "tool_status_events": [],
+                    "error_code": "resource_task_failed",
+                    "error_message": _safe_text(exc),
+                }
+                failed_task["error_code"] = "resource_task_failed"
+                failed_task["error_message"] = _safe_text(exc)
+                ordered_results[index] = failed_task
+
+    completed_tasks = [task for task in ordered_results if isinstance(task, dict)]
+    return aggregate_resource_generation_results(completed_tasks)
+
+
+def aggregate_resource_generation_results(resource_tasks: list[dict]) -> dict:
+    resources: list[dict] = []
+    resource_results: dict[str, dict] = {}
+    failed_resource_types: list[str] = []
+    tool_status_events: list[dict] = []
+    warnings: list[str] = []
+
+    for task in resource_tasks:
+        resource_type = _safe_text(task.get("resource_type"))
+        result = _safe_dict(task.get("result"))
+        result_resources = _normalize_resources(result)
+        resources.extend(result_resources)
+        tool_status_events.extend(_safe_list(result.get("tool_status_events")))
+        warnings.extend(_safe_list(result.get("warnings")))
+        resource_results[resource_type] = result
+        if task.get("status") != RESOURCE_TASK_STATUS_SUCCEEDED:
+            failed_resource_types.append(resource_type)
+
+    success_count = len(resource_tasks) - len(failed_resource_types)
+    if success_count == len(resource_tasks) and resource_tasks:
+        overall_status = RESOURCE_GENERATION_OVERALL_SUCCEEDED
+        success = True
+    elif success_count > 0:
+        overall_status = RESOURCE_GENERATION_OVERALL_PARTIAL_SUCCESS
+        success = True
+    else:
+        overall_status = RESOURCE_GENERATION_OVERALL_FAILED
+        success = False
+
+    return {
+        "success": success,
+        "overall_status": overall_status,
+        "resources": resources,
+        "resource_count": len(resources),
+        "resource_results": resource_results,
+        "resource_tasks": resource_tasks,
+        "failed_resource_types": failed_resource_types,
+        "tool_status_events": tool_status_events,
+        "warnings": _unique_texts(warnings),
+        "error_code": "" if success else "resource_generation_failed",
+        "error_message": "" if success else "all resource generation tasks failed",
+    }
+
+
+def process_resource_generation_request(state: Dict[str, Any], request_payload: dict) -> dict:
+    execution_payload = deepcopy(_safe_dict(request_payload))
+    status_callback = execution_payload.pop("status_callback", None)
+    resource_tasks = plan_resource_type_tasks(execution_payload)
+    state["resource_type_tasks"] = deepcopy(resource_tasks)
+    execution_tasks = deepcopy(resource_tasks)
+    if callable(status_callback):
+        for task in execution_tasks:
+            request = task.get("request")
+            if isinstance(request, dict):
+                request["status_callback"] = status_callback
+    generation_result = run_resource_type_tasks(state, execution_tasks)
+    if isinstance(generation_result, dict):
+        safe_tasks = []
+        for task in _safe_list(generation_result.get("resource_tasks")):
+            if not isinstance(task, dict):
+                continue
+            safe_task = deepcopy(task)
+            request = safe_task.get("request")
+            if isinstance(request, dict):
+                request.pop("status_callback", None)
+            safe_tasks.append(safe_task)
+        generation_result["resource_tasks"] = safe_tasks
+    state["resource_type_tasks"] = deepcopy(_safe_list(generation_result.get("resource_tasks")))
+    if isinstance(generation_result, dict):
+        _extend_status_events(state, generation_result)
+    return generation_result
+
+
 def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
     _append_trace(state, TOOL_GENERATE_CURRENT_STEP_RESOURCE)
     next_task = _safe_dict(state.get("next_task"))
@@ -1978,11 +2241,9 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
     state["resource_strategy"] = resource_strategy
     request_payload = _build_resource_request(state, next_task, resource_strategy)
     request_payload["run_id"] = state.get("run_id") or ""
-    request_payload["status_callback"] = state.get("status_callback")
-    generation_result = generate_resources_from_request(request_payload)
-    request_payload.pop("status_callback", None)
-    if isinstance(generation_result, dict):
-        _extend_status_events(state, generation_result)
+    execution_payload = deepcopy(request_payload)
+    execution_payload["status_callback"] = state.get("status_callback")
+    generation_result = process_resource_generation_request(state, execution_payload)
     resources = _normalize_resources(_safe_dict(generation_result))
     state["resource_generation_request"] = request_payload
     state["resource_generation_result"] = generation_result
@@ -1995,6 +2256,10 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
         request=request_payload,
         generation_result=generation_result,
         resources=resources,
+        resource_tasks=_safe_list(_safe_dict(generation_result).get("resource_tasks")),
+        resource_results=_safe_dict(_safe_dict(generation_result).get("resource_results")),
+        failed_resource_types=_safe_list(_safe_dict(generation_result).get("failed_resource_types")),
+        overall_status=_safe_text(_safe_dict(generation_result).get("overall_status")),
         suggested_next_action=ACTION_RECORD_LEARNING_FEEDBACK,
         error_code=_safe_text(_safe_dict(generation_result).get("error_code")),
         error_message=_safe_text(_safe_dict(generation_result).get("error_message")),
@@ -2267,7 +2532,10 @@ __all__ = [
     "normalize_profile_summary",
     "normalize_study_graph_state",
     "normalize_answer_payload",
+    "plan_resource_type_tasks",
+    "process_resource_generation_request",
     "retrieve_learning_evidence",
+    "run_resource_type_tasks",
     "score_evidence_relevance",
     "tool_accept_learning_plan",
     "tool_generate_current_step_resource",

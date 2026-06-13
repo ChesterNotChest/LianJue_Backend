@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from datetime import datetime, timezone
 from functools import lru_cache
 from uuid import uuid4
-from typing import Any, Dict
+from typing import Any, AsyncGenerator, Dict
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
@@ -20,13 +22,18 @@ from tasks.total_agent.agent_contracts import (
     INTENT_RECORD_LEARNING_FEEDBACK,
     INTENT_RECOMMEND_LEARNING_PATH,
     INTENT_SKIP_CURRENT_STEP,
+    STREAM_EVENT_FINAL,
+    STREAM_EVENT_TEXT_DELTA,
+    STREAM_EVENT_TEXT_START,
+    STREAM_EVENT_TOOL_CALL,
+    STREAM_EVENT_TOOL_END,
+    STREAM_EVENT_TOOL_START,
+    STREAM_EVENT_TOOL_STATUS,
     TOOL_ACCEPT_LEARNING_PLAN,
     TOOL_ANSWER_LEARNING_QUESTION,
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
     TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
     TOOL_GET_NEXT_LEARNING_TASK,
-    TOOL_INFER_USER_INTENT,
-    TOOL_LOAD_TOTAL_CONTEXT,
     TOOL_NORMALIZE_LEARNING_GOAL,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_RETRIEVE_LEARNING_EVIDENCE,
@@ -54,17 +61,6 @@ from tasks.total_agent.agent_tools import (
 )
 
 
-TERMINAL_TOTAL_AGENT_TOOLS = {
-    TOOL_RUN_LEARNING_RECOMMENDATION,
-    TOOL_ACCEPT_LEARNING_PLAN,
-    TOOL_NORMALIZE_LEARNING_GOAL,
-    TOOL_GENERATE_CURRENT_STEP_RESOURCE,
-    TOOL_RECORD_LEARNING_FEEDBACK,
-    TOOL_SKIP_CURRENT_STEP,
-    TOOL_ANSWER_LEARNING_QUESTION,
-}
-
-
 def build_total_agent_model():
     return build_openai_compatible_model(agent_name="total agent")
 
@@ -74,21 +70,18 @@ def get_total_agent() -> Agent:
     agent = Agent(
         model=build_total_agent_model(),
         deps_type=TotalAgentDeps,
-        output_type=TotalAgentResult,
         system_prompt=(
-            "You are the Total Agent for a learning platform. "
-            "You must use tools to decide the next action. "
-            "Always call load_total_context first, then infer_user_intent. "
-            "For recommend_learning_path, call run_learning_recommendation; if no best path, call "
-            "normalize_learning_goal_for_recommendation. "
-            "For accept_recommendation, call accept_learning_plan. "
-            "For generate_current_step_resource, call get_next_learning_task then generate_current_step_resource. "
-            "For record_learning_feedback, call record_learning_feedback then get_next_learning_task; do not generate resources in the same turn. "
-            "For answer_learning_question, call retrieve_learning_evidence then answer_learning_question; do not create resources or mutate plans in the same turn. "
-            "When course or class-wide learning status may affect the decision, you may call get_course_learning_tree_summary before the terminal tool. "
-            "For skip_current_step, call skip_current_step then get_next_learning_task; do not generate resources in the same turn. "
-            "Do not invent learning plans, recommendation paths, resources, or study graph changes yourself. "
-            "Return a JSON object matching TotalAgentResult."
+            "You are a dedicated teacher helping a student learn. "
+            "Before taking any action, briefly tell the student what you're about to do and why — be clear and encouraging. "
+            "Always start by understanding their current learning context (load_total_context, infer_user_intent). "
+            "When they want a learning path: recommend first (run_learning_recommendation), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
+            "When they accept a plan: confirm it (accept_learning_plan). "
+            "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
+            "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
+            "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
+            "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
+            "When class-wide context might help: check the course overview (get_course_learning_tree_summary). "
+            "Never make up learning plans, paths, resources, or study data — always use the tools."
         ),
         name="total_agent",
         description="Tool-calling agent for multi-turn learning process scheduling",
@@ -96,8 +89,15 @@ def get_total_agent() -> Agent:
         defer_model_check=True,
     )
 
+    _TERMINAL = {
+        TOOL_RUN_LEARNING_RECOMMENDATION, TOOL_ACCEPT_LEARNING_PLAN,
+        TOOL_NORMALIZE_LEARNING_GOAL, TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+        TOOL_RECORD_LEARNING_FEEDBACK, TOOL_SKIP_CURRENT_STEP,
+        TOOL_ANSWER_LEARNING_QUESTION,
+    }
+
     def _remember_terminal(ctx: RunContext[TotalAgentDeps], tool_name: str, result: dict) -> dict:
-        if tool_name in TERMINAL_TOTAL_AGENT_TOOLS:
+        if tool_name in _TERMINAL:
             ctx.deps.state["terminal_tool_result"] = result
         return result
 
@@ -174,18 +174,6 @@ def get_total_agent() -> Agent:
     @agent.tool(sequential=True)
     def skip_current_step(ctx: RunContext[TotalAgentDeps]) -> dict:
         return _remember_terminal(ctx, TOOL_SKIP_CURRENT_STEP, tool_skip_current_step(ctx.deps.state))
-
-    @agent.output_validator
-    def require_total_agent_tools(
-        ctx: RunContext[TotalAgentDeps],
-        output: TotalAgentResult,
-    ) -> TotalAgentResult:
-        trace = list(ctx.deps.state.get("tool_trace") or [])
-        if TOOL_LOAD_TOTAL_CONTEXT not in trace or TOOL_INFER_USER_INTENT not in trace:
-            raise ModelRetry("You must call load_total_context and infer_user_intent before returning.")
-        if not any(tool_name in trace for tool_name in TERMINAL_TOTAL_AGENT_TOOLS):
-            raise ModelRetry("You must call an intent-specific terminal tool before returning.")
-        return output
 
     return agent
 
@@ -310,7 +298,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     elif intent == INTENT_ANSWER_LEARNING_QUESTION or terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
         suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
 
-    return build_total_agent_result(
+    final = build_total_agent_result(
         state,
         success=success,
         intent=intent,
@@ -320,14 +308,250 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         error_message=error_message,
     )
 
+    # ── 触发学伴主动消息 ──
+    try:
+        from tasks.study_buddy_task import trigger_study_buddy
+        payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
+        uid = int(payload.get("user_id") or 0)
+        sid = int(payload.get("syllabus_id") or 0) if payload.get("syllabus_id") else None
+        if uid:
+            plan = result.get("accept_learning_plan", {}).get("plan") if isinstance(
+                result.get("accept_learning_plan"), dict
+            ) else None
+            buddy_msg = trigger_study_buddy(
+                user_id=uid,
+                syllabus_id=sid or 0,
+                plan=plan,
+            )
+            if buddy_msg:
+                final["buddy_message"] = buddy_msg
+    except Exception:
+        pass  # 学伴失败不影响主链路
 
-def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False) -> dict:
+    return final
+
+
+def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False, stream: bool = False):
+    """运行总 agent（统一入口）。
+
+    Args:
+        payload: 总 agent 输入。
+        use_llm: True 时走 LLM Agent；False 时确定性执行。
+        stream: True 时返回 AsyncGenerator[dict, None]（仅 use_llm=True 时生效）。
+
+    Returns:
+        dict（非流式）或 AsyncGenerator[dict, None]（流式）。
+    """
     if use_llm:
-        return run_total_agent_agent(payload)
+        return run_total_agent_agent(payload, stream=stream)
     return deterministic_run_total_agent(payload)
 
 
-def run_total_agent_agent(payload: Dict[str, Any]) -> dict:
+def _ts() -> int:
+    return int(datetime.now(timezone.utc).timestamp())
+
+
+def _extract_event_part_type(event: Any) -> str:
+    """Best-effort extraction of the part / delta type name from a pydantic_ai event."""
+    for attr in ("part", "delta"):
+        obj = getattr(event, attr, None)
+        if obj is not None:
+            return type(obj).__name__
+    return ""
+
+
+def _safe_args_dict(args: Any) -> Any:
+    """Unwrap pydantic_ai argument wrappers (e.g. ToolCallArgs) to plain dict if possible."""
+    if args is None:
+        return None
+    if isinstance(args, dict):
+        return args
+    if hasattr(args, "args_dict"):
+        return args.args_dict
+    if hasattr(args, "model_dump"):
+        return args.model_dump()
+    return str(args)
+
+
+def _safe_result_data(result: Any) -> Any:
+    """Unwrap pydantic_ai result wrappers to plain dict / scalar."""
+    if result is None:
+        return None
+    if isinstance(result, (dict, list, str, int, float, bool)):
+        return result
+    if hasattr(result, "data"):
+        return result.data
+    if hasattr(result, "model_dump"):
+        return result.model_dump()
+    return str(result)
+
+
+async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    """流式运行总 agent，逐事件 yield。
+
+    Yields events of types: text_delta, text_start, tool_call, tool_start,
+    tool_end, tool_status, final.
+    """
+    payload = payload or {}
+    status_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+
+    # ── status_callback：桥接同步 emit_status_event → 异步队列 ──
+    def _status_callback(event: dict) -> None:
+        try:
+            status_queue.put_nowait(
+                {"type": STREAM_EVENT_TOOL_STATUS, "data": event, "timestamp": _ts()}
+            )
+        except asyncio.QueueFull:
+            pass
+
+    state: Dict[str, Any] = {
+        "payload": payload,
+        "tool_trace": [],
+        "tool_status_events": [],
+        "run_id": f"total_agent_run_{uuid4().hex[:12]}",
+        "status_callback": _status_callback,
+        "total_context": {},
+        "intent": "",
+        "terminal_tool_result": None,
+    }
+
+    deps = TotalAgentDeps(state=state)
+    agent = get_total_agent()
+    user_prompt = build_total_agent_user_prompt(state)
+
+    async with agent.iter(user_prompt, deps=deps) as run:
+        async for node in run:
+            # 排出上一轮工具执行期间积压的 tool_status 事件
+            while not status_queue.empty():
+                try:
+                    yield status_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
+
+            if not hasattr(node, "stream"):
+                continue
+
+            node_type = type(node).__name__
+
+            # ── ModelRequestNode：LLM 响应阶段 ──────────────────
+            if node_type == "ModelRequestNode":
+                text_started = False
+                async with node.stream(run.ctx) as agent_stream:
+                    # 文本：token 级流式（output_type 移除后可用）
+                    if hasattr(agent_stream, "stream_text"):
+                        async for text_delta in agent_stream.stream_text(delta=True):
+                            if text_delta:
+                                if not text_started:
+                                    text_started = True
+                                    yield {"type": STREAM_EVENT_TEXT_START, "data": {"content": text_delta}, "timestamp": _ts()}
+                                else:
+                                    yield {"type": STREAM_EVENT_TEXT_DELTA, "data": {"content_delta": text_delta}, "timestamp": _ts()}
+
+                    # tool_call
+                    async for event in agent_stream:
+                        ek = getattr(event, "event_kind", "")
+                        if ek == "part_start":
+                            part = event.part
+                            if getattr(part, "part_kind", "") == "tool-call":
+                                yield {
+                                    "type": STREAM_EVENT_TOOL_CALL,
+                                    "data": {
+                                        "tool_name": getattr(part, "tool_name", ""),
+                                        "tool_call_id": getattr(part, "tool_call_id", ""),
+                                        "args": _safe_args_dict(getattr(part, "args", None)),
+                                    },
+                                    "timestamp": _ts(),
+                                }
+
+                    # tool_call（从 ModelResponse 提取）
+                    response = getattr(agent_stream, "response", None)
+                    if response is not None:
+                        for tc in getattr(response, "tool_calls", None) or []:
+                            yield {
+                                "type": STREAM_EVENT_TOOL_CALL,
+                                "data": {
+                                    "tool_name": getattr(tc, "tool_name", ""),
+                                    "tool_call_id": getattr(tc, "tool_call_id", ""),
+                                    "args": _safe_args_dict(getattr(tc, "args", None)),
+                                },
+                                "timestamp": _ts(),
+                            }
+
+            # ── CallToolsNode：工具执行阶段 ─────────────────────
+            elif node_type == "CallToolsNode":
+                async with node.stream(run.ctx) as tool_stream:
+                    async for event in tool_stream:
+                        evt_type = type(event).__name__
+
+                        if evt_type == "FunctionToolCallEvent":
+                            yield {
+                                "type": STREAM_EVENT_TOOL_START,
+                                "data": {
+                                    "tool_name": getattr(event, "tool_name", ""),
+                                    "args": _safe_args_dict(getattr(event, "args", None)),
+                                    "tool_call_id": getattr(event, "tool_call_id", ""),
+                                },
+                                "timestamp": _ts(),
+                            }
+
+                        elif evt_type == "FunctionToolResultEvent":
+                            yield {
+                                "type": STREAM_EVENT_TOOL_END,
+                                "data": {
+                                    "tool_name": getattr(event, "tool_name", ""),
+                                    "tool_call_id": getattr(event, "tool_call_id", ""),
+                                    "result": _safe_result_data(getattr(event, "result", None)),
+                                },
+                                "timestamp": _ts(),
+                            }
+
+    # ── 最终排出 + 结果 ──
+    while not status_queue.empty():
+        try:
+            yield status_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+
+    model_output = None
+    if hasattr(run, "result") and hasattr(run.result, "output"):
+        raw = run.result.output
+        if isinstance(raw, TotalAgentResult):
+            model_output = raw
+
+    final = _build_agent_final_result(state, model_output)
+    yield {"type": STREAM_EVENT_FINAL, "data": final, "timestamp": _ts()}
+
+    # ── 最终排出 + 结果 ──
+    while not status_queue.empty():
+        try:
+            yield status_queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+
+    model_output = None
+    if run is not None and hasattr(run, "result") and hasattr(run.result, "output"):
+        raw = run.result.output
+        if isinstance(raw, TotalAgentResult):
+            model_output = raw
+
+    final = _build_agent_final_result(state, model_output)
+    yield {"type": STREAM_EVENT_FINAL, "data": final, "timestamp": _ts()}
+
+
+def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
+    """运行 LLM 版总 agent。
+
+    Args:
+        payload: 总 agent 输入 payload。
+        stream: True 时返回 AsyncGenerator[dict, None]，False 时返回 dict（行为不变）。
+
+    Returns:
+        dict（非流式）或 AsyncGenerator[dict, None]（流式）。
+    """
+    if stream:
+        return _stream_total_agent_agent(payload)
+
+    # ── 原有同步逻辑不变 ──
     payload = payload or {}
     state = {
         "payload": payload,

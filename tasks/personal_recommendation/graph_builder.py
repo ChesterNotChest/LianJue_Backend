@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from copy import deepcopy
 from typing import Any, Dict, Optional
+
 
 
 NODE_SOURCE_SYLLABUS = "syllabus"
@@ -41,15 +43,94 @@ def _knowledge_levels(profile: Optional[dict]) -> dict:
     return knowledge if isinstance(knowledge, dict) else {}
 
 
+def _match_score(candidates: list[str], knowledge: Dict[str, float]) -> tuple[list[float], list[str]]:
+    """Return (scores, matched_keys) for the best-matching knowledge_point entries.
+
+    Tries exact match first, then substring containment (either direction),
+    then token-set overlap as a final fallback.  This bridges the gap between
+    short profile knowledge-point keys (e.g. "HDFS 基础") and long syllabus
+    outcome / title strings (e.g. "分布式文件系统及主流技术HDFS").
+    """
+    if not candidates or not knowledge:
+        return [], []
+    scores: list[float] = []
+    matched: list[str] = []
+    for candidate in candidates:
+        # 1) exact match
+        if candidate in knowledge:
+            scores.append(_safe_float(knowledge[candidate], 0.0))
+            matched.append(candidate)
+            continue
+        # 2) substring containment
+        best = 0.0
+        best_key = ""
+        candidate_lower = candidate.lower()
+        for key, value in knowledge.items():
+            key_lower = key.lower()
+            if key_lower in candidate_lower or candidate_lower in key_lower:
+                v = _safe_float(value, 0.0)
+                if v > best:
+                    best = v
+                    best_key = key
+        if best > 0:
+            scores.append(best)
+            matched.append(best_key)
+            continue
+        # 3) token-overlap fallback
+        candidate_tokens = _tokenize(candidate)
+        if not candidate_tokens:
+            continue
+        best = 0.0
+        best_key = ""
+        for key, value in knowledge.items():
+            key_tokens = _tokenize(key)
+            overlap = candidate_tokens & key_tokens
+            if overlap:
+                v = _safe_float(value, 0.0)
+                if v > best:
+                    best = v
+                    best_key = key
+        if best > 0:
+            scores.append(best)
+            matched.append(best_key)
+    return scores, matched
+
+
+def _tokenize(text: str) -> set[str]:
+    """Lightweight token set for Chinese + English mixed text."""
+    tokens: set[str] = set()
+    # English alphabet tokens
+    for m in re.findall(r"[A-Za-z][A-Za-z0-9+#.-]*", text):
+        if len(m) >= 2:
+            tokens.add(m.lower())
+    # Chinese character bigrams + single-keyword tokens
+    chinese = re.findall(r"[一-鿿]+", text)
+    for chunk in chinese:
+        # bigrams
+        for i in range(len(chunk) - 1):
+            tokens.add(chunk[i:i+2])
+        # also keep the whole chunk (up to a reasonable length)
+        if len(chunk) <= 8:
+            tokens.add(chunk)
+    return tokens
+
+
 def _annotate_profile_state(node: dict, profile: Optional[dict]) -> str:
     outcomes = [str(item) for item in node.get("outcomes") or [] if item not in (None, "")]
-    if not outcomes:
-        return PROFILE_STATE_UNKNOWN
+    title = str(node.get("title") or "")
     knowledge = _knowledge_levels(profile)
-    values = [_safe_float(knowledge.get(outcome), 0.0) for outcome in outcomes]
-    if values and all(value >= 0.8 for value in values):
+    if not knowledge:
+        return PROFILE_STATE_UNKNOWN
+
+    # Try outcomes first, then title as fallback
+    candidates = list(outcomes)
+    if title and title not in candidates:
+        candidates.append(title)
+
+    scores, _ = _match_score(candidates, knowledge)
+    if scores and all(s >= 0.8 for s in scores):
         return PROFILE_STATE_KNOWN
-    if any(value > 0 for value in values):
+    if any(s > 0 for s in scores):
         return PROFILE_STATE_WEAK
     return PROFILE_STATE_UNKNOWN
 

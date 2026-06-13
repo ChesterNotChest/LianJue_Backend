@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import shutil
@@ -289,3 +290,338 @@ def test_total_agent_reads_real_profile_agent_output_for_resource_strategy(
             "resource_strategy": resource_strategy,
         },
     )
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Mock 管道测试（无 LLM，可进 CI）
+# ═══════════════════════════════════════════════════════════════════
+
+
+def test_total_agent_stream_pipeline_with_mock(monkeypatch):
+    """用 mock agent.iter() 验证流式管道完整逻辑。
+
+    覆盖：事件类型映射、产出顺序、status_callback → tool_status 桥接、
+    final 结果构建。无需真实 LLM。
+    """
+    from tasks.common.status_events import STATUS_RUNNING, STATUS_SUCCEEDED, create_status_event
+
+    # ── mock 构造块 ──────────────────────────────────────────
+    class _ListIter:
+        """模拟 AsyncIterator，产出列表中的每个元素。"""
+
+        def __init__(self, items):
+            self._items = list(items)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._items:
+                raise StopAsyncIteration
+            return self._items.pop(0)
+
+    class _FakeStream:
+        """模拟 AgentStream：stream_text(delta=True) + 直接迭代产出 tool 事件。"""
+
+        def __init__(self, texts=None, tool_call_groups=None):
+            self._texts = list(texts or []) or [""]
+            self._tool_events = []
+            for i in range(len(self._texts)):
+                tcs = (tool_call_groups or [])[i] if i < len(tool_call_groups or []) else []
+                for tc in tcs:
+                    self._tool_events.append(_PartStart(tc, part_kind="tool-call"))
+            self._tool_pos = 0
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def stream_text(self, delta=False):
+            full = "".join(self._texts)
+            if delta:
+                for ch in full:
+                    yield ch
+            else:
+                yield full
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if self._tool_pos >= len(self._tool_events):
+                raise StopAsyncIteration
+            evt = self._tool_events[self._tool_pos]
+            self._tool_pos += 1
+            return evt
+
+    class _PartStart:
+        def __init__(self, part, part_kind):
+            self.event_kind = "part_start"
+            self.part = _FakePart(part, part_kind)
+
+    class _FakePart:
+        def __init__(self, data, kind):
+            self.part_kind = kind
+            if kind == "text":
+                self.content = data
+            elif kind == "tool-call":
+                self.tool_name = getattr(data, "tool_name", "")
+                self.tool_call_id = getattr(data, "tool_call_id", "")
+                self.args = getattr(data, "args", None)
+
+    class _FakeToolGroup:
+        """模拟 CallToolsNode.stream() 返回的嵌套迭代器的内层。"""
+
+        def __init__(self, events):
+            self._events = list(events)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._events:
+                raise StopAsyncIteration
+            return self._events.pop(0)
+
+    class FunctionToolCallEvent:
+        def __init__(self, tool_name="", tool_call_id="", args=None):
+            self.tool_name = tool_name
+            self.tool_call_id = tool_call_id
+            self.args = args
+
+    class FunctionToolResultEvent:
+        def __init__(self, tool_name="", tool_call_id="", result=None):
+            self.tool_name = tool_name
+            self.tool_call_id = tool_call_id
+            self.result = result
+
+    class _FakeToolCallPart:
+        def __init__(self, tool_name="", tool_call_id="", args=None):
+            self.tool_name = tool_name
+            self.tool_call_id = tool_call_id
+            self.args = args
+
+    # ── 带 status_callback 注入的 CallToolsNode ──────────────
+    class CallToolsNode:
+        """模拟 CallToolsNode：在 tool_start / tool_end 之间触发 status_callback。"""
+
+        def __init__(self, tool_specs):
+            # tool_specs: [(tool_name, args, result, succeed), ...]
+            self._tool_specs = tool_specs
+            self._callback = None
+
+        def stream(self, ctx):
+            return _FakeToolStream(self._tool_specs, self._callback)
+
+    class _FakeToolStream:
+        """模拟 pydantic_ai CallToolsNode.stream()：扁平事件流。"""
+
+        def __init__(self, tool_specs, callback):
+            self._events = []
+            for tool_name, args, result, succeed in tool_specs:
+                self._events.append(FunctionToolCallEvent(tool_name, f"call_{tool_name}", args))
+                if callback:
+                    callback(create_status_event(
+                        agent="total_agent", stage=tool_name,
+                        status=STATUS_RUNNING, message=f"调用 {tool_name}",
+                    ))
+                self._events.append(FunctionToolResultEvent(tool_name, f"call_{tool_name}", result))
+                if callback:
+                    callback(create_status_event(
+                        agent="total_agent", stage=tool_name,
+                        status=STATUS_SUCCEEDED if succeed else "failed",
+                        message=f"{tool_name} 完成",
+                    ))
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._events:
+                raise StopAsyncIteration
+            return self._events.pop(0)
+
+    class ModelRequestNode:
+        """模拟 pydantic_ai ModelRequestNode / EndNode。"""
+
+        def __init__(self, texts=None, tool_call_groups=None):
+            self._stream = _FakeStream(texts=texts, tool_call_groups=tool_call_groups)
+
+        def stream(self, ctx):
+            return self._stream
+
+    # ── 组装 mock agent ─────────────────────────────────────
+    # 工具管线：load_total_context → infer_user_intent → generate_current_step_resource
+    TOOL_SPECS = [
+        (
+            tac.TOOL_LOAD_TOTAL_CONTEXT,
+            {},
+            {
+                "success": True,
+                "context": {
+                    "user_id": 1,
+                    "syllabus_id": 20,
+                    "profile_summary": {"learning_goal": "掌握 RowKey 设计"},
+                },
+            },
+            True,
+        ),
+        (
+            tac.TOOL_INFER_USER_INTENT,
+            {},
+            {"success": True, "intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE},
+            True,
+        ),
+        (
+            tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+            {},
+            {
+                "success": True,
+                "resources": [
+                    {
+                        "resource_id": "doc-mock-001",
+                        "resource_type": "documents",
+                        "status": "ready",
+                    }
+                ],
+            },
+            True,
+        ),
+    ]
+
+    def _build_fake_agent():
+        """每次调用 get_total_agent() 时创建新的 mock agent。"""
+
+        class _FakeAgent:
+            def iter(self, prompt, deps=None):
+                # 从 deps.state 拿到真实的 status_callback
+                callback = None
+                if deps and hasattr(deps, "state"):
+                    callback = deps.state.get("status_callback")
+
+                # 构建节点
+                text_node = ModelRequestNode(
+                    texts=[
+                        "好的，我来查看你的学习进度，",
+                        "当前步骤是 RowKey 设计，为你生成针对性资料。",
+                    ],
+                    tool_call_groups=[
+                        [],
+                        [_FakeToolCallPart(tool_name=tac.TOOL_LOAD_TOTAL_CONTEXT, tool_call_id="call_load_ctx", args={})],
+                    ],
+                )
+
+                tools_node = CallToolsNode(TOOL_SPECS)
+                tools_node._callback = callback  # 注入 callback
+
+                end_node = ModelRequestNode()  # EndNode 无 stream 事件
+
+                fake_output = tac.TotalAgentResult(
+                    success=True,
+                    intent=tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE,
+                    tool_trace=[t[0] for t in TOOL_SPECS],
+                    suggested_next_action=tac.ACTION_RECORD_LEARNING_FEEDBACK,
+                )
+                return _FakeRun([text_node, tools_node, end_node], fake_output)
+
+        return _FakeAgent()
+
+    class _FakeRun:
+        def __init__(self, nodes, fake_output=None):
+            self._nodes = nodes
+            self.ctx = object()
+            self.result = _FakeResult(fake_output)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._nodes:
+                raise StopAsyncIteration
+            return self._nodes.pop(0)
+
+    class _FakeResult:
+        def __init__(self, output):
+            self.output = output
+
+    # ── 注入 mock agent ─────────────────────────────────────
+    monkeypatch.setattr(tar, "get_total_agent", _build_fake_agent)
+    # 同时绕过 build_total_agent_user_prompt 对 payload 中 intent 字段的依赖
+    monkeypatch.setattr(
+        tar,
+        "build_total_agent_user_prompt",
+        lambda state: json.dumps({"user_id": 1, "message": "mock test"}),
+    )
+
+    # ── 运行 ────────────────────────────────────────────────
+    events = []
+
+    async def _collect():
+        async for event in tar.run_total_agent_agent(
+            {"user_id": 1, "syllabus_id": 20, "message": "继续学习"},
+            stream=True,
+        ):
+            events.append(event)
+
+    asyncio.run(_collect())
+
+    # ── 断言 ────────────────────────────────────────────────
+    types = [e["type"] for e in events]
+
+    # 1. 事件类型覆盖
+    assert tac.STREAM_EVENT_TEXT_START in types, "应产出 text_start"
+    assert tac.STREAM_EVENT_TEXT_DELTA in types, "应产出 text_delta"
+    assert tac.STREAM_EVENT_TOOL_START in types, "应产出 tool_start"
+    assert tac.STREAM_EVENT_TOOL_END in types, "应产出 tool_end"
+    assert tac.STREAM_EVENT_TOOL_STATUS in types, "应产出 tool_status（callback 桥接）"
+
+    # 2. 最后一个是 final
+    assert types[-1] == tac.STREAM_EVENT_FINAL, f"最后事件应为 final，实际: {types[-1]}"
+
+    # 3. tool_start 与 tool_end 一一对应
+    tool_starts = {e["data"]["tool_name"] for e in events if e["type"] == tac.STREAM_EVENT_TOOL_START}
+    tool_ends = {e["data"]["tool_name"] for e in events if e["type"] == tac.STREAM_EVENT_TOOL_END}
+    assert tool_starts == tool_ends, f"tool 配对不完整: starts={tool_starts}, ends={tool_ends}"
+
+    # 4. 每个 tool_start 都有 running + succeeded/failed 两个 tool_status
+    tool_status_stages = [e["data"]["stage"] for e in events if e["type"] == tac.STREAM_EVENT_TOOL_STATUS]
+    for tool_name in tool_starts:
+        assert tool_status_stages.count(tool_name) == 2, (
+            f"{tool_name} 应有 2 个 tool_status（running + result），实际: "
+            f"{tool_status_stages.count(tool_name)}"
+        )
+
+    # 5. tool_call 事件（由 response.tool_calls 驱动，mock 可选）
+
+    # 6. 事件时间戳单调不降
+    timestamps = [e["timestamp"] for e in events]
+    assert timestamps == sorted(timestamps), "事件应按时序产出"
+
+    # 7. final 包含正确数据（intent/success 来自 model_output）
+    final = events[-1]["data"]
+    assert final["success"] is True
+    assert final["intent"] == tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE
+    assert final["suggested_next_action"] == tac.ACTION_RECORD_LEARNING_FEEDBACK
+    assert isinstance(final["tool_trace"], list)
+
+    # 8. text_delta 拼接后包含关键词
+    full_text = "".join(
+        e["data"].get("content_delta", "")
+        for e in events
+        if e["type"] == tac.STREAM_EVENT_TEXT_DELTA
+    )
+    assert "RowKey" in full_text, f"text_delta 拼接结果应包含课程主题词，实际: {full_text!r}"

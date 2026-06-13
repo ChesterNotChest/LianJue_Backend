@@ -95,7 +95,8 @@ Total Agent 消费画像时不会要求 profile 原生提供 `documents / quiz /
 API 入口：
 
 ```text
-POST /api/user_learning_profile
+POST /api/learning_profile_detail   # 只读持久化画像，不触发画像 Agent
+POST /api/learning_profile_refresh  # 显式构建或刷新画像，会触发画像 Agent
 POST /api/learning_init_personal_syllabus
 POST /api/learning_personal_syllabus_detail
 ```
@@ -148,7 +149,7 @@ append_profile_personal_syllabus_suggestion(...)
 - `learning_records`：可选。学习时长、活跃度和学习频率输入。
 - `answer_records`：可选。知识点级掌握度和答题表现输入。
 - `resource_usage`：可选。资源偏好、完成情况和投入度输入。
-- `refresh_profile`：只属于 `get_or_build_learning_profile` / API 缓存控制参数，不进入 Agent 算法计算。为 `false` 时优先读持久化画像；为 `true` 时强制重新构建。
+- `refresh_profile`：只属于 task 层内部兼容门面 `get_or_build_learning_profile` 的缓存控制参数，不进入 Agent 算法计算；HTTP API 不再接收该业务语义。
 
 ### 2.2 Agent state 输入契约
 

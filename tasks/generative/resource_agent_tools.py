@@ -244,7 +244,7 @@ def tool_read_generation_plan(state: Dict[str, Any]) -> Dict[str, Any]:
     })
 
 
-def tool_retrieve_generation_materials(state: Dict[str, Any]) -> Dict[str, Any]:
+def tool_retrieve_generation_materials(state: Dict[str, Any], *, search_query: str = "") -> Dict[str, Any]:
     _append_trace(state, "retrieve_generation_materials")
     request = state.get("request") if isinstance(state.get("request"), dict) else {}
     resource_type = _safe_text(state.get("resource_type") or request.get("resource_type"))
@@ -253,6 +253,7 @@ def tool_retrieve_generation_materials(state: Dict[str, Any]) -> Dict[str, Any]:
         {"request": request, "tool_trace": []},
         resource_type,
         search_fn,
+        query_override=_safe_text(search_query),
     )
     if not isinstance(retrieval_context, dict):
         retrieval_context = {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}

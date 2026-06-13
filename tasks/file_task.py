@@ -6,9 +6,7 @@ from typing import Union
 
 from repositories.file_repo import create_file, get_file_by_id
 from repositories.filegraph_repo import list_files_by_graph
-from repositories.material_repo import list_materials_by_syllabus
 from repositories.syllabus_repo import get_syllabus_by_id
-from repositories.syllabusmaterial_repo import get_syllabusmaterials_by_material
 from schemas.file import File
 
 
@@ -121,27 +119,6 @@ def list_all_files_brief_info(graph_id_list: list = None, syllabus_id_list: list
                 source='syllabus-file',
             ),
         )
-
-        for material in list_materials_by_syllabus(syllabus_id):
-            resolved_material_file_id, resolved_material_path = _resolve_file_path(
-                file_id=getattr(material, 'file_id', None),
-                fallback_path=getattr(material, 'pdf_path', None),
-            )
-            week_index_list = [
-                binding.week_index
-                for binding in get_syllabusmaterials_by_material(getattr(material, 'material_id', None))
-                if getattr(binding, 'syllabus_id', None) == syllabus_id
-            ]
-            _append_unique(
-                result,
-                seen_keys,
-                _build_file_brief(
-                    file_id=resolved_material_file_id,
-                    path=resolved_material_path,
-                    source='syllabus-file',
-                    week_index_list=week_index_list,
-                ),
-            )
 
     return result
 

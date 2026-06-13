@@ -99,7 +99,13 @@ python -m pytest -q tests/test_personal_recommendation_task.py tests/test_person
 python -m pytest -q tests/test_total_agent_task.py tests/total_agent/test_process_contract.py
 ```
 
-### 1.k 集成测试 3 - 个人推荐路径 Agent 产物
+### 1.m 单元测试包 9 - Study Graph API
+
+```bash
+python -m pytest -q tests/test_study_graph_api.py -m mysql
+```
+
+### 1.n 集成测试 3 - 个人推荐路径 Agent 产物
 
 ```bash
 RUN_LLM_TESTS=1 python -m pytest -q tests/test_personal_recommendation_agent_choice.py -m llm
@@ -135,6 +141,31 @@ PERSONAL_RECOMMENDATION_DECOMPOSER_DEBUG=1
 PERSONAL_RECOMMENDATION_DECOMPOSER_RAG_GRAPH_NAME=RAG
 PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K=5
 ```
+
+### 1.o 演示学生播种
+
+播种 3 个演示学生（低/中/高进度），全量真实 LLM + RAG + DB：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 pytest tests/total_agent/test_seed_demo_students.py -v
+```
+
+只播种中进度学生：
+
+```bash
+RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 pytest tests/total_agent/test_seed_demo_students.py -v -k demo_medium
+```
+
+产物：
+- 画像 → `<CWD>/profiles/<sid>-<uid>.json`
+- 学习计划 → `personal_recommendation/learning_plan/user_{uid}/...`
+- 学习树 → `study_graph/user_{uid}/...`
+- 生成资源 → `generative/user_{uid}/...`
+- 摘要 → `tests/artifacts/total_agent/demo_students/summary.json`
+
+播种后在登录页输入用户名 + 密码 `demo123` 即可进入。
+
+每个用户以 `demo_{level}_{uuid}` 命名，多次运行不冲突。
 
 ## 2 用例描述
 
@@ -618,7 +649,7 @@ recommendation_result fixture
 
 - 推荐成功后只返回候选和 `wait_user_acceptance`，不隐式创建 plan。
 - 用户确认或 `auto_accept=true` 时才执行 `accept_learning_plan`。
-- 已有 active plan 时，“继续学习”走 history-driven 当前 step，不重新随机推荐。
+- 已有 active plan 时，”继续学习”走 history-driven 当前 step，不重新随机推荐。
 - 反馈完成或跳过当前 step 后激活下一个 pending step。
 - `load_total_context` 读取 active plan、next task、持久化画像摘要和学习成长树摘要；读取失败只返回 warning，不伪造画像。
 - `generate_current_step_resource` 先构建 `resource_strategy`，再调用资源生成入口；单元测试通过 monkeypatch 隔离真实资源生成。
@@ -656,6 +687,22 @@ tests/artifacts/total_agent/process_contract/
 
 `total_agent_persisted_profile_read_result.json` 验证画像存储层保存后的 profile 能通过正式 `load_profile_summary -> get_persisted_learning_profile` 读取回来，属于单元级持久化边界检查，不调用真实 Profile Agent。
 
+### 2.m 单元测试包 9 - Study Graph API
+
+目标：验证 `/api/study_graph/detail` 端点的 `syllabus_id` 可选化行为。
+
+覆盖文件：
+
+- `test_study_graph_api.py`
+
+覆盖范围：
+
+- 缺失 `user_id` 时返回 400 + `missing_user_id`。
+- 有 `user_id` 但无 `syllabus_id` 时返回 200 + 终身学习总览（`tree.type=student`、`tree.syllabi` 列表）。
+- 总览接口仅读不写，不创建任何学习树或计划数据。
+
+这些测试标记 `@pytest.mark.mysql`，在 CI 中默认跳过；设置 `RUN_DB_TESTS=1` 后随全量回归运行。
+
 ### 2.k 集成测试 3 - 个人推荐路径 Agent
 
 目标：验证 `personal_recommendation_task.run_personal_recommendation_agent` 背后的真实 LLM 工具选择能力。该测试模拟总 Agent 传入的推荐 payload，mock RAG/多路检索结果，并使用固定 profile/tree fixture 跑真实推荐算法链路，重点验证路径推荐 Agent 会自行调度工具并完成推荐闭环。
@@ -691,6 +738,29 @@ tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_
 ```
 
 该产物保留总 Agent 模拟 payload、工具调用顺序、每个工具返回、推荐摘要、最终 `PersonalRecommendationResult`，以及 mock accept 链路的学习计划 manifest。
+
+### 2.o 演示学生播种
+
+目标：生成 3 个有真实学习数据的持久化演示学生（低/中/高进度），供前端登录页选择并展示完整平台能力。
+
+覆盖文件：
+
+- `tests/total_agent/test_seed_demo_students.py`
+
+覆盖范围：
+
+- 画像：低/中/高三级不同的 `profile_input_records`，通过真实 LLM Agent 构建并持久化到 `<CWD>/profiles/`
+- 学习计划（中/高）：真实推荐 Agent → deterministic fallback → snapshot → accept，落 `manifest.jsonl`
+- 学习树（中/高）：`submit_learning_tree_changes` 写入批次变更（Medium 5 batches / High 9 batches）
+- 生成资源（中/高）：`generate_resources_from_request` 产出 documents/mindmap
+- Summary 输出：`tests/artifacts/total_agent/demo_students/summary.json`
+
+不可 monkeypatch，所有数据落到生产路径。多次运行不冲突（`demo_{level}_{uuid}` 命名）。
+
+播种后使用方式：
+
+- 前端登录页输入用户名 + 密码 `demo123`
+- 或调用 `GET /api/demo_students` 获取最新学生列表
 
 ## 3 生成文件说明
 
@@ -824,6 +894,10 @@ tests/artifacts/total_agent/e2e_real_deep_state/answer_learning_question_real_ra
 ```bash
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
 ```
+
+### 5.1 流式输出
+
+Total Agent 支持 `stream=True` 模式，LLM E2E 已接入 `run_total_agent_stream()`，配合 `--capture=tee-sys` 终端实时显示 LLM 逐 token 文本 + 工具状态。CI 由默认回归覆盖 mock 管道测试。前端可通过 SSE（`/api/total_agent/agent_run?stream=true`）消费。
 
 可选探究用例：
 

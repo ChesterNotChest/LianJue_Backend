@@ -24,6 +24,9 @@ NEXT_ACTION_CONFIRM_PATH = "confirm_path"
 NEXT_ACTION_GENERATE_RESOURCES = "generate_resources"
 NEXT_ACTION_ASK_GOAL_CLARIFICATION = "ask_goal_clarification"
 NODE_SOURCE_SAMPLE_FALLBACK = "sample_fallback"
+DECOMPOSER_MODE_AUTO = "auto"
+DECOMPOSER_MODE_AGENT = "agent"
+DECOMPOSER_MODE_DISABLED = "disabled"
 
 
 def _json_safe(value: Any) -> Any:
@@ -166,6 +169,128 @@ def _build_recommendation_graph(learning_tree: Dict[str, Any]) -> Dict[str, List
     return {"nodes": nodes, "edges": edges}
 
 
+def _graph_diagnostics(
+    *,
+    learning_tree: Dict[str, Any],
+    recommendation_graph_tree: Dict[str, Any],
+    graph: Dict[str, Any],
+    rag_overlay: Dict[str, Any],
+    goals: Optional[List[str]],
+    chosen_goals: List[str],
+    starts: List[str],
+    candidates: List[Dict[str, Any]],
+    response_candidates: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    def summarize_tree(tree: Dict[str, Any]) -> Dict[str, Any]:
+        node_source_counts: Dict[str, int] = {}
+        decomposition_method_counts: Dict[str, int] = {}
+        fallback_tag_counts: Dict[str, int] = {}
+        source_period_counts: Dict[str, int] = {}
+        agent_nodes = []
+        concept_nodes = []
+        sample_nodes = []
+        for node_id, raw_node in (tree or {}).items():
+            node = raw_node if isinstance(raw_node, dict) else {}
+            node_source = str(node.get("node_source") or "")
+            method = str(node.get("decomposition_method") or "")
+            fallback_tag = str(node.get("fallback_tag") or "")
+            node_source_counts[node_source or "<empty>"] = node_source_counts.get(node_source or "<empty>", 0) + 1
+            decomposition_method_counts[method or "<empty>"] = decomposition_method_counts.get(method or "<empty>", 0) + 1
+            if fallback_tag:
+                fallback_tag_counts[fallback_tag] = fallback_tag_counts.get(fallback_tag, 0) + 1
+            source_period = node.get("source_period") if isinstance(node.get("source_period"), dict) else {}
+            week_index = str(source_period.get("week_index") or node.get("week_index") or "")
+            if week_index:
+                source_period_counts[week_index] = source_period_counts.get(week_index, 0) + 1
+            item = {
+                "id": str(node_id),
+                "title": node.get("title") or str(node_id),
+                "node_source": node_source,
+                "decomposition_method": method,
+                "fallback_tag": fallback_tag,
+                "prerequisite_count": len(node.get("prerequisites") or []),
+            }
+            if method == "agent":
+                agent_nodes.append(item)
+            if "concept" in node_source or method in {"agent", "rule_fallback"}:
+                concept_nodes.append(item)
+            if node_source == NODE_SOURCE_SAMPLE_FALLBACK:
+                sample_nodes.append(item)
+        return {
+            "node_count": len(tree or {}),
+            "edge_count": sum(len((node if isinstance(node, dict) else {}).get("prerequisites") or []) for node in (tree or {}).values()),
+            "node_source_counts": node_source_counts,
+            "decomposition_method_counts": decomposition_method_counts,
+            "fallback_tag_counts": fallback_tag_counts,
+            "source_period_counts": source_period_counts,
+            "agent_node_count": len(agent_nodes),
+            "concept_node_count": len(concept_nodes),
+            "sample_fallback_node_count": len(sample_nodes),
+            "agent_nodes_preview": agent_nodes[:12],
+            "concept_nodes_preview": concept_nodes[:12],
+            "sample_nodes_preview": sample_nodes[:8],
+        }
+
+    graph_nodes = graph.get("nodes") if isinstance(graph.get("nodes"), list) else []
+    graph_edges = graph.get("edges") if isinstance(graph.get("edges"), list) else []
+    return {
+        "schema_version": "personal_recommendation.graph_diagnostics.v1",
+        "input_goals": list(goals or []),
+        "chosen_goals": list(chosen_goals or []),
+        "start_node_count": len(starts or []),
+        "starts_preview": [str(item) for item in (starts or [])[:12]],
+        "raw_candidate_count": len(candidates or []),
+        "response_candidate_count": len(response_candidates or []),
+        "best_candidate_paths_preview": [
+            {
+                "path": item.get("path") or [],
+                "title_path": item.get("title_path") or [],
+                "rank": item.get("rank"),
+            }
+            for item in (response_candidates or [])[:5]
+            if isinstance(item, dict)
+        ],
+        "learning_tree": summarize_tree(learning_tree),
+        "recommendation_graph_tree": summarize_tree(recommendation_graph_tree),
+        "output_graph": {
+            "node_count": len(graph_nodes),
+            "edge_count": len(graph_edges),
+            "agent_node_count": sum(1 for node in graph_nodes if isinstance(node, dict) and node.get("decomposition_method") == "agent"),
+            "concept_node_count": sum(
+                1
+                for node in graph_nodes
+                if isinstance(node, dict)
+                and ("concept" in str(node.get("node_source") or "") or node.get("decomposition_method") in {"agent", "rule_fallback"})
+            ),
+            "nodes_preview": [
+                {
+                    "id": node.get("id"),
+                    "title": node.get("title"),
+                    "node_source": node.get("node_source"),
+                    "decomposition_method": node.get("decomposition_method"),
+                    "fallback_tag": node.get("fallback_tag"),
+                }
+                for node in graph_nodes[:12]
+                if isinstance(node, dict)
+            ],
+        },
+        "rag_overlay": {
+            "enabled": bool((rag_overlay or {}).get("enabled")),
+            "matched_node_count": len((rag_overlay or {}).get("matched_nodes") or []),
+            "temporary_edge_count": len((rag_overlay or {}).get("temporary_edges") or []),
+            "matched_nodes_preview": [
+                {
+                    "node_id": item.get("node_id"),
+                    "title": item.get("title"),
+                    "relevance": item.get("relevance"),
+                }
+                for item in ((rag_overlay or {}).get("matched_nodes") or [])[:8]
+                if isinstance(item, dict)
+            ],
+        },
+    }
+
+
 def _apply_rag_overlay_to_graph(graph: Dict[str, Any], rag_overlay: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(rag_overlay, dict) or not rag_overlay.get("enabled"):
         return graph
@@ -297,6 +422,47 @@ def load_recommendation_learning_tree(
         return mapped or _sample_learning_tree_with_source("empty_syllabus_mapping")
     except Exception:
         return _sample_learning_tree_with_source("syllabus_load_error")
+
+
+def _normalize_decomposer_mode(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"0", "false", "off", "no", "none", "disabled", "disable"}:
+        return DECOMPOSER_MODE_DISABLED
+    if text in {"1", "true", "on", "yes", "agent", "llm"}:
+        return DECOMPOSER_MODE_AGENT
+    return DECOMPOSER_MODE_AUTO
+
+
+def _build_agent_concept_decomposer(
+    *,
+    syllabus_id: Optional[int],
+    graph_name: Optional[str] = None,
+    rag_top_k: Optional[int] = None,
+):
+    def decompose(payload: Dict[str, Any]) -> Dict[str, Any]:
+        from tasks.personal_recommendation.agent_runtime import run_period_concept_decomposer_agent
+
+        periods = payload.get("periods") if isinstance(payload.get("periods"), list) else []
+        request = {
+            "syllabus_id": syllabus_id,
+            "periods": periods,
+            "rag_context": payload.get("rag_context") if isinstance(payload.get("rag_context"), dict) else None,
+        }
+        if graph_name:
+            request["graph_name"] = graph_name
+        if rag_top_k:
+            request["rag_top_k"] = rag_top_k
+        return run_period_concept_decomposer_agent(request)
+
+    return decompose
+
+
+def _agent_decomposed_node_count(learning_tree: Dict[str, Any]) -> int:
+    return sum(
+        1
+        for node in (learning_tree or {}).values()
+        if isinstance(node, dict) and node.get("decomposition_method") == DECOMPOSER_MODE_AGENT
+    )
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -496,6 +662,9 @@ def run_recommendation_route(
     study_graph_state: Optional[Dict[str, Any]] = None,
     depth_strategy: str = DEFAULT_DEPTH_STRATEGY,
     concept_decomposer: Any = None,
+    decomposer_mode: str = DECOMPOSER_MODE_AUTO,
+    graph_name: Optional[str] = None,
+    rag_top_k: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run the full recommendation pipeline and return API-ready data."""
     if not user_id:
@@ -507,19 +676,56 @@ def run_recommendation_route(
             "error_code": "missing_fields",
         }
 
-    if concept_decomposer is not None or rag_context is not None:
+    normalized_decomposer_mode = _normalize_decomposer_mode(decomposer_mode)
+    effective_decomposer = concept_decomposer
+    if effective_decomposer is None and normalized_decomposer_mode != DECOMPOSER_MODE_DISABLED and rag_context is not None:
+        effective_decomposer = _build_agent_concept_decomposer(
+            syllabus_id=syllabus_id,
+            graph_name=graph_name,
+            rag_top_k=rag_top_k,
+        )
+
+    if effective_decomposer is not None or rag_context is not None:
         try:
             learning_tree = load_recommendation_learning_tree(
                 syllabus_id,
-                concept_decomposer=concept_decomposer,
+                concept_decomposer=effective_decomposer,
                 rag_context=rag_context,
             )
         except TypeError:
-            if concept_decomposer is not None:
+            if effective_decomposer is not None and concept_decomposer is not None:
                 raise
             learning_tree = load_recommendation_learning_tree(syllabus_id)
     else:
         learning_tree = load_recommendation_learning_tree(syllabus_id)
+    if normalized_decomposer_mode == DECOMPOSER_MODE_AGENT and effective_decomposer is not None and _agent_decomposed_node_count(learning_tree) == 0:
+        return {
+            "success": False,
+            "schema_version": RECOMMENDATION_SCHEMA_VERSION,
+            "graph": _build_recommendation_graph(learning_tree if isinstance(learning_tree, dict) else {}),
+            "rag_overlay": {},
+            "candidates": [],
+            "selected": [],
+            "best_path": None,
+            "planning_hints": {
+                "path_depth": 0,
+                "has_rag_edges": False,
+                "has_low_confidence_edges": False,
+                "suggested_next_action": NEXT_ACTION_ASK_GOAL_CLARIFICATION,
+            },
+            "debug": {
+                "graph_diagnostics": {
+                    "schema_version": "personal_recommendation.graph_diagnostics.v1",
+                    "learning_tree": {
+                        "node_count": len(learning_tree or {}) if isinstance(learning_tree, dict) else 0,
+                        "agent_node_count": 0,
+                    },
+                    "decomposer_mode": normalized_decomposer_mode,
+                }
+            },
+            "error_message": "agent decomposer mode requires at least one agent-decomposed concept node",
+            "error_code": "agent_decomposer_required",
+        }
     profile = build_recommendation_profile(int(user_id), syllabus_id)
     rag_overlay = build_rag_overlay(rag_context, learning_tree)
     recommendation_graph_tree = build_recommendation_graph_tree(
@@ -615,6 +821,19 @@ def run_recommendation_route(
     ]
     best_path = response_selected[0] if response_selected else (response_candidates[0] if response_candidates else None)
     graph = _apply_rag_overlay_to_graph(_build_recommendation_graph(recommendation_graph_tree), rag_overlay)
+    debug = {
+        "graph_diagnostics": _graph_diagnostics(
+            learning_tree=learning_tree,
+            recommendation_graph_tree=recommendation_graph_tree,
+            graph=graph,
+            rag_overlay=rag_overlay,
+            goals=goals,
+            chosen_goals=chosen_goals,
+            starts=starts,
+            candidates=candidates,
+            response_candidates=response_candidates,
+        )
+    }
 
     result = {
         "success": True,
@@ -628,6 +847,7 @@ def run_recommendation_route(
         "candidates": response_candidates,
         "selected": response_selected,
         "best_path": best_path,
+        "debug": debug,
         "error_message": "",
         "error_code": "",
     }
@@ -660,4 +880,7 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
         study_graph_state=payload.get("study_graph_state") if isinstance(payload.get("study_graph_state"), dict) else None,
         depth_strategy=_normalize_depth_strategy(payload.get("depth_strategy")),
         concept_decomposer=payload.get("concept_decomposer") if callable(payload.get("concept_decomposer")) else None,
+        decomposer_mode=_normalize_decomposer_mode(payload.get("decomposer_mode") if payload.get("decomposer_mode") is not None else payload.get("use_agent_decomposer")),
+        graph_name=str(payload.get("graph_name") or payload.get("rag_graph_name") or "") or None,
+        rag_top_k=int(payload.get("rag_top_k") or 0) or None,
     )

@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify
 
+from extensions import db
+from schemas.user import User
 from tasks.user_task import (
     register,
     login,
@@ -9,23 +11,40 @@ from tasks.user_task import (
     get_user_detail_info,
     list_all_user_brief_info,
 )
-from tasks.learning_profile_task import get_or_build_learning_profile
+from tasks.learning_profile_task import build_learning_profile, get_persisted_learning_profile
 
 
 
 bp = Blueprint('user_api', __name__, url_prefix='/api')
 
 
-def _parse_bool(value, default=False):
-    if isinstance(value, bool):
-        return value
+def _parse_optional_int(value):
     if value is None:
-        return default
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
-    return default
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return int(text)
+
+
+def _learning_profile_response(profile):
+    if profile is None:
+        return jsonify({
+            'success': False,
+            'profile': None,
+            'error_message': 'not found',
+            'error_code': 'not_found'
+        }), 404
+
+    return jsonify({
+        'success': True,
+        'profile': profile,
+        'profile_path': profile.get('profile_path') if isinstance(profile, dict) else None,
+        'profile_saved': bool(profile.get('profile_saved')) if isinstance(profile, dict) else False,
+        'profile_refreshed': bool(profile.get('profile_refreshed')) if isinstance(profile, dict) else False,
+        'error_message': '',
+        'error_code': ''
+    })
 
 
 @bp.route('/user_register', methods=['POST'])
@@ -326,28 +345,31 @@ def list_users_api():
     })
 
 
-@bp.route('/user_learning_profile', methods=['POST'])
-def user_learning_profile_api():
+@bp.route('/learning_profile_detail', methods=['POST'])
+def learning_profile_detail_api():
     '''
-    通讯格式：
-    输入：
-    {
-        "user_id": int,
-        "syllabus_id": int (optional),
-        "dialogue_text": string | [string, ...] (optional),
-        "learning_goal": string (optional),
-        "learning_records": any (optional),
-        "answer_records": any (optional),
-        "resource_usage": any (optional),
-        "refresh_profile": boolean (optional, default false)
-    }
-    输出：
-    {
-        "success": boolean,
-        "profile": object | null,
-        "error_message": string,
-        "error_code": string
-    }
+    Read the persisted learning profile only. This endpoint never triggers the
+    learning profile Agent.
+    '''
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    syllabus_id = data.get('syllabus_id')
+    if not user_id or syllabus_id is None or str(syllabus_id).strip() == '':
+        return jsonify({
+            'success': False,
+            'profile': None,
+            'error_message': 'missing user_id/syllabus_id',
+            'error_code': 'missing_fields'
+        }), 400
+
+    profile = get_persisted_learning_profile(int(user_id), _parse_optional_int(syllabus_id))
+    return _learning_profile_response(profile)
+
+
+@bp.route('/learning_profile_refresh', methods=['POST'])
+def learning_profile_refresh_api():
+    '''
+    Build or refresh the learning profile with the learning profile Agent.
     '''
     data = request.get_json(silent=True) or {}
     user_id = data.get('user_id')
@@ -360,32 +382,52 @@ def user_learning_profile_api():
             'error_code': 'missing_fields'
         }), 400
 
-    refresh_profile = _parse_bool(data.get('refresh_profile'), default=False)
-
-    profile = get_or_build_learning_profile(
+    profile = build_learning_profile(
         int(user_id),
-        int(syllabus_id) if syllabus_id is not None and str(syllabus_id).strip() != '' else None,
-        refresh_profile=refresh_profile,
+        _parse_optional_int(syllabus_id),
         dialogue_text=data.get('dialogue_text'),
         learning_goal=data.get('learning_goal'),
         learning_records=data.get('learning_records'),
         answer_records=data.get('answer_records'),
         resource_usage=data.get('resource_usage'),
     )
-    if profile is None:
-        return jsonify({
-            'success': False,
-            'profile': None,
-            'error_message': 'not found',
-            'error_code': 'not_found'
-        }), 404
+    if isinstance(profile, dict):
+        profile['profile_refreshed'] = True
+    return _learning_profile_response(profile)
 
+
+def _guess_level(user_name: str) -> str:
+    name = (user_name or "").lower()
+    if "high" in name:
+        return "high"
+    if "medium" in name:
+        return "medium"
+    if "low" in name:
+        return "low"
+    return "unknown"
+
+
+@bp.route('/demo_students', methods=['GET'])
+def demo_students_api():
+    """返回最新的 3 个演示学生（按创建时间倒序）。"""
+    users = (
+        User.query
+        .filter(User.user_name.like('demo_%'))
+        .order_by(User.create_time.desc())
+        .limit(3)
+        .all()
+    )
     return jsonify({
         'success': True,
-        'profile': profile,
-        'profile_path': profile.get('profile_path') if isinstance(profile, dict) else None,
-        'profile_saved': bool(profile.get('profile_saved')) if isinstance(profile, dict) else False,
-        'profile_refreshed': bool(profile.get('profile_refreshed')) if isinstance(profile, dict) else False,
+        'students': [
+            {
+                'user_id': u.user_id,
+                'user_name': u.user_name,
+                'level': _guess_level(u.user_name),
+                'created_at': u.create_time.isoformat() if u.create_time else None,
+            }
+            for u in users
+        ],
+        'error_code': '',
         'error_message': '',
-        'error_code': ''
     })

@@ -79,7 +79,7 @@ flowchart TD
 
 | 模块 | HTTP 入口 | task 门户 | 主要输出 |
 |---|---|---|---|
-| 学习画像 | `/api/user_learning_profile`、`/api/learning_init_personal_syllabus`、`/api/learning_personal_syllabus_detail` | `tasks.learning_profile_task` | `profile`、`personal_syllabus`、画像特征、建议记录 |
+| 学习画像 | `/api/learning_profile_detail`、`/api/learning_profile_refresh`、`/api/learning_init_personal_syllabus`、`/api/learning_personal_syllabus_detail` | `tasks.learning_profile_task` | `profile`、`personal_syllabus`、画像特征、建议记录 |
 | 学习路径推荐 | `/api/personal_recommendation` | `tasks.personal_recommendation_task` | `graph`、`candidates`、`selected`、`best_path` |
 | 资源生成 | `/api/generative_generate`、`/api/generative_list`、`/api/generative_detail` | `tasks.generative_task` | 资源 manifest、资源详情、渲染文件 |
 | 学习成长树 | `/api/study_graph/detail`、`/api/study_graph/features`、`/api/study_graph/agent_run` | `tasks.study_graph_task` | `tree`、`features`、`changes`、`tool_trace` |
@@ -92,7 +92,8 @@ flowchart TD
 
 外部接口：
 
-- `POST /api/user_learning_profile`
+- `POST /api/learning_profile_detail`：只读持久化画像，不触发画像 Agent。
+- `POST /api/learning_profile_refresh`：显式构建或刷新画像。
 - `POST /api/learning_init_personal_syllabus`
 - `POST /api/learning_personal_syllabus_detail`
 
@@ -101,7 +102,7 @@ flowchart TD
 ```text
 API / task 请求
   -> learning_profile_task
-    -> get_or_build_learning_profile / build_learning_profile
+    -> get_persisted_learning_profile / build_learning_profile
     -> read_profile_personal_syllabus / init_profile_personal_syllabus
     -> 画像 agent / service / storage
     -> profile + personal syllabus + feature bundle

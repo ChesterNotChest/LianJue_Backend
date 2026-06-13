@@ -340,45 +340,6 @@ def test_get_persisted_learning_profile_accepts_root_syllabus_id(monkeypatch):
     assert profile["profile_path"].endswith("profiles/12-4.json")
 
 
-def test_user_learning_profile_api_defaults_to_cached_read_and_parses_refresh(monkeypatch):
-    app = Flask(__name__)
-    calls = []
-
-    def fake_get_or_build(user_id, syllabus_id=None, **kwargs):
-        calls.append(kwargs)
-        return {
-            "user_id": user_id,
-            "syllabus_scope": [{"syllabus_id": syllabus_id}],
-            "profile_path": "profiles/21-5.json",
-            "profile_saved": True,
-            "profile_refreshed": kwargs["refresh_profile"],
-        }
-
-    monkeypatch.setattr(user_api, "get_or_build_learning_profile", fake_get_or_build)
-
-    with app.test_request_context(
-        "/api/user_learning_profile",
-        method="POST",
-        json={"user_id": 5, "syllabus_id": 21, "refresh_profile": "false"},
-    ):
-        response = user_api.user_learning_profile_api()
-
-    assert response.status_code == 200
-    assert calls[-1]["refresh_profile"] is False
-    assert response.get_json()["profile_refreshed"] is False
-
-    with app.test_request_context(
-        "/api/user_learning_profile",
-        method="POST",
-        json={"user_id": 5, "syllabus_id": 21, "refresh_profile": "true"},
-    ):
-        response = user_api.user_learning_profile_api()
-
-    assert response.status_code == 200
-    assert calls[-1]["refresh_profile"] is True
-    assert response.get_json()["profile_refreshed"] is True
-
-
 def test_learning_profile_result_schema_accepts_profile():
     result = LearningProfileResult(
         success=True,

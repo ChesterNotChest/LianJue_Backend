@@ -162,18 +162,19 @@ def _period_title(period: dict) -> str:
         return explicit_title
     content = _clean_text(period.get("content") or period.get("original_content"))
     if content:
-        # Prefer the semantic topic after a course-area prefix, e.g.
-        # "大数据存储与管理：分布式数据库中典型技术HBase" -> "分布式数据库中典型技术HBase".
+        # "大数据存储与管理：分布式数据库中典型技术HBase" → take the
+        # topic-name part (before the first colon), not the description.
+        # Syllabus content follows a consistent "topic：description" pattern.
         for separator in ("：", ":", "；", ";"):
             if separator in content:
                 parts = [part.strip() for part in content.split(separator) if part.strip()]
                 if len(parts) >= 2:
-                    return parts[-1][:40]
-        return content[:40]
+                    return parts[0][:20]
+        return content[:20]
     enhanced = _clean_text(period.get("enhanced_content"))
     if enhanced:
         sentence = re.split(r"[。.!！？?]", enhanced, maxsplit=1)[0].strip()
-        return sentence[:40] if sentence else enhanced[:40]
+        return sentence[:20] if sentence else enhanced[:20]
     week_index = _clean_text(period.get("week_index"))
     return f"period_{week_index}" if week_index else ""
 
@@ -197,9 +198,8 @@ def _period_outcomes(title: str, period: dict, node_id: str) -> List[str]:
     for token in re.findall(r"[A-Za-z][A-Za-z0-9+#.-]*", text):
         if len(token) >= 2:
             candidates.append(token)
-    for token in re.findall(r"[\u4e00-\u9fff]{2,12}", text):
-        if any(keyword in token for keyword in ("HBase", "RowKey", "分布式", "数据库", "数据", "存储", "管理", "预分区", "热点")):
-            candidates.append(token)
+    # Chinese token extraction removed: it produced nonsensical sentence
+    # fragments from syllabus body text that looked broken in the frontend.
 
     seen = set()
     result = []

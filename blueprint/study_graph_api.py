@@ -1,6 +1,12 @@
 from flask import Blueprint, jsonify, request
 
-from tasks.study_graph_task import get_student_learning_graph, get_learning_tree_features, run_student_agent
+from tasks.study_graph_task import (
+    get_student_learning_graph,
+    get_learning_tree_features,
+    get_student_learning_tree,
+    run_student_agent,
+)
+from tasks.study_graph.service import get_student_lifelong_overview
 
 
 bp = Blueprint('study_graph_api', __name__, url_prefix='/api')
@@ -32,21 +38,35 @@ def _extract_ids(data):
     return user_id, syllabus_id
 
 
+def _require_user_id(user_id):
+    if not user_id:
+        return jsonify({
+            'success': False,
+            'graph': None,
+            'error_message': 'missing user_id',
+            'error_code': 'missing_user_id',
+        }), 400
+    return None
+
+
 @bp.route('/study_graph/detail', methods=['GET'])
 def study_graph_detail_api():
     data = request.args or {}
     user_id, syllabus_id = _extract_ids(data)
-    if not user_id or not syllabus_id:
-        return jsonify({
-            'success': False,
-            'graph': None,
-            'error_message': 'missing user_id/syllabus_id',
-            'error_code': 'missing_fields',
-        }), 400
+    error_response = _require_user_id(user_id)
+    if error_response:
+        return error_response
 
     include_debug = _parse_bool(data.get('include_debug'), default=False)
     try:
-        result = get_student_learning_graph(user_id, syllabus_id, include_debug=include_debug)
+        if not syllabus_id:
+            result = get_student_lifelong_overview(user_id)
+        else:
+            result = get_student_learning_tree(
+                user_id, syllabus_id,
+                include_debug=include_debug,
+                include_siblings=True,
+            )
         status_code = 200 if result.get('success') else 400
         return jsonify({
             'success': bool(result.get('success')),

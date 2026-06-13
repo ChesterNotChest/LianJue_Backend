@@ -2,7 +2,17 @@ from flask import Blueprint, jsonify, request
 
 from repositories.user_syllabus_repo import get_user_syllabus
 from tasks import learning_profile_task
-from tasks.personal_recommendation_task import run_recommendation_route_from_payload
+from tasks.common.search_tool import search_tool
+from tasks.personal_recommendation_task import (
+    RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
+    RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
+    accept_recommendation_snapshot_path,
+    get_active_learning_plan,
+    get_recommendation_snapshot,
+    list_recommendation_snapshots,
+    run_recommendation_route_from_payload,
+    save_recommendation_snapshot,
+)
 
 
 bp = Blueprint('learning_api', __name__, url_prefix='/api')
@@ -63,6 +73,14 @@ def _get_personal_syllabus_detail_for_display(user_id: int, syllabus_id: int):
         return personal
     fallback = created.get("personal_syllabus")
     return fallback if isinstance(fallback, dict) else None
+
+
+def _positive_int_or_none(value):
+    try:
+        normalized = int(value)
+    except Exception:
+        return None
+    return normalized if normalized > 0 else None
 
 
 @bp.route('/learning_init_personal_syllabus', methods=['POST'])
@@ -196,5 +214,185 @@ def personal_recommendation_api():
     """
     data = request.get_json(silent=True) or {}
     result = run_recommendation_route_from_payload(data)
+    if (
+        result.get('success')
+        and data.get('persist_snapshot') is not False
+        and isinstance(result.get('graph'), dict)
+        and isinstance(result.get('graph', {}).get('nodes'), list)
+    ):
+        try:
+            snapshot = save_recommendation_snapshot(
+                int(data.get('user_id')),
+                int(data['syllabus_id']) if data.get('syllabus_id') else None,
+                result,
+                request_payload=data,
+                session_id=data.get('session_id'),
+                status=RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
+            )
+            if snapshot.get('success'):
+                result['recommendation_id'] = snapshot.get('recommendation_id')
+                result['snapshot_status'] = snapshot.get('status')
+            else:
+                warnings = result.setdefault('warnings', [])
+                if isinstance(warnings, list):
+                    warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
+        except Exception:
+            warnings = result.setdefault('warnings', [])
+            if isinstance(warnings, list):
+                warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
+
+
+@bp.route('/recommendations', methods=['GET'])
+def list_recommendations_api():
+    user_id = _positive_int_or_none(request.args.get('user_id'))
+    if user_id is None:
+        return jsonify({
+            'success': False,
+            'snapshots': [],
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+    syllabus_id = _positive_int_or_none(request.args.get('syllabus_id'))
+    limit = _positive_int_or_none(request.args.get('limit')) or 20
+    result = list_recommendation_snapshots(user_id, syllabus_id, limit)
+    status_code = 200 if result.get('success') else 400
+    return jsonify(result), status_code
+
+
+@bp.route('/recommendations/<recommendation_id>', methods=['GET'])
+def get_recommendation_api(recommendation_id):
+    result = get_recommendation_snapshot(recommendation_id)
+    status_code = 200 if result.get('success') else 404
+    return jsonify(result), status_code
+
+
+@bp.route('/recommendations/<recommendation_id>/accept', methods=['POST'])
+def accept_recommendation_api(recommendation_id):
+    data = request.get_json(silent=True) or {}
+    user_id = _positive_int_or_none(data.get('user_id'))
+    if user_id is None:
+        return jsonify({
+            'success': False,
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+    syllabus_id = _positive_int_or_none(data.get('syllabus_id'))
+    candidate_index = data.get('candidate_index')
+    result = accept_recommendation_snapshot_path(user_id, syllabus_id, recommendation_id, candidate_index)
+    status_code = 200 if result.get('success') else 400
+    if result.get('error_code') == 'recommendation_snapshot_not_found':
+        status_code = 404
+    return jsonify(result), status_code
+
+
+@bp.route('/learning_plan', methods=['GET'])
+def learning_plan_api():
+    """返回用户当前激活的学习计划。
+
+    Query params: user_id (required), syllabus_id (optional)
+    """
+    user_id = _positive_int_or_none(request.args.get('user_id'))
+    if user_id is None:
+        return jsonify({
+            'success': False,
+            'plan': None,
+            'error_message': 'missing user_id',
+            'error_code': 'missing_fields'
+        }), 400
+    syllabus_id = _positive_int_or_none(request.args.get('syllabus_id'))
+    plan = get_active_learning_plan(user_id, syllabus_id)
+    if plan is None:
+        return jsonify({
+            'success': True,
+            'plan': {'steps': []},
+            'error_message': '',
+            'error_code': ''
+        })
+    return jsonify({
+        'success': True,
+        'plan': plan,
+        'error_message': '',
+        'error_code': ''
+    })
+
+
+@bp.route('/knowledge/search', methods=['GET'])
+def knowledge_search():
+    """知识库检索 — search_tool + 文件匹配。
+
+    Query params: q (required), graph_name (default RAG), top_k (default 5), match_files (default true)
+    """
+    import re
+    from extensions import db
+    from schemas.agent_runtime_state import GeneratedResource
+
+    query = str(request.args.get('q') or '').strip()
+    if not query:
+        return jsonify({'success': False, 'results': [], 'error': 'missing q'}), 400
+    graph_name = str(request.args.get('graph_name') or 'RAG').strip()
+    top_k = int(request.args.get('top_k') or 5)
+    match_files = str(request.args.get('match_files') or '1') in ('1', 'true', 'yes')
+
+    try:
+        result = search_tool(query, graph_name=graph_name, top_k=top_k)
+    except Exception as exc:
+        return jsonify({'success': False, 'results': [], 'error': str(exc)}), 500
+
+    # ── 文件匹配：从 paragraphs 中提取 [文件名]，匹配知识源 + 生成资源 ──
+    matched_sources: list[dict] = []
+    if match_files and result.get("success"):
+        source_names: set[str] = set()
+        for p in result.get("paragraphs", []):
+            for m in re.finditer(r'\(\[(.+?)\]\)', str(p)):
+                source_names.add(m.group(1))
+        if source_names:
+            try:
+                # 1) 知识源文件（可下载的原始文档）
+                from schemas.file import File as KnowledgeFile
+                for src in source_names:
+                    rows = KnowledgeFile.query.filter(
+                        KnowledgeFile.path.contains(src)
+                    ).limit(3).all()
+                    for row in rows:
+                        matched_sources.append({
+                            "kind": "knowledge_source",
+                            "file_id": row.file_id,
+                            "path": row.path or "",
+                            "matched_source": src,
+                            "download_url": f"/api/file_download?file_id={row.file_id}",
+                        })
+            except Exception:
+                pass
+
+            try:
+                # 2) 生成资源（学生可用的学习资料）
+                for src in source_names:
+                    rows = GeneratedResource.query.filter(
+                        db.or_(
+                            GeneratedResource.title.contains(src),
+                            GeneratedResource.topic.contains(src),
+                        )
+                    ).limit(5).all()
+                    for row in rows:
+                        main_files = {}
+                        try:
+                            main_files = __import__("json").loads(row.main_files_json or "{}")
+                        except Exception:
+                            pass
+                        matched_sources.append({
+                            "kind": "generated_resource",
+                            "resource_id": row.resource_id,
+                            "resource_type": row.resource_type,
+                            "title": row.title or "",
+                            "topic": row.topic or "",
+                            "matched_source": src,
+                            "main_files": main_files,
+                            "created_at": row.created_at,
+                        })
+            except Exception:
+                pass
+
+    result["matched_sources"] = matched_sources[:15]
+    return jsonify(result)

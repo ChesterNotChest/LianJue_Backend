@@ -32,6 +32,13 @@ def repo_cwd(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def default_runtime_file_backends(monkeypatch):
+    monkeypatch.setenv("LEARNING_PLAN_FILE_BACKEND", "1")
+    monkeypatch.setenv("GENERATIVE_FILE_BACKEND", "1")
+    monkeypatch.setenv("STUDY_GRAPH_FILE_BACKEND", "1")
+
+
+@pytest.fixture(autouse=True)
 def cleanup_new_json_artifacts():
     before = _snapshot_json_files()
     yield

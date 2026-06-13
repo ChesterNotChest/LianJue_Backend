@@ -12,6 +12,8 @@ from repositories.user_syllabus_repo import get_user_syllabus, set_personal_syll
 from tasks.learning_profile import alignment
 from tasks.learning_profile import profile_builder
 from tasks.learning_profile.storage import load_json_file
+import os
+_DEBUG_SYNC = os.getenv("DEBUG_PROFILE_SYNC") == "1"
 
 _PROFILE_SUGGESTION_TO_SCORE = {
 	'weak_far': 0,
@@ -359,4 +361,169 @@ def append_profile_personal_syllabus_suggestion(user_id: int, syllabus_id: int, 
 		'competance': entry.get('competance'),
 		'competance_progress': entry.get('competance_progress'),
 	}
+
+_COMPETANCE_THRESHOLD_MASTER = 0.7
+_COMPETANCE_THRESHOLD_NORMAL = 0.35
+
+
+def _score_to_competance(score):
+	"""Map a 0-1 knowledge_point score to a competance level."""
+	if score >= _COMPETANCE_THRESHOLD_MASTER:
+		return "master"
+	if score >= _COMPETANCE_THRESHOLD_NORMAL:
+		return "normal"
+	if score > 0:
+		return "weak"
+	return "none"
+
+
+def _extract_week_content(period_entry):
+	"""Build a descriptive label with enough context for LLM semantic matching.
+
+	Includes a snippet of the description after the colon so keywords like
+	"HDFS", "ETL", etc. are visible to the alignment call.
+	"""
+	content = str(period_entry.get("content") or period_entry.get("enhanced_content") or "")
+	if not content:
+		return ""
+	for sep in ("：", ":", "；", ";"):
+		if sep in content:
+			parts = [p.strip() for p in content.split(sep) if p.strip()]
+			if len(parts) >= 2:
+				return (parts[0][:20] + ": " + parts[1][:40])[:80]
+	return content[:50]
+
+
+def sync_knowledge_to_weeks(user_id, syllabus_id):
+	"""Map profile knowledge_point scores to syllabus weeks and set competance.
+
+	Reads the persisted profile's by_knowledge_point dict, aligns knowledge
+	tags to syllabus weeks via LLM semantic matching, then writes per-week
+	competance to the personal syllabus JSON.
+	"""
+	try:
+		user_id = int(user_id)
+		syllabus_id = int(syllabus_id)
+	except Exception:
+		return None
+
+	# -- read profile --
+	from tasks.learning_profile_task import get_persisted_learning_profile
+	profile = get_persisted_learning_profile(user_id, syllabus_id)
+	if not isinstance(profile, dict):
+		return None
+	km = profile.get("knowledge_mastery")
+	if not isinstance(km, dict):
+		return None
+	by_kp = km.get("by_knowledge_point")
+	if not isinstance(by_kp, dict) or not by_kp:
+		if _DEBUG_SYNC: print("[SYNC] by_knowledge_point empty or missing")
+		return None
+
+	# -- read syllabus weeks --
+	syllabus = get_syllabus_by_id(syllabus_id)
+	if syllabus is None:
+		return None
+	syllabus_path = getattr(syllabus, "syllabus_path", None)
+	syllabus_json = load_json_file(syllabus_path)
+	if not isinstance(syllabus_json, dict):
+		return None
+	period = syllabus_json.get("period")
+	if not isinstance(period, list):
+		return None
+
+	# -- read personal syllabus --
+	personal = read_profile_personal_syllabus(user_id, syllabus_id, hydrate=False)
+	if not isinstance(personal, dict):
+		return None
+
+	# -- build week candidates --
+	week_candidates = {}
+	for entry in period:
+		if not isinstance(entry, dict):
+			continue
+		wi = str(entry.get("week_index") or "")
+		if not wi:
+			continue
+		label = _extract_week_content(entry)
+		if not label:
+			continue
+		week_candidates[wi] = {"title": label}
+	if not week_candidates:
+		return None
+
+	# -- LLM alignment: knowledge tags -> week labels --
+	from tasks.personal_recommendation.perception import _llm_align_knowledge
+	enriched = _llm_align_knowledge(dict(by_kp), week_candidates)
+
+	week_scores = {}
+	for wi, node in week_candidates.items():
+		label = node["title"]
+		direct = enriched.get(label, 0.0)
+		if direct > 0:
+			week_scores[wi] = max(week_scores.get(wi, 0.0), direct)
+		for enriched_key, score in enriched.items():
+			if enriched_key in label or label in enriched_key:
+				if score > week_scores.get(wi, 0.0):
+					week_scores[wi] = score
+	if not week_scores:
+		# -- rule fallback: keyword/substring match on full week content --
+		for entry in period:
+			if not isinstance(entry, dict):
+				continue
+			wi = str(entry.get("week_index") or "")
+			if not wi or wi in week_scores:
+				continue
+			full_text = " ".join(str(entry.get(k) or "") for k in ("content", "enhanced_content"))
+			for kp_key, kp_score in by_kp.items():
+				if kp_score <= 0:
+					continue
+				# direct substring match
+				if kp_key.lower() in full_text.lower():
+					week_scores[wi] = max(week_scores.get(wi, 0.0), kp_score)
+					break
+				# token-level match (English acronyms: HDFS, ETL, etc.)
+				import re
+				for token in re.findall(r"[A-Za-z][A-Za-z0-9+#.-]+", kp_key):
+					if token.lower() in full_text.lower():
+						week_scores[wi] = max(week_scores.get(wi, 0.0), kp_score)
+						break
+		if not week_scores:
+			return {"synced_weeks": 0, "reason": "no_alignment_matches"}
+
+	# -- set competance --
+	competance_before = {}
+	competance_after = {}
+	synced_count = 0
+	for entry in personal.get("period") or []:
+		if not isinstance(entry, dict):
+			continue
+		wi = str(entry.get("week_index") or "")
+		if not wi:
+			continue
+		old = str(entry.get("competance") or "none")
+		score = week_scores.get(wi)
+		if score is not None and score > 0:
+			new_level = _score_to_competance(score)
+			entry["competance"] = new_level
+			entry["competance_progress"] = 3
+			competance_before[wi] = old
+			competance_after[wi] = new_level
+			synced_count += 1
+	if _DEBUG_SYNC: print("[SYNC] synced_weeks:", synced_count, "after:", competance_after)
+	if synced_count == 0:
+		return {"synced_weeks": 0, "reason": "no_weeks_above_threshold"}
+
+	# -- persist --
+	relation = get_user_syllabus(user_id, syllabus_id)
+	personal_path = getattr(relation, "personal_syllabus_path", None) if relation else None
+	if not personal_path:
+		return None
+	try:
+		with open(personal_path, "w", encoding="utf-8") as f:
+			json.dump(personal, f, ensure_ascii=False, indent=2)
+	except Exception:
+		return None
+	return {"synced_weeks": synced_count, "competance_before": competance_before, "competance_after": competance_after}
+
 
