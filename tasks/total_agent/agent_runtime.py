@@ -78,6 +78,7 @@ def get_total_agent() -> Agent:
             "When they accept a plan: confirm it (accept_learning_plan). "
             "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
             "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
+            "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal — include the topic in record_learning_feedback as a knowledge_point entry (e.g. {\\\"knowledge_points\\\": [\\\"HDFS 基础\\\"], \\\"correct\\\": true}). "
             "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
             "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
             "When class-wide context might help: check the course overview (get_course_learning_tree_summary). "

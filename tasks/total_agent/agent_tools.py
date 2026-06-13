@@ -1947,11 +1947,39 @@ def _build_resource_request(state: Dict[str, Any], next_task: dict, resource_str
     strategy = _safe_dict(resource_strategy) or build_current_step_resource_strategy(state)
     resource_types = _safe_list(strategy.get("resource_types")) or [RESOURCE_STRATEGY_DEFAULT_TYPE]
     knowledge_items = _safe_list(strategy.get("knowledge_items")) or outcomes or [title]
+
+    # graph_name: always derive from syllabus_id (fixed at total agent entry)
+    graph_name = ""
+    sid = payload.get("syllabus_id")
+    if sid:
+        try:
+            from tasks.syllabus_task import _get_primary_graph_info
+            _, graph_name = _get_primary_graph_info(int(sid))
+            graph_name = _safe_text(graph_name)
+        except Exception:
+            graph_name = ""
+
+    # question: build a semantically rich RAG query from structured knowledge
+    # items — the resource agent does NOT interpret user intent, it needs
+    # concrete technical keywords to retrieve against the knowledge graph.
+    question_parts: list[str] = []
+    if title:
+        question_parts.append(f"学习主题: {title}")
+    if outcomes:
+        question_parts.append("知识点: " + "; ".join(outcomes))
+    profile_summary = _safe_dict(_safe_dict(state.get("total_context")).get("profile_summary"))
+    weak_points = _safe_list(profile_summary.get("weak_points"))
+    if weak_points:
+        question_parts.append("薄弱环节: " + "; ".join(weak_points))
+    question = "\n".join(question_parts) if question_parts else _safe_text(
+        payload.get("question") or payload.get("message") or f"请生成 {title} 的学习资源"
+    )
+
     return {
         "user_id": payload.get("user_id"),
         "syllabus_id": payload.get("syllabus_id"),
         "message": payload.get("message") or payload.get("question") or "",
-        "question": payload.get("question") or payload.get("message") or f"请生成 {title} 的学习资源",
+        "question": question,
         "topic": title,
         "target": title,
         "current_step": next_task,
@@ -1961,7 +1989,7 @@ def _build_resource_request(state: Dict[str, Any], next_task: dict, resource_str
         "strategy_reason": strategy.get("reason") or "",
         "strategy_signals": _safe_dict(strategy.get("strategy_signals")),
         "resource_strategy": strategy,
-        "graph_name": payload.get("graph_name") or payload.get("rag_graph_name"),
+        "graph_name": graph_name,
         "rag_top_k": payload.get("rag_top_k"),
     }
 

@@ -394,7 +394,7 @@ def _extract_week_content(period_entry):
 	return content[:50]
 
 
-def sync_knowledge_to_weeks(user_id, syllabus_id):
+def sync_knowledge_to_weeks(user_id, syllabus_id, by_knowledge_point=None):
 	"""Map profile knowledge_point scores to syllabus weeks and set competance.
 
 	Reads the persisted profile's by_knowledge_point dict, aligns knowledge
@@ -415,7 +415,7 @@ def sync_knowledge_to_weeks(user_id, syllabus_id):
 	km = profile.get("knowledge_mastery")
 	if not isinstance(km, dict):
 		return None
-	by_kp = km.get("by_knowledge_point")
+	by_kp = by_knowledge_point if isinstance(by_knowledge_point, dict) and by_knowledge_point else km.get("by_knowledge_point")
 	if not isinstance(by_kp, dict) or not by_kp:
 		if _DEBUG_SYNC: print("[SYNC] by_knowledge_point empty or missing")
 		return None
