@@ -169,12 +169,12 @@ def _period_title(period: dict) -> str:
             if separator in content:
                 parts = [part.strip() for part in content.split(separator) if part.strip()]
                 if len(parts) >= 2:
-                    return parts[0][:20]
-        return content[:20]
+                    return parts[-1][:40]
+        return content[:40]
     enhanced = _clean_text(period.get("enhanced_content"))
     if enhanced:
         sentence = re.split(r"[。.!！？?]", enhanced, maxsplit=1)[0].strip()
-        return sentence[:20] if sentence else enhanced[:20]
+        return sentence[:40] if sentence else enhanced[:40]
     week_index = _clean_text(period.get("week_index"))
     return f"period_{week_index}" if week_index else ""
 

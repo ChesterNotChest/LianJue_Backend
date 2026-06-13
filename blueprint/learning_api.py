@@ -4,14 +4,11 @@ from repositories.user_syllabus_repo import get_user_syllabus
 from tasks import learning_profile_task
 from tasks.common.search_tool import search_tool
 from tasks.personal_recommendation_task import (
-    RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
-    RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
     accept_recommendation_snapshot_path,
     get_active_learning_plan,
     get_recommendation_snapshot,
     list_recommendation_snapshots,
     run_recommendation_route_from_payload,
-    save_recommendation_snapshot,
 )
 
 
@@ -214,32 +211,6 @@ def personal_recommendation_api():
     """
     data = request.get_json(silent=True) or {}
     result = run_recommendation_route_from_payload(data)
-    if (
-        result.get('success')
-        and data.get('persist_snapshot') is not False
-        and isinstance(result.get('graph'), dict)
-        and isinstance(result.get('graph', {}).get('nodes'), list)
-    ):
-        try:
-            snapshot = save_recommendation_snapshot(
-                int(data.get('user_id')),
-                int(data['syllabus_id']) if data.get('syllabus_id') else None,
-                result,
-                request_payload=data,
-                session_id=data.get('session_id'),
-                status=RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
-            )
-            if snapshot.get('success'):
-                result['recommendation_id'] = snapshot.get('recommendation_id')
-                result['snapshot_status'] = snapshot.get('status')
-            else:
-                warnings = result.setdefault('warnings', [])
-                if isinstance(warnings, list):
-                    warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
-        except Exception:
-            warnings = result.setdefault('warnings', [])
-            if isinstance(warnings, list):
-                warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
 

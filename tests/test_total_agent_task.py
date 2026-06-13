@@ -305,6 +305,46 @@ def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_p
     ]
 
 
+def test_total_agent_recommendation_persists_snapshot_for_frontend(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+
+    result = tagt.tool_run_learning_recommendation({
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "recommend a RowKey learning path",
+            "recommendation_result": _recommendation_fixture(),
+        },
+        "tool_trace": [],
+    })
+
+    recommendation = result["recommendation"]
+    assert result["recommendation_id"]
+    assert result["snapshot_status"] == prt.RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
+    assert recommendation["recommendation_id"] == result["recommendation_id"]
+    assert prt.get_recommendation_snapshot(result["recommendation_id"])["success"] is True
+
+
+def test_total_agent_recommendation_resaves_proposed_snapshot(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    recommendation = _recommendation_fixture()
+    prt.ensure_recommendation_snapshot(8, 20, recommendation)
+    first_id = recommendation["recommendation_id"]
+
+    result = tagt.tool_run_learning_recommendation({
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "recommend again",
+            "recommendation_result": recommendation,
+        },
+        "tool_trace": [],
+    })
+
+    assert result["recommendation_id"] != first_id
+    assert len(prt.list_recommendation_snapshots(8, 20)["snapshots"]) == 2
+
+
 def test_total_agent_accepts_learning_plan_only_with_confirmation(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
 

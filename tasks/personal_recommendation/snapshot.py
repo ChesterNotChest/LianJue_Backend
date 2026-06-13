@@ -36,6 +36,13 @@ def _snapshot_root() -> Path:
 
 
 def _use_file_backend() -> bool:
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context() and bool(getattr(current_app, "testing", False)):
+            return True
+    except Exception:
+        pass
     return bool(
         os.getenv("PERSONAL_RECOMMENDATION_ROOT")
         or os.getenv(RECOMMENDATION_SNAPSHOT_FILE_BACKEND_ENV) == "1"

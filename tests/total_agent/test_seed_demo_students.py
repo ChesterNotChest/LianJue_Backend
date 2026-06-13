@@ -290,6 +290,13 @@ def _derive_graph_aligned_goals(recommendation: dict | None, user_goal_tokens: s
     return {"goals": (best.get("outcomes") or [best.get("title") or best.get("node_id")])[:2], "selected_node": best, "ranked_nodes": ranked[:8], "reason": "semantic_overlap_with_user_goal_or_rag_evidence", "min_score": min_score}
 
 
+def _has_best_path(recommendation: dict | None) -> bool:
+    if not isinstance(recommendation, dict):
+        return False
+    best_path = recommendation.get("best_path")
+    return isinstance(best_path, dict) and bool(best_path.get("path"))
+
+
 def _run_recommendation_for_demo(user_id: int, syllabus_id: int, graph_name: str, goals: list[str], learning_goal: str, question: str) -> dict:
     """Run real LLM recommendation with deterministic fallback, then save snapshot and accept plan."""
     _normalize_model_for_dashscope()
@@ -305,7 +312,7 @@ def _run_recommendation_for_demo(user_id: int, syllabus_id: int, graph_name: str
     flow = "agent"
 
     # Step 2: fallback via goal alignment
-    if not (isinstance(recommendation, dict) and recommendation.get("best_path")):
+    if not _has_best_path(recommendation):
         user_goal_tokens = _tokenize_goal_text(question, learning_goal, " ".join(goals))
         goal_alignment = _derive_graph_aligned_goals(recommendation, user_goal_tokens)
         aligned_goals = goal_alignment.get("goals") or []
@@ -320,7 +327,7 @@ def _run_recommendation_for_demo(user_id: int, syllabus_id: int, graph_name: str
         else:
             return {"recommendation": None, "snapshot": None, "plan": None, "flow": "failed", "error": goal_alignment.get("reason")}
 
-    if not (isinstance(recommendation, dict) and recommendation.get("best_path")):
+    if not _has_best_path(recommendation):
         return {"recommendation": recommendation, "snapshot": None, "plan": None, "flow": flow, "error": "no_best_path"}
 
     # Step 3: snapshot (proposed only — do NOT auto-accept; demo users should

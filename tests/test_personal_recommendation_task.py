@@ -549,6 +549,112 @@ def test_run_recommendation_route_from_payload_accepts_max_candidates_alias(monk
     assert captured["K"] == 7
 
 
+def test_run_recommendation_route_from_payload_saves_snapshot(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+
+    def fake_route(**kwargs):
+        return {
+            "success": True,
+            "graph": {"nodes": [{"id": "n1", "title": "Intro"}], "edges": []},
+            "candidates": [{"path": ["n1"], "rank": 1}],
+            "selected": [{"path": ["n1"]}],
+            "best_path": {"path": ["n1"]},
+            "error_code": "",
+            "error_message": "",
+        }
+
+    monkeypatch.setattr(prt, "run_recommendation_route", fake_route)
+
+    result = prt.run_recommendation_route_from_payload({"user_id": 8, "syllabus_id": 20, "goals": ["intro"]})
+
+    assert result["recommendation_id"]
+    assert result["snapshot_status"] == prt_facade.RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
+    detail = prt_facade.get_recommendation_snapshot(result["recommendation_id"])
+    assert detail["success"] is True
+    assert detail["snapshot"]["recommendation"]["graph"]["nodes"][0]["id"] == "n1"
+
+
+def test_run_recommendation_route_from_payload_can_disable_snapshot(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    monkeypatch.setattr(
+        prt,
+        "run_recommendation_route",
+        lambda **kwargs: {
+            "success": True,
+            "graph": {"nodes": [{"id": "n1"}], "edges": []},
+            "candidates": [],
+            "selected": [],
+            "best_path": None,
+        },
+    )
+
+    result = prt.run_recommendation_route_from_payload({"user_id": 8, "syllabus_id": 20, "persist_snapshot": False})
+
+    assert "recommendation_id" not in result
+    assert prt_facade.list_recommendation_snapshots(8, 20)["snapshots"] == []
+
+
+def test_ensure_recommendation_snapshot_backfills_injected_result(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    result = {
+        "success": True,
+        "graph": {"nodes": [{"id": "n1"}], "edges": []},
+        "candidates": [{"path": ["n1"]}],
+        "selected": [],
+        "best_path": {"path": ["n1"]},
+    }
+
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+    first_id = result["recommendation_id"]
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+
+    assert result["recommendation_id"] == first_id
+    assert len(prt_facade.list_recommendation_snapshots(8, 20)["snapshots"]) == 1
+
+
+def test_ensure_recommendation_snapshot_can_resave_proposed(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    result = {
+        "success": True,
+        "graph": {"nodes": [{"id": "n1"}], "edges": []},
+        "candidates": [{"path": ["n1"]}],
+        "selected": [],
+        "best_path": {"path": ["n1"]},
+    }
+
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+    first_id = result["recommendation_id"]
+    prt.ensure_recommendation_snapshot(
+        8,
+        20,
+        result,
+        request_payload={"message": "recommend again"},
+        allow_proposed_resave=True,
+    )
+
+    assert result["recommendation_id"] != first_id
+    assert len(prt_facade.list_recommendation_snapshots(8, 20)["snapshots"]) == 2
+
+
+def test_ensure_recommendation_snapshot_does_not_resave_accepted(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    result = {
+        "success": True,
+        "graph": {"nodes": [{"id": "n1"}], "edges": []},
+        "candidates": [{"path": ["n1"]}],
+        "selected": [],
+        "best_path": {"path": ["n1"]},
+    }
+
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+    first_id = result["recommendation_id"]
+    result["snapshot_status"] = prt_facade.RECOMMENDATION_SNAPSHOT_STATUS_ACCEPTED
+    prt.ensure_recommendation_snapshot(8, 20, result, allow_proposed_resave=True)
+
+    assert result["recommendation_id"] == first_id
+    assert len(prt_facade.list_recommendation_snapshots(8, 20)["snapshots"]) == 1
+
+
 def test_run_recommendation_route_from_payload_auto_injects_agent_decomposer_with_rag(monkeypatch):
     captured = {}
 

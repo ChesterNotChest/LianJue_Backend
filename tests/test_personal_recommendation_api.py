@@ -83,12 +83,12 @@ def _recommendation_result() -> dict:
 
 
 def test_personal_recommendation_api_can_disable_snapshot(monkeypatch):
-    from blueprint import learning_api
+    from tasks.personal_recommendation import service as recommendation_service
 
     app = create_app()
     app.testing = True
     client = app.test_client()
-    monkeypatch.setattr(learning_api, "run_recommendation_route_from_payload", lambda data: _recommendation_result())
+    monkeypatch.setattr(recommendation_service, "run_recommendation_route", lambda **kwargs: _recommendation_result())
 
     response = client.post(
         "/api/personal_recommendation",
@@ -103,12 +103,12 @@ def test_personal_recommendation_api_can_disable_snapshot(monkeypatch):
 
 
 def test_recommendation_snapshot_detail_and_list_api(monkeypatch):
-    from blueprint import learning_api
+    from tasks.personal_recommendation import service as recommendation_service
 
     app = create_app()
     app.testing = True
     client = app.test_client()
-    monkeypatch.setattr(learning_api, "run_recommendation_route_from_payload", lambda data: _recommendation_result())
+    monkeypatch.setattr(recommendation_service, "run_recommendation_route", lambda **kwargs: _recommendation_result())
 
     created = client.post(
         "/api/personal_recommendation",
@@ -131,12 +131,12 @@ def test_recommendation_snapshot_detail_and_list_api(monkeypatch):
 
 
 def test_recommendation_snapshot_accept_api_creates_plan(monkeypatch):
-    from blueprint import learning_api
+    from tasks.personal_recommendation import service as recommendation_service
 
     app = create_app()
     app.testing = True
     client = app.test_client()
-    monkeypatch.setattr(learning_api, "run_recommendation_route_from_payload", lambda data: _recommendation_result())
+    monkeypatch.setattr(recommendation_service, "run_recommendation_route", lambda **kwargs: _recommendation_result())
 
     created = client.post(
         "/api/personal_recommendation",

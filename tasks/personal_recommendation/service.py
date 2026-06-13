@@ -16,6 +16,11 @@ from tasks.personal_recommendation.pruning import hard_prune, soft_prune_by_domi
 from tasks.personal_recommendation.rag_overlay import build_rag_overlay, score_candidate_with_overlay
 from tasks.personal_recommendation.sample_data import learning_tree as sample_learning_tree
 from tasks.personal_recommendation.selector_ib_grpo import ib_grpo_select
+from tasks.personal_recommendation.snapshot import (
+    RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
+    RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
+    save_recommendation_snapshot,
+)
 from tasks.personal_recommendation.syllabus_adapter import syllabus_json_to_learning_tree
 
 
@@ -69,6 +74,10 @@ def _path_edges(path: List[Any], learning_tree: Optional[Dict[str, Any]] = None)
             edge["confidence"] = edge_confidence.get(source, 1.0)
         edges.append(edge)
     return edges
+
+
+def _has_nonempty_path(item: Any) -> bool:
+    return isinstance(item, dict) and bool(item.get("path"))
 
 
 def _node_outcomes_known(node: Dict[str, Any], state: Optional[Dict[str, Any]]) -> bool:
@@ -372,14 +381,14 @@ def _normalize_depth_strategy(value: Any) -> str:
 def _build_planning_hints(result: Dict[str, Any]) -> Dict[str, Any]:
     candidates = result.get("candidates") if isinstance(result.get("candidates"), list) else []
     best_path = result.get("best_path") if isinstance(result.get("best_path"), dict) else None
-    if not candidates and not best_path:
+    if not candidates and not _has_nonempty_path(best_path):
         return {
             "path_depth": 0,
             "has_rag_edges": False,
             "has_low_confidence_edges": False,
             "suggested_next_action": NEXT_ACTION_ASK_GOAL_CLARIFICATION,
         }
-    path_edges = best_path.get("path_edges") if isinstance(best_path, dict) else []
+    path_edges = best_path.get("path_edges") if _has_nonempty_path(best_path) else []
     has_rag_edges = any((edge or {}).get("source_type") == "rag" or (edge or {}).get("type") == "rag_evidence" for edge in path_edges or [])
     has_low_confidence_edges = False
     for edge in path_edges or []:
@@ -389,7 +398,7 @@ def _build_planning_hints(result: Dict[str, Any]) -> Dict[str, Any]:
                 break
         except Exception:
             continue
-    path = best_path.get("path") if isinstance(best_path, dict) else []
+    path = best_path.get("path") if _has_nonempty_path(best_path) else []
     return {
         "path_depth": len(path or []),
         "has_rag_edges": bool(has_rag_edges),
@@ -816,10 +825,14 @@ def run_recommendation_route(
                 rag_overlay=rag_overlay,
                 learning_tree=recommendation_graph_tree,
                 state=state,
-            )
+        )
         for candidate in selected
+        if candidate.get("path")
     ]
-    best_path = response_selected[0] if response_selected else (response_candidates[0] if response_candidates else None)
+    best_path = response_selected[0] if response_selected else next(
+        (candidate for candidate in response_candidates if _has_nonempty_path(candidate)),
+        None,
+    )
     graph = _apply_rag_overlay_to_graph(_build_recommendation_graph(recommendation_graph_tree), rag_overlay)
     debug = {
         "graph_diagnostics": _graph_diagnostics(
@@ -868,7 +881,7 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
             "error_code": "missing_fields",
         }
 
-    return run_recommendation_route(
+    result = run_recommendation_route(
         user_id=int(user_id),
         syllabus_id=int(payload["syllabus_id"]) if payload.get("syllabus_id") else None,
         goals=payload.get("goals"),
@@ -884,3 +897,67 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
         graph_name=str(payload.get("graph_name") or payload.get("rag_graph_name") or "") or None,
         rag_top_k=int(payload.get("rag_top_k") or 0) or None,
     )
+    ensure_recommendation_snapshot(
+        int(user_id),
+        int(payload["syllabus_id"]) if payload.get("syllabus_id") else None,
+        result,
+        request_payload=payload,
+        session_id=payload.get("session_id"),
+        persist_snapshot=payload.get("persist_snapshot") is not False,
+    )
+    return result
+
+
+def ensure_recommendation_snapshot(
+    user_id: int,
+    syllabus_id: Optional[int],
+    recommendation_result: Dict[str, Any],
+    *,
+    request_payload: Optional[dict] = None,
+    session_id: Optional[str] = None,
+    persist_snapshot: bool = True,
+    allow_proposed_resave: bool = False,
+) -> Dict[str, Any]:
+    result = recommendation_result if isinstance(recommendation_result, dict) else {}
+    if not persist_snapshot:
+        return result
+    if not result.get("success"):
+        return result
+    existing_status = str(result.get("snapshot_status") or "").strip()
+    if result.get("recommendation_id") and (
+        not allow_proposed_resave
+        or existing_status
+        and existing_status != RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
+    ):
+        return result
+    if not isinstance(result.get("graph"), dict) or not isinstance(result.get("graph", {}).get("nodes"), list):
+        return result
+
+    try:
+        snapshot = save_recommendation_snapshot(
+            int(user_id),
+            int(syllabus_id) if syllabus_id else None,
+            result,
+            request_payload=request_payload,
+            session_id=session_id,
+            status=RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
+        )
+    except Exception as exc:
+        warnings = result.setdefault("warnings", [])
+        if isinstance(warnings, list):
+            warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
+        result["snapshot_save_error_code"] = "exception"
+        result["snapshot_save_error_message"] = str(exc)
+        return result
+
+    if snapshot.get("success"):
+        result["recommendation_id"] = snapshot.get("recommendation_id")
+        result["snapshot_status"] = snapshot.get("status")
+        result["snapshot"] = snapshot
+    else:
+        warnings = result.setdefault("warnings", [])
+        if isinstance(warnings, list):
+            warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
+        result["snapshot_save_error_code"] = snapshot.get("error_code") or "snapshot_save_failed"
+        result["snapshot_save_error_message"] = snapshot.get("error_message") or ""
+    return result

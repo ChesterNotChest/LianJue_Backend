@@ -178,6 +178,13 @@ def _derive_graph_aligned_goals(recommendation: dict | None, user_goal_tokens: s
     }
 
 
+def _has_best_path(recommendation: dict | None) -> bool:
+    if not isinstance(recommendation, dict):
+        return False
+    best_path = recommendation.get("best_path")
+    return isinstance(best_path, dict) and bool(best_path.get("path"))
+
+
 def _run_recommendation_attempt(payload: dict) -> dict:
     agent_result = prt.run_personal_recommendation_agent(payload)
     recommendation = agent_result.recommendation
@@ -457,7 +464,7 @@ def test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db(monkeypatch, d
     recommendation = recommendation_attempts[-1]["recommendation"]
     recommendation_flow = "natural_language_goal"
     goal_alignment = None
-    if not (isinstance(recommendation, dict) and recommendation.get("best_path")):
+    if not _has_best_path(recommendation):
         user_goal_tokens = _tokenize_goal_text(
             natural_recommendation_payload["question"],
             natural_recommendation_payload["learning_goal"],
@@ -494,7 +501,7 @@ def test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db(monkeypatch, d
         recommendation = recommendation_attempts[-1]["recommendation"]
         recommendation_flow = "graph_aligned_deterministic_retry"
 
-    if not (isinstance(recommendation, dict) and recommendation.get("best_path")):
+    if not _has_best_path(recommendation):
         clarification_result = {
             "schema_version": PROCESS_CONTRACT_SCHEMA_VERSION,
             "success": True,
@@ -514,7 +521,7 @@ def test_total_agent_large_e2e_learning_flow_with_real_llm_rag_db(monkeypatch, d
 
     assert isinstance(recommendation, dict), recommendation_attempts
     assert recommendation.get("success") is True, recommendation_attempts
-    assert recommendation.get("best_path"), recommendation_attempts
+    assert _has_best_path(recommendation), recommendation_attempts
     snapshot_artifact = _write_recommendation_snapshot_artifact(
         artifact_root=artifact_root,
         user=user,
@@ -582,7 +589,7 @@ def test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph(mo
     # Agent decomposition produces Chinese outcomes, but goals may be English
     # identifiers (e.g. "rowkey_hotspot_avoidance"). Bridge via the same token-
     # overlap + RAG evidence alignment used by the natural-goal test above.
-    if not (isinstance(recommendation, dict) and recommendation.get("best_path")):
+    if not _has_best_path(recommendation):
         user_goal_tokens = _tokenize_goal_text(
             payload["question"],
             payload["learning_goal"],
@@ -619,7 +626,7 @@ def test_total_agent_large_e2e_deep_success_with_aligned_recommendation_graph(mo
         recommendation_flow = "graph_aligned_deterministic_retry"
 
     assert recommendation_attempts[-1]["candidate_count"] > 0, recommendation_attempts
-    assert isinstance(recommendation, dict) and recommendation.get("best_path"), recommendation_attempts
+    assert _has_best_path(recommendation), recommendation_attempts
     # 推荐图应包含路径之外的关联节点（真实 snapshot 约 37 节点 vs 6 步路径）
     graph_nodes = (recommendation.get("graph") or {}).get("nodes") or []
     assert len(graph_nodes) > len(recommendation["best_path"]["path"]), \
