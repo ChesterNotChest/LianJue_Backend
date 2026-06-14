@@ -65,11 +65,12 @@ def append_buddy_message(
         return None
     role = str(role or "").strip() or "buddy"
     source = str(source or "").strip() or "chat"
+    from_value = "user" if role == "user" else "proactive" if source in {"proactive", "event"} else "buddy"
     now_ts = int(time.time())
     item = {
         "message_id": f"buddy_{now_ts}_{uuid.uuid4().hex[:8]}",
         "role": role,
-        "from": "user" if role == "user" else "proactive" if source == "proactive" else "buddy",
+        "from": from_value,
         "text": text,
         "source": source,
         "created_at": now_ts,

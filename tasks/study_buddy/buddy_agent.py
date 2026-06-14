@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Dict, List
@@ -17,6 +18,8 @@ from .messages import load_buddy_messages
 from .contracts import BUDDY_AGENT_NAME
 from .tree import build_buddy_tree
 from .tree_store import load_buddy_tree
+
+logger = logging.getLogger(__name__)
 
 BUDDY_SYSTEM_PROMPT = """你是联觉学习平台的一个学伴，叫「小觉」。你不是老师，也不是 AI 助手。
 
@@ -92,6 +95,18 @@ def build_buddy_context(
     tags = memory.load_memory_tags(user_id, syllabus_id)
     recent_messages = load_buddy_messages(user_id, syllabus_id, limit=8)
     regions = tree.get("regions", {})
+    logger.info(
+        "[study_buddy.agent] context user_id=%s syllabus_id=%s trunk=%s learned=%s explore=%s tags=%s recent_messages=%s has_plan=%s has_graph_features=%s",
+        user_id,
+        syllabus_id,
+        len(regions.get("trunk", []) or []),
+        len(regions.get("learned", []) or []),
+        len(regions.get("explore", []) or []),
+        len(tags),
+        len(recent_messages),
+        bool(plan),
+        bool(study_graph_features),
+    )
 
     lines: list[str] = []
     lines.append("当前学习状态 ────────")
@@ -167,6 +182,7 @@ def chat_with_buddy(
         {"reply": str, "memory_tags_written": [{"tag":..., "action":...}]}
     """
     if not message.strip():
+        logger.info("[study_buddy.agent] chat_skip_empty user_id=%s syllabus_id=%s", user_id, syllabus_id)
         return {"reply": "", "memory_tags_written": []}
 
     context = build_buddy_context(user_id, syllabus_id, plan, study_graph_features)
@@ -180,6 +196,13 @@ def chat_with_buddy(
         study_graph_features=study_graph_features or {},
     )
     prompt = f"{context}\n\n用户说：{message.strip()}"
+    logger.info(
+        "[study_buddy.agent] chat_llm_start user_id=%s syllabus_id=%s prompt_chars=%s message_preview=%s",
+        user_id,
+        syllabus_id,
+        len(prompt),
+        message.strip()[:120],
+    )
     result = agent.run_sync(prompt, deps=deps)
 
     reply = ""
@@ -203,6 +226,13 @@ def chat_with_buddy(
         if t["tag"] not in before_texts
     ]
 
+    logger.info(
+        "[study_buddy.agent] chat_llm_done user_id=%s syllabus_id=%s reply_chars=%s tags_written=%s",
+        user_id,
+        syllabus_id,
+        len(reply),
+        memory_tags_written,
+    )
     return {"reply": reply[:500], "memory_tags_written": memory_tags_written}
 
 
@@ -238,9 +268,17 @@ def proactive_buddy_event_message(
     event_type = str(event_type or "").strip()
     event_payload = payload if isinstance(payload, dict) else {}
     if not event_type:
+        logger.info("[study_buddy.agent] event_skip_empty_type user_id=%s syllabus_id=%s", user_id, syllabus_id)
         return None
     fallback_reply = _fallback_event_reply(event_type, event_payload)
     if os.getenv("PYTEST_CURRENT_TEST"):
+        logger.info(
+            "[study_buddy.agent] event_pytest_fallback user_id=%s syllabus_id=%s event_type=%s fallback_preview=%s",
+            user_id,
+            syllabus_id,
+            event_type,
+            fallback_reply[:120],
+        )
         return fallback_reply
 
     context = build_buddy_context(user_id, syllabus_id, plan, study_graph_features)
@@ -265,9 +303,24 @@ def proactive_buddy_event_message(
         plan=plan or {},
         study_graph_features=study_graph_features or {},
     )
+    logger.info(
+        "[study_buddy.agent] event_llm_start user_id=%s syllabus_id=%s event_type=%s payload=%s prompt_chars=%s",
+        user_id,
+        syllabus_id,
+        event_type,
+        event_payload,
+        len(prompt),
+    )
     try:
         result = agent.run_sync(prompt, deps=deps)
     except Exception:
+        logger.exception(
+            "[study_buddy.agent] event_llm_failed user_id=%s syllabus_id=%s event_type=%s fallback_preview=%s",
+            user_id,
+            syllabus_id,
+            event_type,
+            fallback_reply[:120],
+        )
         return fallback_reply
 
     reply = ""
@@ -282,6 +335,14 @@ def proactive_buddy_event_message(
         elif output is not None:
             reply = str(output).strip()
 
+    logger.info(
+        "[study_buddy.agent] event_llm_done user_id=%s syllabus_id=%s event_type=%s reply_chars=%s reply_preview=%s",
+        user_id,
+        syllabus_id,
+        event_type,
+        len(reply),
+        reply[:120],
+    )
     return reply[:500] if reply else None
 
 
@@ -298,6 +359,13 @@ def proactive_buddy_message(
     """
     old_tree = load_buddy_tree(user_id, syllabus_id)
     new_tree = build_buddy_tree(user_id, syllabus_id, plan, study_graph_features)
+    logger.info(
+        "[study_buddy.agent] tree_trigger_start user_id=%s syllabus_id=%s had_old_tree=%s new_trunk=%s",
+        user_id,
+        syllabus_id,
+        bool(old_tree),
+        len(new_tree.get("regions", {}).get("trunk", []) or []),
+    )
 
     # 导入 tree_store 用于保存
     from . import tree_store
@@ -322,6 +390,7 @@ def proactive_buddy_message(
             changes.append(f"「{title}」已完成")
 
     if not changes:
+        logger.info("[study_buddy.agent] tree_trigger_no_changes user_id=%s syllabus_id=%s", user_id, syllabus_id)
         return None
 
     # 构建 prompt
@@ -343,6 +412,13 @@ def proactive_buddy_message(
         plan=plan or {},
         study_graph_features=study_graph_features or {},
     )
+    logger.info(
+        "[study_buddy.agent] tree_llm_start user_id=%s syllabus_id=%s changes=%s prompt_chars=%s",
+        user_id,
+        syllabus_id,
+        changes,
+        len(prompt),
+    )
     result = agent.run_sync(prompt, deps=deps)
 
     reply = ""
@@ -357,4 +433,11 @@ def proactive_buddy_message(
         elif output is not None:
             reply = str(output).strip()
 
+    logger.info(
+        "[study_buddy.agent] tree_llm_done user_id=%s syllabus_id=%s reply_chars=%s reply_preview=%s",
+        user_id,
+        syllabus_id,
+        len(reply),
+        reply[:120],
+    )
     return reply[:500] if reply else None

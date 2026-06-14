@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -60,6 +61,8 @@ from tasks.total_agent.agent_tools import (
     tool_run_learning_recommendation,
     tool_skip_current_step,
 )
+
+logger = logging.getLogger(__name__)
 
 CHAT_TERMINAL_TOOLS = {
     TOOL_RUN_LEARNING_RECOMMENDATION,
@@ -323,6 +326,14 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         error_message=error_message,
     )
 
+    if state.get("_study_buddy_event_sent") and state.get("_study_buddy_message"):
+        final["buddy_message"] = str(state.get("_study_buddy_message") or "")
+        final["buddy_event"] = {
+            "event_type": str(state.get("_study_buddy_event_type") or ""),
+            "payload": {},
+        }
+        return final
+
     # Trigger at most one study-buddy proactive message per total-agent turn.
     try:
         from tasks.study_buddy_task import notify_study_buddy_event, trigger_study_buddy
@@ -330,6 +341,14 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         uid = int(payload.get("user_id") or 0)
         sid = int(payload.get("syllabus_id") or 0) if payload.get("syllabus_id") else None
         if uid:
+            logger.info(
+                "[study_buddy.total_agent] hook_start user_id=%s syllabus_id=%s intent=%s terminal_tool=%s success=%s",
+                uid,
+                sid or 0,
+                intent,
+                terminal_tool,
+                success,
+            )
             selected_event = _select_buddy_event(
                 terminal_tool=terminal_tool,
                 recommendation_terminal=recommendation_terminal,
@@ -339,11 +358,25 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
                 skip_terminal=skip_terminal,
                 answer_terminal=answer_terminal,
             )
+            logger.info(
+                "[study_buddy.total_agent] selected_event user_id=%s syllabus_id=%s event_type=%s payload=%s",
+                uid,
+                sid or 0,
+                selected_event.get("event_type") if selected_event else "",
+                selected_event.get("payload") if selected_event else {},
+            )
             plan = selected_event.get("plan") if isinstance(selected_event.get("plan"), dict) else None
             if not plan and isinstance(result.get("accept_learning_plan"), dict):
                 plan = result.get("accept_learning_plan", {}).get("plan")
             buddy_msg = None
             if selected_event:
+                logger.info(
+                    "[study_buddy.total_agent] notify_event_call user_id=%s syllabus_id=%s event_type=%s has_plan=%s",
+                    uid,
+                    sid or 0,
+                    selected_event.get("event_type") or "",
+                    isinstance(plan, dict),
+                )
                 buddy_msg = notify_study_buddy_event(
                     user_id=uid,
                     syllabus_id=sid or 0,
@@ -351,11 +384,32 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
                     payload=selected_event.get("payload") if isinstance(selected_event.get("payload"), dict) else {},
                     plan=plan if isinstance(plan, dict) else None,
                 )
+                logger.info(
+                    "[study_buddy.total_agent] notify_event_result user_id=%s syllabus_id=%s event_type=%s has_message=%s message_preview=%s",
+                    uid,
+                    sid or 0,
+                    selected_event.get("event_type") or "",
+                    bool(buddy_msg),
+                    str(buddy_msg or "")[:120],
+                )
             if not buddy_msg:
+                logger.info(
+                    "[study_buddy.total_agent] tree_fallback_call user_id=%s syllabus_id=%s has_plan=%s",
+                    uid,
+                    sid or 0,
+                    isinstance(plan, dict),
+                )
                 buddy_msg = trigger_study_buddy(
                     user_id=uid,
                     syllabus_id=sid or 0,
                     plan=plan if isinstance(plan, dict) else None,
+                )
+                logger.info(
+                    "[study_buddy.total_agent] tree_fallback_result user_id=%s syllabus_id=%s has_message=%s message_preview=%s",
+                    uid,
+                    sid or 0,
+                    bool(buddy_msg),
+                    str(buddy_msg or "")[:120],
                 )
             if buddy_msg:
                 final["buddy_message"] = buddy_msg
@@ -364,9 +418,16 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
                         "event_type": selected_event.get("event_type") or "",
                         "payload": selected_event.get("payload") if isinstance(selected_event.get("payload"), dict) else {},
                     }
+                logger.info(
+                    "[study_buddy.total_agent] hook_done user_id=%s syllabus_id=%s has_message=true event_type=%s",
+                    uid,
+                    sid or 0,
+                    selected_event.get("event_type") if selected_event else "",
+                )
+            else:
+                logger.info("[study_buddy.total_agent] hook_done user_id=%s syllabus_id=%s has_message=false", uid, sid or 0)
     except Exception:
-        import traceback
-        traceback.print_exc()  # Study buddy failures must not break the main path, but must be visible.
+        logger.exception("[study_buddy.total_agent] hook_failed")
     return final
 
 

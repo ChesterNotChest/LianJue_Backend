@@ -254,6 +254,6 @@ def test_notify_study_buddy_event_persists_single_event_message(monkeypatch):
     assert msg == "event reply"
     messages = task.list_buddy_messages(1, 29)
     assert len(messages) == 1
-    assert messages[0]["from"] == "buddy"
+    assert messages[0]["from"] == "proactive"
     assert messages[0]["source"] == "event"
     assert messages[0]["metadata"]["event_type"] == "resource_ready"

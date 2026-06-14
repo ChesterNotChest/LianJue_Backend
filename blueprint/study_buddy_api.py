@@ -1,6 +1,6 @@
 """学伴 API — /api/study_buddy/chat"""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from tasks import learning_profile_task as lpt
 from tasks import personal_recommendation_task as prt
@@ -113,9 +113,17 @@ def study_buddy_messages():
             "error_code": "missing_fields",
             "error_message": "user_id is required",
         }), 400
+    messages = list_buddy_messages(user_id, syllabus_id, limit=limit)
+    current_app.logger.info(
+        "[study_buddy.api] messages_response user_id=%s syllabus_id=%s limit=%s count=%s",
+        user_id,
+        syllabus_id,
+        limit,
+        len(messages),
+    )
     return jsonify({
         "success": True,
-        "messages": list_buddy_messages(user_id, syllabus_id, limit=limit),
+        "messages": messages,
         "error_code": "",
         "error_message": "",
     })

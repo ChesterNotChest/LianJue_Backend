@@ -355,6 +355,39 @@ def test_total_agent_final_result_notifies_only_one_buddy_event(monkeypatch):
     assert [kind for kind, _ in calls] == ["event"]
 
 
+def test_total_agent_resource_tool_notifies_buddy_immediately(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    _accept_plan()
+    monkeypatch.setattr(tagt, "generate_resources_from_request", _fake_generation)
+
+    calls = []
+
+    def fake_notify(**kwargs):
+        calls.append(kwargs)
+        return "resource buddy"
+
+    import tasks.study_buddy_task as buddy_task
+
+    monkeypatch.setattr(buddy_task, "notify_study_buddy_event", fake_notify)
+
+    state = {
+        "payload": {"user_id": 8, "syllabus_id": 20, "message": "generate ppt", "resource_types": ["ppt"]},
+        "tool_trace": [],
+        "run_id": "test-run",
+    }
+
+    result = tagt.tool_generate_current_step_resource(state)
+
+    assert result["success"] is True
+    assert result["resources"][0]["resource_type"] == "ppt"
+    assert state["_study_buddy_event_sent"] is True
+    assert state["_study_buddy_event_type"] == "resource_ready"
+    assert state["_study_buddy_message"] == "resource buddy"
+    assert len(calls) == 1
+    assert calls[0]["event_type"] == "resource_ready"
+    assert calls[0]["payload"]["resource"]["resource_type"] == "ppt"
+
+
 def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
     payload = {

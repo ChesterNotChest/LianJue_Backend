@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
 from tasks.study_buddy.buddy_agent import chat_with_buddy, proactive_buddy_event_message, proactive_buddy_message
@@ -9,6 +10,19 @@ from tasks.study_buddy.memory import create_memory_tag, delete_memory_tag, load_
 from tasks.study_buddy.messages import append_buddy_message, load_buddy_messages
 from tasks.study_buddy.tree import build_buddy_tree
 from tasks.study_buddy.tree_store import load_buddy_tree, save_buddy_tree
+
+logger = logging.getLogger(__name__)
+
+
+def _service_log(level: int, message: str, *args: Any) -> None:
+    logger.log(level, message, *args)
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context():
+            current_app.logger.log(level, message, *args)
+    except Exception:
+        pass
 
 
 def trigger_study_buddy(
@@ -22,6 +36,14 @@ def trigger_study_buddy(
     Returns:
         1-3 句自然中文消息，或 None（无变化时）。
     """
+    _service_log(
+        logging.INFO,
+        "[study_buddy] trigger_tree_start user_id=%s syllabus_id=%s has_plan=%s has_graph_features=%s",
+        user_id,
+        syllabus_id,
+        bool(plan),
+        bool(study_graph_features),
+    )
     message = proactive_buddy_message(
         user_id=user_id,
         syllabus_id=syllabus_id,
@@ -29,7 +51,17 @@ def trigger_study_buddy(
         study_graph_features=study_graph_features,
     )
     if message:
-        append_buddy_message(user_id, syllabus_id, role="buddy", text=message, source="proactive")
+        saved = append_buddy_message(user_id, syllabus_id, role="buddy", text=message, source="proactive")
+        _service_log(
+            logging.INFO,
+            "[study_buddy] trigger_tree_saved user_id=%s syllabus_id=%s message_id=%s text_preview=%s",
+            user_id,
+            syllabus_id,
+            (saved or {}).get("message_id"),
+            message[:120],
+        )
+    else:
+        _service_log(logging.INFO, "[study_buddy] trigger_tree_no_message user_id=%s syllabus_id=%s", user_id, syllabus_id)
     return message
 
 
@@ -45,6 +77,13 @@ def buddy_chat(
     Returns:
         {"reply": str, "memory_tags_written": [dict]}
     """
+    _service_log(
+        logging.INFO,
+        "[study_buddy] chat_start user_id=%s syllabus_id=%s message_preview=%s",
+        user_id,
+        syllabus_id,
+        str(message or "")[:120],
+    )
     result = chat_with_buddy(
         user_id=user_id,
         syllabus_id=syllabus_id,
@@ -52,9 +91,28 @@ def buddy_chat(
         plan=plan,
         study_graph_features=study_graph_features,
     )
-    append_buddy_message(user_id, syllabus_id, role="user", text=message, source="chat")
+    user_saved = append_buddy_message(user_id, syllabus_id, role="user", text=message, source="chat")
     if result.get("reply"):
-        append_buddy_message(user_id, syllabus_id, role="buddy", text=result["reply"], source="chat")
+        buddy_saved = append_buddy_message(user_id, syllabus_id, role="buddy", text=result["reply"], source="chat")
+        _service_log(
+            logging.INFO,
+            "[study_buddy] chat_saved user_id=%s syllabus_id=%s user_message_id=%s buddy_message_id=%s reply_preview=%s tags_written=%s",
+            user_id,
+            syllabus_id,
+            (user_saved or {}).get("message_id"),
+            (buddy_saved or {}).get("message_id"),
+            str(result.get("reply") or "")[:120],
+            result.get("memory_tags_written") or [],
+        )
+    else:
+        _service_log(
+            logging.WARNING,
+            "[study_buddy] chat_empty_reply user_id=%s syllabus_id=%s user_message_id=%s result_keys=%s",
+            user_id,
+            syllabus_id,
+            (user_saved or {}).get("message_id"),
+            list(result.keys()) if isinstance(result, dict) else type(result).__name__,
+        )
     return result
 
 
@@ -66,6 +124,16 @@ def notify_study_buddy_event(
     plan: Optional[Dict[str, Any]] = None,
     study_graph_features: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
+    _service_log(
+        logging.INFO,
+        "[study_buddy] event_start user_id=%s syllabus_id=%s event_type=%s payload=%s has_plan=%s has_graph_features=%s",
+        user_id,
+        syllabus_id,
+        event_type,
+        payload or {},
+        bool(plan),
+        bool(study_graph_features),
+    )
     message = proactive_buddy_event_message(
         user_id=user_id,
         syllabus_id=syllabus_id,
@@ -75,7 +143,7 @@ def notify_study_buddy_event(
         study_graph_features=study_graph_features,
     )
     if message:
-        append_buddy_message(
+        saved = append_buddy_message(
             user_id,
             syllabus_id,
             role="buddy",
@@ -83,8 +151,34 @@ def notify_study_buddy_event(
             source="event",
             metadata={"event_type": event_type, "payload": payload or {}},
         )
+        _service_log(
+            logging.INFO,
+            "[study_buddy] event_saved user_id=%s syllabus_id=%s event_type=%s message_id=%s text_preview=%s",
+            user_id,
+            syllabus_id,
+            event_type,
+            (saved or {}).get("message_id"),
+            message[:120],
+        )
+    else:
+        _service_log(
+            logging.INFO,
+            "[study_buddy] event_no_message user_id=%s syllabus_id=%s event_type=%s",
+            user_id,
+            syllabus_id,
+            event_type,
+        )
     return message
 
 
 def list_buddy_messages(user_id: int, syllabus_id: int, limit: int = 30) -> list[dict]:
-    return load_buddy_messages(user_id, syllabus_id, limit=limit)
+    messages = load_buddy_messages(user_id, syllabus_id, limit=limit)
+    _service_log(
+        logging.INFO,
+        "[study_buddy] list_messages user_id=%s syllabus_id=%s limit=%s count=%s",
+        user_id,
+        syllabus_id,
+        limit,
+        len(messages),
+    )
+    return messages

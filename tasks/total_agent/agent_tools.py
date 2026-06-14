@@ -151,6 +151,48 @@ def _safe_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _notify_buddy_resource_ready_from_tool(state: Dict[str, Any], tool_result: dict) -> None:
+    payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id")) or 0
+    if not user_id or state.get("_study_buddy_event_sent"):
+        return
+    if not _safe_dict(tool_result).get("success", True):
+        return
+    raw_generation = _safe_dict(tool_result.get("generation_result"))
+    resources = _safe_list(tool_result.get("resources")) or _normalize_resources(raw_generation)
+    resource = _safe_dict(resources[0]) if resources else {}
+    next_task = _safe_dict(tool_result.get("next_task"))
+    event_payload = {
+        "next_task_title": _safe_text(next_task.get("title") or next_task.get("topic")),
+        "overall_status": _safe_text(tool_result.get("overall_status") or raw_generation.get("overall_status")),
+        "resource": {
+            "resource_id": _safe_text(resource.get("resource_id")),
+            "resource_type": _safe_text(resource.get("resource_type") or resource.get("type")),
+            "title": _safe_text(resource.get("title")),
+            "topic": _safe_text(resource.get("topic")),
+            "count": len(resources),
+        },
+    }
+    try:
+        from tasks.study_buddy_task import notify_study_buddy_event
+
+        message = notify_study_buddy_event(
+            user_id=user_id,
+            syllabus_id=syllabus_id,
+            event_type="resource_ready",
+            payload=event_payload,
+        )
+        state["_study_buddy_event_sent"] = bool(message)
+        if message:
+            state["_study_buddy_event_type"] = "resource_ready"
+            state["_study_buddy_message"] = message
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("[study_buddy.total_agent] resource_tool_notify_failed")
+
+
 def _json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items() if not callable(item)}
@@ -2301,7 +2343,7 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
     resources = _normalize_resources(_safe_dict(generation_result))
     state["resource_generation_request"] = request_payload
     state["resource_generation_result"] = generation_result
-    return _tool_result(
+    result = _tool_result(
         TOOL_GENERATE_CURRENT_STEP_RESOURCE,
         bool(_safe_dict(generation_result).get("success", True)),
         state=state,
@@ -2318,6 +2360,8 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
         error_code=_safe_text(_safe_dict(generation_result).get("error_code")),
         error_message=_safe_text(_safe_dict(generation_result).get("error_message")),
     )
+    _notify_buddy_resource_ready_from_tool(state, result)
+    return result
 
 
 def _append_learning_event(payload: dict, plan: dict, step: dict, status: str) -> dict:
