@@ -72,6 +72,8 @@ profiles/*
 
 study_graph/*
 !study_graph/.gitkeep
+quiz_attempts/*
+!quiz_attempts/.gitkeep
 tests/artifacts/
 tests/_artifacts/
 

@@ -47,6 +47,7 @@ from tasks.total_agent.agent_contracts import (
 )
 from tasks.total_agent.agent_tools import (
     answer_learning_question as tool_answer_learning_question,
+    build_learning_feedback_guidance,
     build_total_agent_result,
     deterministic_run_total_agent,
     get_course_learning_tree_summary as tool_get_course_learning_tree_summary,
@@ -294,6 +295,12 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         result["resource_generation"] = resource_terminal
     if feedback_terminal:
         result["record_learning_feedback"] = feedback_terminal
+        payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
+        next_task_result = state.get("next_task_result") if isinstance(state.get("next_task_result"), dict) else {}
+        guidance = build_learning_feedback_guidance(payload, feedback_terminal, next_task_result)
+        result["learning_guidance"] = guidance
+        if guidance.get("reply"):
+            result["reply"] = guidance["reply"]
     if skip_terminal:
         result["skip_current_step"] = skip_terminal
     if evidence_terminal:

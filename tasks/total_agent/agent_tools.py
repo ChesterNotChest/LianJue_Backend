@@ -324,6 +324,75 @@ def _plan_metrics(plan: Any) -> dict:
     }
 
 
+def _format_percent(value: Any) -> str:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if score <= 1:
+        score *= 100
+    return f"{round(score)}%"
+
+
+def build_learning_feedback_guidance(payload: dict, feedback_result: dict, next_task_result: Optional[dict] = None) -> dict:
+    """Turn structured learning feedback into a student-facing coaching note."""
+    payload = _safe_dict(payload)
+    feedback_result = _safe_dict(feedback_result)
+    next_task_result = _safe_dict(next_task_result)
+    event_payload = _safe_dict(_safe_dict(feedback_result.get("event_entry")).get("payload"))
+    updated_step = _safe_dict(feedback_result.get("updated_step"))
+    activated_step = _safe_dict(feedback_result.get("activated_step"))
+    next_task = _safe_dict(feedback_result.get("next_task"))
+    if next_task_result:
+        next_task = _safe_dict(next_task_result.get("next_task")) or _safe_dict(next_task_result.get("task")) or next_task
+
+    score = payload.get("score")
+    if score is None:
+        score = event_payload.get("score")
+    score_text = _format_percent(score)
+    wrong_items = _unique_texts(
+        _list_from_any(payload.get("wrong_knowledge_items"))
+        or _list_from_any(event_payload.get("wrong_knowledge_items"))
+    )
+    answer_record_count = len(_safe_list(payload.get("answer_records"))) or int(event_payload.get("answer_record_count") or 0)
+    next_title = _safe_text(next_task.get("title") or next_task.get("topic"))
+    updated_title = _safe_text(updated_step.get("title") or updated_step.get("topic"))
+    activated_title = _safe_text(activated_step.get("title") or activated_step.get("topic"))
+
+    lines: list[str] = []
+    if score_text:
+        lines.append(f"我已经记录这次练习结果，得分约 {score_text}。")
+    else:
+        lines.append("我已经记录这次学习反馈。")
+
+    if wrong_items:
+        preview = "、".join(wrong_items[:4])
+        suffix = "等" if len(wrong_items) > 4 else ""
+        lines.append(f"这次主要需要补的是：{preview}{suffix}。先把这些点讲清楚，再继续往后会更稳。")
+    elif score_text:
+        lines.append("这次没有明显错题知识点，说明当前小节掌握得还可以，可以进入下一步。")
+    elif updated_title:
+        lines.append(f"我会把“{updated_title}”作为已反馈内容，后续资源会按你的状态继续调整。")
+
+    if next_title:
+        lines.append(f"下一步建议看“{next_title}”。如果你愿意，我可以先围绕薄弱点给你做一个短讲解，再生成对应练习。")
+    elif activated_title:
+        lines.append(f"接下来可以进入“{activated_title}”。如果刚才有不确定的地方，可以先让我补讲一遍。")
+    else:
+        lines.append("接下来可以先回看错题解析，再告诉我你想补讲哪一题或直接继续下一份资源。")
+
+    return {
+        "reply": "\n".join(lines),
+        "score": score,
+        "score_text": score_text,
+        "wrong_knowledge_items": wrong_items,
+        "answer_record_count": answer_record_count,
+        "updated_step_title": updated_title,
+        "activated_step_title": activated_title,
+        "next_task_title": next_title,
+    }
+
+
 def _confirmation_requested(payload: dict) -> bool:
     if payload.get("auto_accept") is True:
         return True
@@ -2377,6 +2446,9 @@ def _append_learning_event(payload: dict, plan: dict, step: dict, status: str) -
             "resource_type": payload.get("resource_type") or "",
             "resource_id": payload.get("resource_id") or _safe_dict(payload.get("context")).get("current_resource_id") or "",
             "score": payload.get("score"),
+            "wrong_knowledge_items": _unique_texts(_list_from_any(payload.get("wrong_knowledge_items"))),
+            "answer_record_count": len(_safe_list(payload.get("answer_records"))),
+            "student_feedback": _safe_dict(payload.get("student_feedback")),
             "status": status,
             "recorded_at": _utc_timestamp(),
         },
@@ -2569,6 +2641,9 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
         final_result["record_learning_feedback"] = feedback
         next_task = tool_get_next_learning_task(state)
         final_result["next_task"] = next_task
+        guidance = build_learning_feedback_guidance(payload, feedback, next_task)
+        final_result["learning_guidance"] = guidance
+        final_result["reply"] = guidance.get("reply") or ""
         success = bool(feedback.get("success"))
         suggested_next_action = feedback.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
         error_code = feedback.get("error_code") or ""
@@ -2614,6 +2689,7 @@ __all__ = [
     "apply_learning_effect_signal",
     "build_concept_explanation_answer",
     "build_current_step_resource_strategy",
+    "build_learning_feedback_guidance",
     "build_exercise_help_answer",
     "build_learning_strategy_answer",
     "build_session_context",

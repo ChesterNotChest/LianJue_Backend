@@ -223,6 +223,8 @@ def test_total_agent_agent_final_result_uses_record_feedback_state_fallback():
     assert result["intent"] == tac.INTENT_RECORD_LEARNING_FEEDBACK
     assert result["suggested_next_action"] == tac.ACTION_GENERATE_CURRENT_STEP_RESOURCE
     assert result["result"]["record_learning_feedback"]["updated_step"]["status"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
+    assert "learning_guidance" in result["result"]
+    assert result["result"]["reply"] == result["result"]["learning_guidance"]["reply"]
 
 
 def test_total_agent_agent_final_result_uses_answer_state_fallback():
@@ -535,6 +537,42 @@ def test_total_agent_feedback_advances_to_next_step(monkeypatch, tmp_path):
     assert statuses["hbase_intro"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
     assert statuses["rowkey_design"] == prt.LEARNING_PLAN_STEP_STATUS_ACTIVE
     assert result["result"]["next_task"]["next_task"]["node_id"] == "rowkey_design"
+
+
+def test_total_agent_quiz_feedback_keeps_structured_payload(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    plan = _accept_plan()
+    first_step = plan["steps"][0]
+
+    result = tat.run_total_agent(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "我完成了测验，得分 40%",
+            "event_type": "quiz_completed",
+            "step_id": first_step["step_id"],
+            "resource_id": "quiz-test-001",
+            "resource_type": "quiz",
+            "score": 0.4,
+            "wrong_knowledge_items": ["RowKey 热点"],
+            "answer_records": [{"question": "q1", "correct": False, "knowledge_points": ["RowKey 热点"]}],
+            "status": "partial",
+            "student_feedback": {"quiz_completed": True, "correct_count": 0, "total_count": 1},
+        }
+    )
+
+    payload = result["result"]["record_learning_feedback"]["event_entry"]["payload"]
+    assert payload["event_type"] == "quiz_completed"
+    assert payload["resource_type"] == "quiz"
+    assert payload["resource_id"] == "quiz-test-001"
+    assert payload["score"] == 0.4
+    assert payload["wrong_knowledge_items"] == ["RowKey 热点"]
+    assert payload["answer_record_count"] == 1
+    assert payload["student_feedback"]["quiz_completed"] is True
+    guidance = result["result"]["learning_guidance"]
+    assert guidance["score"] == 0.4
+    assert guidance["wrong_knowledge_items"] == payload["wrong_knowledge_items"]
+    assert result["result"]["reply"] == guidance["reply"]
 
 
 def test_total_agent_skip_advances_to_next_step(monkeypatch, tmp_path):
