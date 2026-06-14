@@ -363,8 +363,8 @@ def append_profile_personal_syllabus_suggestion(user_id: int, syllabus_id: int, 
 		'competance_progress': entry.get('competance_progress'),
 	}
 
-_COMPETANCE_THRESHOLD_MASTER = 0.7
-_COMPETANCE_THRESHOLD_NORMAL = 0.35
+_COMPETANCE_THRESHOLD_MASTER = 0.85
+_COMPETANCE_THRESHOLD_NORMAL = 0.45
 
 
 def _score_to_competance(score):

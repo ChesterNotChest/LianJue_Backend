@@ -112,6 +112,105 @@ def test_recommendation_snapshot_uses_database_backend_when_app_context(monkeypa
         assert RecommendationSnapshot.query.count() == 1
 
 
+def test_total_agent_recommendation_tool_persists_snapshot(monkeypatch):
+    monkeypatch.delenv("PERSONAL_RECOMMENDATION_ROOT", raising=False)
+    monkeypatch.delenv("RECOMMENDATION_SNAPSHOT_FILE_BACKEND", raising=False)
+    app = _make_sqlite_app()
+    recommendation = _recommendation_snapshot_result()
+
+    def fake_route(payload):
+        return recommendation
+
+    monkeypatch.setattr(tagt.prt, "run_recommendation_route_from_payload", fake_route)
+
+    with app.app_context():
+        state = {
+            "payload": {
+                "user_id": 200,
+                "syllabus_id": 29,
+                "session_id": "sess-rec-tool-db",
+                "message": "recommend a path",
+            },
+            "tool_trace": [],
+            "tool_status_events": [],
+        }
+        result = tagt.tool_run_learning_recommendation(state)
+
+        assert result["success"] is True
+        assert result["recommendation_id"]
+        assert RecommendationSnapshot.query.filter_by(user_id=200, syllabus_id=29).count() == 1
+
+
+def test_total_agent_recommendation_tool_does_not_duplicate_route_snapshot(monkeypatch):
+    monkeypatch.delenv("PERSONAL_RECOMMENDATION_ROOT", raising=False)
+    monkeypatch.delenv("RECOMMENDATION_SNAPSHOT_FILE_BACKEND", raising=False)
+    app = _make_sqlite_app()
+
+    def fake_route(payload):
+        recommendation = _recommendation_snapshot_result()
+        tagt.prt.ensure_recommendation_snapshot(
+            int(payload["user_id"]),
+            int(payload["syllabus_id"]),
+            recommendation,
+            request_payload=payload,
+            session_id=payload.get("session_id"),
+        )
+        return recommendation
+
+    monkeypatch.setattr(tagt.prt, "run_recommendation_route_from_payload", fake_route)
+
+    with app.app_context():
+        state = {
+            "payload": {
+                "user_id": 200,
+                "syllabus_id": 29,
+                "session_id": "sess-rec-no-dupe-db",
+                "message": "recommend a path",
+            },
+            "tool_trace": [],
+            "tool_status_events": [],
+        }
+        result = tagt.tool_run_learning_recommendation(state)
+
+        assert result["success"] is True
+        assert result["recommendation_id"]
+        assert RecommendationSnapshot.query.filter_by(user_id=200, syllabus_id=29).count() == 1
+
+
+def test_recommendation_snapshot_persists_large_graph_backend(monkeypatch):
+    monkeypatch.delenv("PERSONAL_RECOMMENDATION_ROOT", raising=False)
+    monkeypatch.delenv("RECOMMENDATION_SNAPSHOT_FILE_BACKEND", raising=False)
+    app = _make_sqlite_app()
+    large = _recommendation_snapshot_result()
+    large["graph"] = {
+        "nodes": [
+            {
+                "id": f"node-{idx}",
+                "title": "Large recommendation node " + ("x" * 1200),
+                "outcomes": ["y" * 600],
+            }
+            for idx in range(80)
+        ],
+        "edges": [{"source": f"node-{idx}", "target": f"node-{idx + 1}"} for idx in range(79)],
+    }
+
+    with app.app_context():
+        saved = prt.save_recommendation_snapshot(
+            200,
+            29,
+            large,
+            request_payload={"goals": ["large"], "session_id": "sess-large-db"},
+        )
+
+        assert saved["success"] is True
+        row = RecommendationSnapshot.query.get(saved["recommendation_id"])
+        assert row is not None
+        assert len(row.graph_json) > 65535
+        detail = prt.get_recommendation_snapshot(saved["recommendation_id"])
+        assert detail["success"] is True
+        assert len(detail["snapshot"]["recommendation"]["graph"]["nodes"]) == 80
+
+
 def test_generated_resource_metadata_uses_database_backend_when_app_context(monkeypatch):
     monkeypatch.delenv("GENERATIVE_FILE_BACKEND", raising=False)
     monkeypatch.delenv("GENERATOR_FILE_BACKEND", raising=False)

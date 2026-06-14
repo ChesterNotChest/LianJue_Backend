@@ -232,3 +232,47 @@ def test_profile_refresh_outputs_suggestions_without_writing_personal_syllabus(m
 
     assert before == after
     assert state["profile"]["suggested_personal_syllabus_updates"]
+
+
+def test_sync_knowledge_to_weeks_uses_inline_scores_before_profile_persisted(monkeypatch, repo_json_factory):
+    syllabus_path = repo_json_factory(
+        "schedule/syllabus",
+        {
+            "period": [
+                {"week_index": 1, "content": "分布式文件系统 HDFS", "importance": "high"},
+                {"week_index": 2, "content": "分布式数据库 HBase", "importance": "high"},
+            ]
+        },
+        prefix="syllabus",
+    )
+    personal_path = repo_json_factory(
+        "schedule/student_alt/user_36",
+        {
+            "period": [
+                {"week_index": 1, "content": "分布式文件系统 HDFS", "competance": "none", "competance_progress": 0},
+                {"week_index": 2, "content": "分布式数据库 HBase", "competance": "none", "competance_progress": 0},
+            ]
+        },
+        prefix="96_personal",
+    )
+    monkeypatch.setattr(
+        profile_syllabus,
+        "get_syllabus_by_id",
+        lambda syllabus_id: SimpleNamespace(syllabus_path=str(syllabus_path)),
+    )
+    monkeypatch.setattr(
+        profile_syllabus,
+        "get_user_syllabus",
+        lambda user_id, syllabus_id: SimpleNamespace(personal_syllabus_path=str(personal_path)),
+    )
+
+    result = profile_syllabus.sync_knowledge_to_weeks(
+        36,
+        96,
+        by_knowledge_point={"HDFS": 0.86, "HBase": 0.72},
+    )
+
+    data = json.loads(personal_path.read_text(encoding="utf-8"))
+    competance_by_week = {item["week_index"]: item["competance"] for item in data["period"]}
+    assert result["synced_weeks"] == 2
+    assert competance_by_week == {1: "master", 2: "normal"}

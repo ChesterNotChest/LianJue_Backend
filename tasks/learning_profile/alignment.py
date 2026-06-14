@@ -167,7 +167,7 @@ def normalize_learning_events(learning_records: Any) -> List[dict]:
 			'texts': extract_texts_for_event(entry),
 			'knowledge_points': extract_knowledge_points(entry),
 			'correct': None,
-			'score': None,
+			'score': float(entry.get('score')) if isinstance(entry.get('score'), (int, float)) else None,
 			'action': safe_text(entry.get('action')),
 			'event_type': safe_text(entry.get('event_type') or 'study_session'),
 		})

@@ -32,6 +32,10 @@ NODE_SOURCE_SAMPLE_FALLBACK = "sample_fallback"
 DECOMPOSER_MODE_AUTO = "auto"
 DECOMPOSER_MODE_AGENT = "agent"
 DECOMPOSER_MODE_DISABLED = "disabled"
+DEFAULT_RECOMMENDATION_CANDIDATE_LIMIT = 5
+MAX_KNOWLEDGE_EXPANSION_PER_CHAPTER = 2
+MAX_KNOWLEDGE_EXPANSION_TOTAL = 4
+_UNKNOWN_WEEK_INDEX = 10**9
 
 
 def _json_safe(value: Any) -> Any:
@@ -140,13 +144,71 @@ def _actionable_path(path: List[str], learning_tree: Optional[Dict[str, Any]], s
     return actionable or list(path)
 
 
+def _path_node_details(path: List[str], learning_tree: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not path or not isinstance(learning_tree, dict):
+        return []
+    details = []
+    for order_index, node_id in enumerate(path):
+        normalized_id = str(node_id)
+        node = learning_tree.get(normalized_id, {})
+        node = node if isinstance(node, dict) else {}
+        item = {
+            "id": normalized_id,
+            "node_id": normalized_id,
+            "title": node.get("title") or normalized_id,
+            "order_index": order_index,
+            "learning_time_est": node.get("learning_time_est", 1),
+            "difficulty": node.get("difficulty", 1),
+            "outcomes": list(node.get("outcomes") or []),
+            "node_source": node.get("node_source"),
+            "decomposition_method": node.get("decomposition_method"),
+            "fallback_tag": node.get("fallback_tag"),
+            "reliability": node.get("reliability"),
+            "confidence": node.get("confidence"),
+            "source_period": node.get("source_period"),
+            "profile_state": node.get("profile_state"),
+            "study_graph_state": node.get("study_graph_state"),
+            "prerequisites": [str(item) for item in node.get("prerequisites") or []],
+        }
+        item.update(_node_display_metadata(normalized_id, node))
+        details.append(item)
+    return details
+
+
+def _node_display_metadata(node_id: str, node: Dict[str, Any]) -> Dict[str, Any]:
+    source_period = node.get("source_period") if isinstance(node.get("source_period"), dict) else {}
+    week_index = source_period.get("week_index") or node.get("week_index")
+    title = str(node.get("title") or node_id)
+    if _is_chapter_anchor(node):
+        display_type = "chapter"
+        display_group = "章节骨干"
+        display_label = f"第{week_index}章" if week_index not in (None, "") else "章节"
+    elif _is_chapter_concept(node):
+        display_type = "knowledge"
+        display_group = "知识点发散"
+        display_label = "知识点"
+    else:
+        display_type = "resource"
+        display_group = "关联节点"
+        display_label = "节点"
+    week_label = f"第{week_index}周" if week_index not in (None, "") else ""
+    return {
+        "display_type": display_type,
+        "display_group": display_group,
+        "display_label": display_label,
+        "week_index": str(week_index) if week_index not in (None, "") else "",
+        "week_label": week_label,
+        "display_title": f"{display_label} · {title}" if display_label else title,
+    }
+
+
 def _build_recommendation_graph(learning_tree: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     nodes = []
     edges = []
     for node_id, raw_node in learning_tree.items():
         node = raw_node if isinstance(raw_node, dict) else {}
         normalized_id = str(node_id)
-        nodes.append({
+        graph_node = {
             "id": normalized_id,
             "title": node.get("title") or normalized_id,
             "difficulty": node.get("difficulty", 1),
@@ -161,7 +223,9 @@ def _build_recommendation_graph(learning_tree: Dict[str, Any]) -> Dict[str, List
             "source_period": node.get("source_period"),
             "profile_state": node.get("profile_state"),
             "study_graph_state": node.get("study_graph_state"),
-        })
+        }
+        graph_node.update(_node_display_metadata(normalized_id, node))
+        nodes.append(graph_node)
         for prerequisite in node.get("prerequisites") or []:
             source = str(prerequisite)
             target = normalized_id
@@ -353,6 +417,10 @@ def _serialize_path_item(
     item["context_path"] = context_path
     item["full_path"] = full_path
     item["actionable_path"] = _actionable_path(path, learning_tree, state)
+    item["path_nodes"] = _path_node_details(path, learning_tree)
+    item["context_path_nodes"] = _path_node_details(context_path, learning_tree)
+    item["full_path_nodes"] = _path_node_details(full_path, learning_tree)
+    item["actionable_path_nodes"] = _path_node_details(item["actionable_path"], learning_tree)
     item["path_edges"] = _path_edges(path, learning_tree)
     item["full_path_edges"] = _path_edges(full_path, learning_tree)
     item["fallback_dependency"] = summarize_fallback_dependency(path, learning_tree or {})
@@ -376,6 +444,416 @@ def _serialize_path_item(
 def _normalize_depth_strategy(value: Any) -> str:
     normalized = str(value or DEFAULT_DEPTH_STRATEGY).strip()
     return normalized if normalized in SUPPORTED_DEPTH_STRATEGIES else DEFAULT_DEPTH_STRATEGY
+
+
+def _node_week_index(node: Dict[str, Any]) -> int:
+    if not isinstance(node, dict):
+        return _UNKNOWN_WEEK_INDEX
+    source_period = node.get("source_period") if isinstance(node.get("source_period"), dict) else {}
+    raw_value = source_period.get("week_index") or node.get("week_index")
+    text = str(raw_value or "").strip()
+    digits = ""
+    for char in text:
+        if char.isdigit():
+            digits += char
+        elif digits:
+            break
+    if not digits:
+        return _UNKNOWN_WEEK_INDEX
+    try:
+        return int(digits)
+    except Exception:
+        return _UNKNOWN_WEEK_INDEX
+
+
+def _path_week_index(path: List[Any], learning_tree: Optional[Dict[str, Any]]) -> int:
+    if not path or not isinstance(learning_tree, dict):
+        return _UNKNOWN_WEEK_INDEX
+    weeks = [
+        _node_week_index(learning_tree.get(str(node_id), {}))
+        for node_id in path
+    ]
+    weeks = [week for week in weeks if week < _UNKNOWN_WEEK_INDEX]
+    return min(weeks) if weeks else _UNKNOWN_WEEK_INDEX
+
+
+def _path_week_sequence(path: List[Any], learning_tree: Optional[Dict[str, Any]]) -> List[int]:
+    if not path or not isinstance(learning_tree, dict):
+        return []
+    weeks = []
+    for node_id in path:
+        week = _node_week_index(learning_tree.get(str(node_id), {}))
+        if week < _UNKNOWN_WEEK_INDEX:
+            weeks.append(week)
+    return weeks
+
+
+def _path_syllabus_linearity_key(path: List[Any], learning_tree: Dict[str, Any]) -> tuple:
+    normalized_path = [str(node_id) for node_id in path or []]
+    if len(normalized_path) <= 1:
+        return (1, 0, 0, 0)
+
+    non_syllabus_edges = 0
+    backward_edges = 0
+    large_week_jumps = 0
+    unknown_week_edges = 0
+    weeks = _path_week_sequence(normalized_path, learning_tree)
+    week_by_node = {
+        node_id: _node_week_index(learning_tree.get(node_id, {}))
+        for node_id in normalized_path
+    }
+    for source, target in zip(normalized_path, normalized_path[1:]):
+        target_node = learning_tree.get(target, {}) if isinstance(learning_tree, dict) else {}
+        edge_sources = target_node.get("edge_sources") if isinstance(target_node.get("edge_sources"), dict) else {}
+        edge_source = str(edge_sources.get(source, "syllabus"))
+        if edge_source not in {"syllabus", "syllabus_period", "syllabus_period_concept"}:
+            non_syllabus_edges += 1
+        source_week = week_by_node.get(source, _UNKNOWN_WEEK_INDEX)
+        target_week = week_by_node.get(target, _UNKNOWN_WEEK_INDEX)
+        if source_week >= _UNKNOWN_WEEK_INDEX or target_week >= _UNKNOWN_WEEK_INDEX:
+            unknown_week_edges += 1
+            continue
+        if target_week < source_week:
+            backward_edges += 1
+        if target_week - source_week > 1:
+            large_week_jumps += target_week - source_week - 1
+
+    return (
+        non_syllabus_edges,
+        backward_edges,
+        large_week_jumps,
+        unknown_week_edges,
+        -len(set(weeks)),
+    )
+
+
+def _has_foundation_gap(learning_tree: Dict[str, Any], state: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(learning_tree, dict):
+        return False
+    if not isinstance(state, dict):
+        return True
+    study_state = state.get("study_graph_state") if isinstance(state.get("study_graph_state"), dict) else {}
+    if study_state.get("weak_node_ids") or study_state.get("current_node_id"):
+        return True
+
+    completed = _completed_nodes(state)
+    completed_weeks = [
+        _node_week_index(learning_tree.get(node_id, {}))
+        for node_id in completed
+        if node_id in learning_tree
+    ]
+    completed_weeks = [week for week in completed_weeks if week < _UNKNOWN_WEEK_INDEX]
+    if not completed_weeks:
+        return True
+
+    earliest_available = _UNKNOWN_WEEK_INDEX
+    blocked = {str(item) for item in state.get("constraints", {}).get("blocked_nodes") or []}
+    for node_id, raw_node in learning_tree.items():
+        normalized_id = str(node_id)
+        node = raw_node if isinstance(raw_node, dict) else {}
+        if normalized_id in blocked or normalized_id in completed or _node_outcomes_known(node, state):
+            continue
+        earliest_available = min(earliest_available, _node_week_index(node))
+    return earliest_available < max(completed_weeks)
+
+
+def _gap_priority(path: List[Any], learning_tree: Dict[str, Any], state: Optional[Dict[str, Any]]) -> int:
+    if not isinstance(state, dict):
+        return 2
+    study_state = state.get("study_graph_state") if isinstance(state.get("study_graph_state"), dict) else {}
+    path_set = {str(node_id) for node_id in path or []}
+    weak = {str(item) for item in study_state.get("weak_node_ids") or [] if item not in (None, "")}
+    if weak.intersection(path_set):
+        return 0
+    current = str(study_state.get("current_node_id") or "")
+    if current and current in path_set:
+        return 1
+    return 2
+
+
+def _candidate_foundation_sort_key(candidate: Dict[str, Any], learning_tree: Dict[str, Any], state: Optional[Dict[str, Any]]) -> tuple:
+    path = [str(node_id) for node_id in candidate.get("actionable_path") or candidate.get("path") or []]
+    return (
+        _gap_priority(path, learning_tree, state),
+        _path_week_index(path, learning_tree),
+        _path_syllabus_linearity_key(path, learning_tree),
+        len(path),
+    )
+
+
+def _candidate_syllabus_sort_key(candidate: Dict[str, Any], learning_tree: Dict[str, Any]) -> tuple:
+    path = [str(node_id) for node_id in candidate.get("actionable_path") or candidate.get("path") or []]
+    return (
+        _path_syllabus_linearity_key(path, learning_tree),
+        _path_week_index(path, learning_tree),
+        len(path),
+    )
+
+
+def _rank_candidate_pairs(
+    candidates: List[Dict[str, Any]],
+    raw_scores: List[Dict[str, Any]],
+    learning_tree: Dict[str, Any],
+    state: Optional[Dict[str, Any]],
+    *,
+    limit: int,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    pairs = list(zip(candidates, raw_scores))
+    if _has_foundation_gap(learning_tree, state):
+        pairs.sort(
+            key=lambda pair: (
+                _candidate_foundation_sort_key(pair[0], learning_tree, state),
+                -float((pair[1] or {}).get("R") or 0.0),
+                float((pair[1] or {}).get("D") or 0.0),
+            )
+        )
+    else:
+        pairs.sort(
+            key=lambda pair: (
+                _candidate_syllabus_sort_key(pair[0], learning_tree),
+                -float((pair[1] or {}).get("R") or 0.0),
+                float((pair[1] or {}).get("D") or 0.0),
+            )
+        )
+    pairs = pairs[:max(1, int(limit))]
+    return [pair[0] for pair in pairs], [pair[1] for pair in pairs]
+
+
+def _candidate_has_actionable_node(candidate: Dict[str, Any], learning_tree: Dict[str, Any], state: Optional[Dict[str, Any]]) -> bool:
+    if not isinstance(candidate, dict):
+        return False
+    path = [str(node_id) for node_id in candidate.get("path") or []]
+    if not path:
+        return False
+    completed = _completed_nodes(state)
+    for node_id in path:
+        node = learning_tree.get(node_id, {}) if isinstance(learning_tree, dict) else {}
+        if node_id in completed:
+            continue
+        if _node_outcomes_known(node, state):
+            continue
+        return True
+    return False
+
+
+def _is_chapter_anchor(node: Dict[str, Any]) -> bool:
+    if not isinstance(node, dict):
+        return False
+    node_source = str(node.get("node_source") or "")
+    method = str(node.get("decomposition_method") or "")
+    if method == "period_anchor":
+        return True
+    return node_source in {"syllabus_period", "syllabus_period_fallback"}
+
+
+def _is_chapter_concept(node: Dict[str, Any]) -> bool:
+    if not isinstance(node, dict):
+        return False
+    node_source = str(node.get("node_source") or "")
+    method = str(node.get("decomposition_method") or "")
+    return bool(node.get("source_period")) or "concept" in node_source or method in {"agent", "rule_fallback"}
+
+
+def _anchor_for_node(node_id: str, learning_tree: Dict[str, Any]) -> str:
+    node = learning_tree.get(str(node_id), {}) if isinstance(learning_tree, dict) else {}
+    if _is_chapter_anchor(node):
+        return str(node_id)
+    source_period = node.get("source_period") if isinstance(node.get("source_period"), dict) else {}
+    source_anchor = str(source_period.get("node_id") or "")
+    if source_anchor and source_anchor in learning_tree:
+        return source_anchor
+    for prerequisite in node.get("prerequisites") or []:
+        prerequisite_id = str(prerequisite)
+        prerequisite_node = learning_tree.get(prerequisite_id, {})
+        if _is_chapter_anchor(prerequisite_node):
+            return prerequisite_id
+    return ""
+
+
+def _chapter_anchor_ids(learning_tree: Dict[str, Any]) -> List[str]:
+    anchors = [
+        str(node_id)
+        for node_id, node in (learning_tree or {}).items()
+        if _is_chapter_anchor(node if isinstance(node, dict) else {})
+    ]
+    anchors.sort(key=lambda node_id: (_node_week_index(learning_tree.get(node_id, {})), str(learning_tree.get(node_id, {}).get("title") or node_id)))
+    return anchors
+
+
+def _goal_match_score(node_id: str, learning_tree: Dict[str, Any], goals: List[str]) -> int:
+    if not goals:
+        return 1
+    node = learning_tree.get(str(node_id), {}) if isinstance(learning_tree, dict) else {}
+    text = " ".join(
+        [str(node.get("title") or node_id)]
+        + [str(item) for item in node.get("outcomes") or []]
+    ).lower()
+    for goal in goals:
+        goal_text = str(goal or "").lower()
+        if goal_text and (goal_text in text or text in goal_text):
+            return 0
+    return 1
+
+
+def _study_state_priority(node_id: str, learning_tree: Dict[str, Any]) -> int:
+    node = learning_tree.get(str(node_id), {}) if isinstance(learning_tree, dict) else {}
+    state = str(node.get("study_graph_state") or "")
+    if state == "current":
+        return 0
+    if state == "weak":
+        return 1
+    if state == "unknown":
+        return 2
+    return 3
+
+
+def _concept_expansion_sort_key(node_id: str, learning_tree: Dict[str, Any], goals: List[str], preferred: set[str]) -> tuple:
+    node = learning_tree.get(str(node_id), {}) if isinstance(learning_tree, dict) else {}
+    try:
+        reliability = float(node.get("reliability", node.get("confidence", 1.0)) or 1.0)
+    except Exception:
+        reliability = 1.0
+    return (
+        0 if node_id in preferred else 1,
+        _study_state_priority(node_id, learning_tree),
+        _goal_match_score(node_id, learning_tree, goals),
+        -reliability,
+        str(node.get("title") or node_id),
+    )
+
+
+def _two_stage_candidate(
+    candidate: Dict[str, Any],
+    learning_tree: Dict[str, Any],
+    goals: List[str],
+    *,
+    L_max: int,
+) -> Dict[str, Any]:
+    path = [str(node_id) for node_id in (candidate or {}).get("path") or []]
+    anchors_all = _chapter_anchor_ids(learning_tree)
+    if not path or not anchors_all:
+        return candidate
+
+    original_anchor_order: List[str] = []
+    concepts_by_anchor: Dict[str, List[str]] = {}
+    for node_id in path:
+        anchor_id = _anchor_for_node(node_id, learning_tree)
+        if anchor_id and anchor_id not in original_anchor_order:
+            original_anchor_order.append(anchor_id)
+        node = learning_tree.get(node_id, {})
+        if anchor_id and node_id != anchor_id and _is_chapter_concept(node):
+            concepts_by_anchor.setdefault(anchor_id, [])
+            if node_id not in concepts_by_anchor[anchor_id]:
+                concepts_by_anchor[anchor_id].append(node_id)
+
+    if not original_anchor_order:
+        return candidate
+
+    week_by_anchor = {
+        anchor_id: _node_week_index(learning_tree.get(anchor_id, {}))
+        for anchor_id in anchors_all
+    }
+    selected_weeks = [
+        week_by_anchor.get(anchor_id, _UNKNOWN_WEEK_INDEX)
+        for anchor_id in original_anchor_order
+        if week_by_anchor.get(anchor_id, _UNKNOWN_WEEK_INDEX) < _UNKNOWN_WEEK_INDEX
+    ]
+    if selected_weeks:
+        min_week = min(selected_weeks)
+        max_week = max(selected_weeks)
+        backbone = [
+            anchor_id
+            for anchor_id in anchors_all
+            if min_week <= week_by_anchor.get(anchor_id, _UNKNOWN_WEEK_INDEX) <= max_week
+        ]
+    else:
+        backbone = list(original_anchor_order)
+
+    if not backbone:
+        return candidate
+
+    max_len = max(1, int(L_max or len(path)))
+    two_stage_path: List[str] = []
+    knowledge_expansion: List[Dict[str, Any]] = []
+    total_expanded = 0
+    for anchor_id in backbone:
+        if anchor_id not in two_stage_path and len(two_stage_path) < max_len:
+            two_stage_path.append(anchor_id)
+        preferred_concepts = set(concepts_by_anchor.get(anchor_id) or [])
+        concepts = [
+            str(node_id)
+            for node_id, node in (learning_tree or {}).items()
+            if _anchor_for_node(str(node_id), learning_tree) == anchor_id and str(node_id) != anchor_id and _is_chapter_concept(node if isinstance(node, dict) else {})
+        ]
+        for concept_id in preferred_concepts:
+            if concept_id not in concepts:
+                concepts.append(concept_id)
+        concepts.sort(key=lambda node_id: _concept_expansion_sort_key(node_id, learning_tree, goals, preferred_concepts))
+        expansion_nodes = []
+        for concept_id in concepts:
+            if len(expansion_nodes) >= MAX_KNOWLEDGE_EXPANSION_PER_CHAPTER:
+                break
+            if total_expanded >= MAX_KNOWLEDGE_EXPANSION_TOTAL:
+                break
+            if concept_id not in two_stage_path and len(two_stage_path) < max_len:
+                two_stage_path.append(concept_id)
+                expansion_nodes.append(concept_id)
+                total_expanded += 1
+        knowledge_expansion.append({
+            "chapter_node_id": anchor_id,
+            "chapter_title": learning_tree.get(anchor_id, {}).get("title") or anchor_id,
+            "week_index": _node_week_index(learning_tree.get(anchor_id, {})),
+            "knowledge_node_ids": expansion_nodes,
+            "knowledge_count": len(expansion_nodes),
+        })
+
+    if not two_stage_path:
+        return candidate
+
+    normalized = dict(candidate)
+    normalized["path"] = two_stage_path
+    normalized["path_depth"] = len(two_stage_path)
+    normalized["chapter_backbone"] = [
+        {
+            "node_id": anchor_id,
+            "title": learning_tree.get(anchor_id, {}).get("title") or anchor_id,
+            "week_index": _node_week_index(learning_tree.get(anchor_id, {})),
+        }
+        for anchor_id in backbone
+        if anchor_id in two_stage_path
+    ]
+    normalized["knowledge_expansion"] = knowledge_expansion
+    normalized["route_structure"] = "chapter_backbone_then_knowledge_expansion"
+    normalized["cost"] = sum(float((learning_tree.get(node_id, {}) or {}).get("learning_time_est") or 1.0) for node_id in two_stage_path)
+    skills = set()
+    for node_id in two_stage_path:
+        skills.update(str(item) for item in (learning_tree.get(node_id, {}) or {}).get("outcomes") or [])
+    normalized["skills"] = skills
+    return normalized
+
+
+def _apply_two_stage_routes(
+    candidates: List[Dict[str, Any]],
+    learning_tree: Dict[str, Any],
+    goals: List[str],
+    *,
+    L_max: int,
+) -> List[Dict[str, Any]]:
+    if not candidates or not _chapter_anchor_ids(learning_tree):
+        return candidates
+    normalized = [
+        _two_stage_candidate(candidate, learning_tree, goals, L_max=L_max)
+        for candidate in candidates
+    ]
+    deduped: List[Dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    for candidate in normalized:
+        path_key = tuple(str(node_id) for node_id in candidate.get("path") or [])
+        if not path_key or path_key in seen:
+            continue
+        seen.add(path_key)
+        deduped.append(candidate)
+    return deduped
 
 
 def _build_planning_hints(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -405,6 +883,110 @@ def _build_planning_hints(result: Dict[str, Any]) -> Dict[str, Any]:
         "has_low_confidence_edges": bool(has_low_confidence_edges),
         "suggested_next_action": NEXT_ACTION_CONFIRM_PATH if (has_rag_edges or has_low_confidence_edges) else NEXT_ACTION_GENERATE_RESOURCES,
     }
+
+
+def _fallback_candidate_paths(
+    learning_tree: Dict[str, Any],
+    state: Dict[str, Any],
+    goals: List[str],
+    *,
+    L_max: int,
+    T_max: int,
+    K: int,
+) -> List[Dict[str, Any]]:
+    if not learning_tree:
+        return []
+
+    blocked = {str(item) for item in state.get("constraints", {}).get("blocked_nodes") or []}
+    completed = _completed_nodes(state)
+    goal_set = {str(goal) for goal in goals or [] if goal}
+    children_by_parent: Dict[str, List[str]] = {}
+    for node_id, raw_node in learning_tree.items():
+        node = raw_node if isinstance(raw_node, dict) else {}
+        for prerequisite in node.get("prerequisites") or []:
+            children_by_parent.setdefault(str(prerequisite), []).append(str(node_id))
+
+    def is_available(node_id: str) -> bool:
+        node = learning_tree.get(node_id, {})
+        return node_id not in blocked and node_id not in completed and not _node_outcomes_known(node, state)
+
+    def node_cost(node_id: str) -> float:
+        try:
+            return float((learning_tree.get(node_id) or {}).get("learning_time_est") or 1.0)
+        except Exception:
+            return 1.0
+
+    def node_goal_score(node_id: str) -> int:
+        outcomes = {str(item) for item in (learning_tree.get(node_id) or {}).get("outcomes") or []}
+        title = str((learning_tree.get(node_id) or {}).get("title") or "")
+        if goal_set and outcomes.intersection(goal_set):
+            return 0
+        if goal_set and any(goal in title or title in goal for goal in goal_set if title):
+            return 1
+        return 2
+
+    def node_sort_key(node_id: str) -> tuple:
+        node = learning_tree.get(node_id) or {}
+        try:
+            difficulty = float(node.get("difficulty") or 1.0)
+        except Exception:
+            difficulty = 1.0
+        return (
+            _node_week_index(node),
+            node_goal_score(node_id),
+            len(node.get("prerequisites") or []),
+            difficulty,
+            node_cost(node_id),
+            str(node.get("title") or node_id),
+        )
+
+    starts = [str(node_id) for node_id in learning_tree if is_available(str(node_id))]
+    if not starts:
+        starts = [str(node_id) for node_id in learning_tree if str(node_id) not in blocked]
+    starts.sort(key=node_sort_key)
+
+    results: List[Dict[str, Any]] = []
+    seen_paths: set[tuple[str, ...]] = set()
+    for start in starts:
+        path: List[str] = []
+        seen_nodes: set[str] = set()
+        cost = 0.0
+        current = start
+        while current and len(path) < max(1, int(L_max)):
+            if current in seen_nodes or current in blocked:
+                break
+            next_cost = node_cost(current)
+            if path and cost + next_cost > T_max:
+                break
+            path.append(current)
+            seen_nodes.add(current)
+            cost += next_cost
+            children = [
+                child for child in children_by_parent.get(current, [])
+                if child not in seen_nodes and child not in blocked and child not in completed
+            ]
+            children.sort(key=node_sort_key)
+            if not children:
+                break
+            if goal_set and any(str(outcome) in goal_set for outcome in (learning_tree.get(current) or {}).get("outcomes") or []):
+                break
+            current = children[0]
+        path_key = tuple(path)
+        if not path or path_key in seen_paths:
+            continue
+        seen_paths.add(path_key)
+        skills = set()
+        for node_id in path:
+            skills.update(str(item) for item in (learning_tree.get(node_id) or {}).get("outcomes") or [])
+        results.append({
+            "path": path,
+            "cost": cost,
+            "skills": skills,
+            "path_depth": len(path),
+        })
+        if len(results) >= max(1, int(K)):
+            break
+    return results
 
 
 def load_recommendation_learning_tree(
@@ -665,7 +1247,7 @@ def run_recommendation_route(
     goals: Optional[List[str]] = None,
     L_max: int = 6,
     T_max: int = 100,
-    K: int = 20,
+    K: int = DEFAULT_RECOMMENDATION_CANDIDATE_LIMIT,
     beam_width: int = 6,
     rag_context: Optional[Dict[str, Any]] = None,
     study_graph_state: Optional[Dict[str, Any]] = None,
@@ -745,6 +1327,7 @@ def run_recommendation_route(
     )
     chosen_goals = _resolve_recommendation_goals(goals, profile, recommendation_graph_tree)
     depth_strategy = _normalize_depth_strategy(depth_strategy)
+    candidate_limit = max(1, int(K or DEFAULT_RECOMMENDATION_CANDIDATE_LIMIT))
 
     state, starts = generate_state(profile, recommendation_graph_tree, study_graph_state=study_graph_state)
     candidates = generate(
@@ -754,7 +1337,7 @@ def run_recommendation_route(
         state,
         L_max=int(L_max),
         T_max=int(T_max),
-        K=int(K),
+        K=candidate_limit,
         beam_width=int(beam_width),
         depth_strategy=depth_strategy,
     )
@@ -764,10 +1347,51 @@ def run_recommendation_route(
         state,
         blocked_nodes=state.get("constraints", {}).get("blocked_nodes"),
     )
+    candidates = [
+        candidate
+        for candidate in candidates
+        if _candidate_has_actionable_node(candidate, recommendation_graph_tree, state)
+    ]
+    if not candidates:
+        candidates = _fallback_candidate_paths(
+            recommendation_graph_tree,
+            state,
+            chosen_goals,
+            L_max=int(L_max),
+            T_max=int(T_max),
+            K=candidate_limit,
+        )
     raw_scores = [score(candidate, state, recommendation_graph_tree) for candidate in candidates]
 
     candidates = soft_prune_by_dominance(candidates, raw_scores)
+    candidates = [
+        candidate
+        for candidate in candidates
+        if _candidate_has_actionable_node(candidate, recommendation_graph_tree, state)
+    ]
+    if not candidates:
+        candidates = _fallback_candidate_paths(
+            recommendation_graph_tree,
+            state,
+            chosen_goals,
+            L_max=int(L_max),
+            T_max=int(T_max),
+            K=candidate_limit,
+        )
+    candidates = _apply_two_stage_routes(
+        candidates,
+        recommendation_graph_tree,
+        chosen_goals,
+        L_max=int(L_max),
+    )
     raw_scores = [score(candidate, state, recommendation_graph_tree) for candidate in candidates]
+    candidates, raw_scores = _rank_candidate_pairs(
+        candidates,
+        raw_scores,
+        recommendation_graph_tree,
+        state,
+        limit=candidate_limit,
+    )
 
     response_candidates = []
     for candidate, candidate_score in zip(candidates, raw_scores):
@@ -782,28 +1406,42 @@ def run_recommendation_route(
             )
         )
 
-    response_candidates.sort(
-        key=lambda item: (
-            float(item.get("rag_relevance") or 0.0),
-            -int(item.get("rank") or 0),
-        ),
-        reverse=True,
-    )
+    if _has_foundation_gap(recommendation_graph_tree, state):
+        response_candidates.sort(
+            key=lambda item: (
+                _candidate_foundation_sort_key(item, recommendation_graph_tree, state),
+                -float(item.get("rag_relevance") or 0.0),
+                int(item.get("rank") or 0),
+            )
+        )
+    else:
+        response_candidates.sort(
+            key=lambda item: (
+                _candidate_syllabus_sort_key(item, recommendation_graph_tree),
+                -float(item.get("rag_relevance") or 0.0),
+                int(item.get("rank") or 0),
+            )
+        )
+    response_candidates = response_candidates[:candidate_limit]
     for idx, candidate in enumerate(response_candidates, start=1):
         candidate["rank"] = idx
 
+    foundation_gap = _has_foundation_gap(recommendation_graph_tree, state)
     selected = []
     if response_candidates:
-        try:
-            selected = ib_grpo_select(
-                candidates,
-                raw_scores,
-                IB_constraints={"E": 0.0},
-                iterations=20,
-                N=1,
-            )
-        except Exception:
-            selected = []
+        if foundation_gap:
+            selected = candidates[:1]
+        else:
+            try:
+                selected = ib_grpo_select(
+                    candidates,
+                    raw_scores,
+                    IB_constraints={"E": 0.0},
+                    iterations=20,
+                    N=1,
+                )
+            except Exception:
+                selected = []
 
     score_by_path = {
         tuple(str(node_id) for node_id in candidate.get("path") or []): candidate_score
@@ -887,7 +1525,7 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
         goals=payload.get("goals"),
         L_max=int(payload.get("L_max") or 6),
         T_max=int(payload.get("T_max") or 100),
-        K=int(payload.get("K") or payload.get("max_candidates") or 20),
+        K=int(payload.get("K") or payload.get("max_candidates") or DEFAULT_RECOMMENDATION_CANDIDATE_LIMIT),
         beam_width=int(payload.get("beam_width") or 6),
         rag_context=payload.get("rag_context") if isinstance(payload.get("rag_context"), dict) else None,
         study_graph_state=payload.get("study_graph_state") if isinstance(payload.get("study_graph_state"), dict) else None,
