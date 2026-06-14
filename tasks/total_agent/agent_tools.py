@@ -628,6 +628,8 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     message_requests_practice = _message_has_any(message, ("练习", "practice", "exercise", "quiz", "题"))
     message_requests_coding = _message_has_any(message, ("代码", "coding", "code", "编程"))
     message_requests_review = _message_has_any(message, ("复习", "总结", "梳理", "review", "summary"))
+    message_requests_ppt = _message_has_any(message, ("ppt", "PPT", "幻灯片", "课件", "slides", "slide", "演示", "讲稿"))
+    message_requests_doc = _message_has_any(message, ("文档", "doc", "document", "资料", "文章", "讲解", "说明"))
     matched_study_graph_weak_node = bool(
         (next_node_id and next_node_id in weak_node_ids)
         or (next_title and next_title in weak_node_ids)
@@ -653,6 +655,15 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     if explicit_resource_types:
         resource_types = explicit_resource_types
         reason = "user explicitly requested resource types"
+    elif message_requests_ppt:
+        resource_types = ["ppt"]
+        reason = "message explicitly requests PPT/slides"
+    elif message_requests_doc:
+        resource_types = ["documents"]
+        reason = "message explicitly requests documents"
+    elif message_requests_practice:
+        resource_types = ["quiz"]
+        reason = "message explicitly requests quiz/practice"
     elif message_requests_coding:
         resource_types = ["coding_practice"]
         reason = "message requests coding practice"
@@ -1705,10 +1716,10 @@ def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
         intent = INTENT_RECOMMEND_LEARNING_PATH
         confidence = 0.82
         reason = "message asks for learning path recommendation"
-    elif _message_has_any(message, ("继续", "下一步", "开始学习", "给我资料", "生成资源", "resource", "continue", "next")):
+    elif _message_has_any(message, ("继续", "下一步", "开始学习", "给我资料", "生成资源", "给我生成", "来生成", "resource", "continue", "next", "生成", "产", "给我", "帮我生成", "帮我做", "帮我产")):
         intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE
-        confidence = 0.82
-        reason = "message asks to continue current plan"
+        confidence = 0.88
+        reason = "message explicitly asks to generate learning resources"
     elif _message_has_any(message, ("为什么", "为啥", "是什么", "解释", "区别", "关系", "怎么理解", "question", "why", "explain")):
         intent = INTENT_ANSWER_LEARNING_QUESTION
         confidence = 0.84

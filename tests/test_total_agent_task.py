@@ -282,6 +282,79 @@ def test_total_agent_agent_final_result_includes_course_summary_tool_result():
     assert result["result"]["context"]["course_learning_tree_summary"]["summary"]["weak_nodes"][0]["title"] == "HBase Basics"
 
 
+def test_total_agent_buddy_event_selector_prefers_single_highest_priority_event():
+    event = tar._select_buddy_event(
+        terminal_tool=tac.TOOL_ACCEPT_LEARNING_PLAN,
+        recommendation_terminal={
+            "success": True,
+            "has_best_path": True,
+            "recommendation": {"best_path": {"path": ["a", "b"]}},
+        },
+        accept_terminal={
+            "success": True,
+            "accepted": True,
+            "plan": {"plan_id": "p1", "steps": []},
+            "next_task": {"title": "Step A"},
+            "metrics": {"total_steps": 3},
+        },
+        resource_terminal={
+            "success": True,
+            "resources": [{"resource_id": "r1", "resource_type": "quiz", "title": "Quiz"}],
+        },
+        feedback_terminal={
+            "success": True,
+            "updated_step": {"title": "Old", "status": "completed"},
+        },
+        skip_terminal={},
+        answer_terminal={},
+    )
+
+    assert event["event_type"] == "plan_accepted"
+    assert event["payload"]["next_task_title"] == "Step A"
+    assert event["plan"]["plan_id"] == "p1"
+
+
+def test_total_agent_final_result_notifies_only_one_buddy_event(monkeypatch):
+    calls = []
+
+    def fake_notify(**kwargs):
+        calls.append(("event", kwargs))
+        return "buddy once"
+
+    def fake_trigger(**kwargs):
+        calls.append(("trigger", kwargs))
+        return "legacy"
+
+    import tasks.study_buddy_task as buddy_task
+
+    monkeypatch.setattr(buddy_task, "notify_study_buddy_event", fake_notify)
+    monkeypatch.setattr(buddy_task, "trigger_study_buddy", fake_trigger)
+
+    state = {
+        "payload": {"user_id": 7, "syllabus_id": 29},
+        "tool_trace": [tac.TOOL_ACCEPT_LEARNING_PLAN, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
+        "intent": tac.INTENT_ACCEPT_RECOMMENDATION,
+        "terminal_tool_result": {
+            "tool": tac.TOOL_ACCEPT_LEARNING_PLAN,
+            "success": True,
+            "accepted": True,
+            "plan": {"plan_id": "p1", "steps": []},
+            "next_task": {"title": "Step A"},
+            "metrics": {"total_steps": 3},
+        },
+        "resource_generation_result": {
+            "success": True,
+            "resources": [{"resource_id": "r1", "resource_type": "quiz", "title": "Quiz"}],
+        },
+    }
+
+    result = tar._build_agent_final_result(state)
+
+    assert result["buddy_message"] == "buddy once"
+    assert result["buddy_event"]["event_type"] == "plan_accepted"
+    assert [kind for kind, _ in calls] == ["event"]
+
+
 def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
     payload = {

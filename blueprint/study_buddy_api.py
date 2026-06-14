@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 from tasks import learning_profile_task as lpt
 from tasks import personal_recommendation_task as prt
 from tasks import study_graph_task as sgt
-from tasks.study_buddy_task import buddy_chat, trigger_study_buddy
+from tasks.study_buddy_task import buddy_chat, list_buddy_messages, trigger_study_buddy
 
 bp = Blueprint("study_buddy_api", __name__, url_prefix="/api")
 
@@ -55,6 +55,7 @@ def study_buddy_chat():
     return jsonify({
         "success": True,
         "reply": result["reply"],
+        "messages": list_buddy_messages(user_id, syllabus_id or 0),
         "memory_tags_written": result.get("memory_tags_written", []),
         "error_code": "",
         "error_message": "",
@@ -93,6 +94,28 @@ def study_buddy_proactive():
     return jsonify({
         "success": True,
         "buddy_message": msg,
+        "messages": list_buddy_messages(user_id, syllabus_id or 0),
+        "error_code": "",
+        "error_message": "",
+    })
+
+
+@bp.route("/study_buddy/messages", methods=["GET", "POST"])
+def study_buddy_messages():
+    data = request.get_json(silent=True) or {}
+    user_id = _parse_int(request.args.get("user_id") or data.get("user_id"))
+    syllabus_id = _parse_int(request.args.get("syllabus_id") or data.get("syllabus_id")) or 0
+    limit = _parse_int(request.args.get("limit") or data.get("limit")) or 30
+    if not user_id:
+        return jsonify({
+            "success": False,
+            "messages": [],
+            "error_code": "missing_fields",
+            "error_message": "user_id is required",
+        }), 400
+    return jsonify({
+        "success": True,
+        "messages": list_buddy_messages(user_id, syllabus_id, limit=limit),
         "error_code": "",
         "error_message": "",
     })

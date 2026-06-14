@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Dict, List
@@ -12,6 +13,7 @@ from pydantic_ai import Agent, RunContext
 from tasks.common.agent_model import build_openai_compatible_model
 
 from . import memory
+from .messages import load_buddy_messages
 from .contracts import BUDDY_AGENT_NAME
 from .tree import build_buddy_tree
 from .tree_store import load_buddy_tree
@@ -88,6 +90,7 @@ def build_buddy_context(
     """构建学伴对话上下文——树 + 记忆 tag，拼接为纯文本。"""
     tree = build_buddy_tree(user_id, syllabus_id, plan, study_graph_features)
     tags = memory.load_memory_tags(user_id, syllabus_id)
+    recent_messages = load_buddy_messages(user_id, syllabus_id, limit=8)
     regions = tree.get("regions", {})
 
     lines: list[str] = []
@@ -128,6 +131,25 @@ def build_buddy_context(
         lines.append("你的记忆 ────────\n" + "\n".join(tag_lines))
     else:
         lines.append("你的记忆 ────────\n  （暂无记忆）")
+
+    if recent_messages:
+        role_names = {
+            "user": "student",
+            "buddy": "xiao-jue",
+            "proactive": "xiao-jue-proactive",
+        }
+        history_lines = []
+        for item in recent_messages[-8:]:
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            speaker = role_names.get(str(item.get("from") or item.get("role") or ""), "xiao-jue")
+            history_lines.append(f"  {speaker}: {text[:160]}")
+        if history_lines:
+            lines.append(
+                "Recent chat history, short context only; do not treat it as long-term memory:\n"
+                + "\n".join(history_lines)
+            )
 
     return "\n".join(lines)
 
@@ -182,6 +204,85 @@ def chat_with_buddy(
     ]
 
     return {"reply": reply[:500], "memory_tags_written": memory_tags_written}
+
+
+def _fallback_event_reply(event_type: str, payload: dict) -> str:
+    if event_type == "plan_accepted":
+        title = str(payload.get("next_task_title") or "").strip()
+        return f"好，那我们先从「{title}」开始。" if title else "好，那我们就按这条路线开始。"
+    if event_type == "resource_ready":
+        resource = payload.get("resource") if isinstance(payload.get("resource"), dict) else {}
+        title = str(resource.get("title") or resource.get("resource_type") or "").strip()
+        return f"资料好了，先看这个「{title}」就行。" if title else "资料好了，可以先挑一个顺手的看。"
+    if event_type == "learning_feedback_recorded":
+        title = str(payload.get("activated_step_title") or "").strip()
+        return f"这步记下来了，下一步可以看「{title}」。" if title else "这步记下来了，节奏还可以。"
+    if event_type == "step_skipped":
+        title = str(payload.get("next_task_title") or "").strip()
+        return f"跳过也行，我们先往「{title}」走。" if title else "跳过也行，先保持往前走。"
+    if event_type == "recommendation_ready":
+        return "我看这条路线还挺顺，先别急着全吃完，按第一步来就好。"
+    if event_type == "question_answered":
+        return "这个问题先这样理解就够了，后面遇到例子再补一层。"
+    return "我在，咱们按当前节奏继续就行。"
+
+
+def proactive_buddy_event_message(
+    user_id: int,
+    syllabus_id: int,
+    event_type: str,
+    payload: dict | None = None,
+    plan: dict | None = None,
+    study_graph_features: dict | None = None,
+) -> str | None:
+    event_type = str(event_type or "").strip()
+    event_payload = payload if isinstance(payload, dict) else {}
+    if not event_type:
+        return None
+    fallback_reply = _fallback_event_reply(event_type, event_payload)
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return fallback_reply
+
+    context = build_buddy_context(user_id, syllabus_id, plan, study_graph_features)
+    event_brief = {
+        "event_type": event_type,
+        "payload": event_payload,
+    }
+    prompt = (
+        f"{context}\n\n"
+        "A learning event just happened. You are the study buddy Xiao Jue.\n"
+        f"Event JSON: {event_brief}\n\n"
+        "Say exactly 1 short, natural Chinese message to the student. "
+        "Do not sound like a system notification. Do not list data. "
+        "If useful, gently point to the next action. "
+        "Do not repeat memory tags verbatim."
+    )
+
+    agent = _get_buddy_agent()
+    deps = BuddyDeps(
+        user_id=user_id,
+        syllabus_id=syllabus_id,
+        plan=plan or {},
+        study_graph_features=study_graph_features or {},
+    )
+    try:
+        result = agent.run_sync(prompt, deps=deps)
+    except Exception:
+        return fallback_reply
+
+    reply = ""
+    if hasattr(result, "output"):
+        output = result.output
+        if isinstance(output, str):
+            reply = output.strip()
+        elif isinstance(output, dict):
+            reply = str(output.get("reply") or output.get("text") or output.get("content") or "").strip()
+            if not reply:
+                reply = str(output).strip()
+        elif output is not None:
+            reply = str(output).strip()
+
+    return reply[:500] if reply else None
 
 
 def proactive_buddy_message(

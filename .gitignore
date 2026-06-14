@@ -64,6 +64,9 @@ material/material_pdf/*
 history/*
 !history/.gitkeep
 
+study_buddy/*
+!study_buddy/.gitkeep
+
 profiles/*
 !profiles/.gitkeep
 

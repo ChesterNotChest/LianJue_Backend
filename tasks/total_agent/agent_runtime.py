@@ -93,6 +93,10 @@ def get_total_agent() -> Agent:
             "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
             "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
             "When class-wide context might help: check the course overview (get_course_learning_tree_summary). "
+            "IMPORTANT: When the student explicitly asks you to generate a specific resource type (PPT, document, quiz, mindmap, coding practice), just do it. Do NOT ask for confirmation or offer multiple plans. Call generate_current_step_resource immediately after load_total_context and infer_user_intent. "
+            "When calling generate_current_step_resource, you MUST pass the resource_types parameter as a list. Available types: [\"ppt\", \"documents\", \"quiz\", \"mindmap\", \"coding_practice\"]. "
+            "If the student asks for multiple types (e.g. '给我生成PPT和文档'), pass ALL requested types in the list and the system will generate them in parallel. "
+            "If the student does not specify a type, you may omit resource_types and the system will choose based on their profile. "
             "Never make up learning plans, paths, resources, or study data - always use the tools."
         ),
         name="total_agent",
@@ -151,13 +155,19 @@ def get_total_agent() -> Agent:
         return result
 
     @agent.tool(sequential=True)
-    def generate_current_step_resource(ctx: RunContext[TotalAgentDeps]) -> dict:
+    def generate_current_step_resource(
+        ctx: RunContext[TotalAgentDeps],
+        resource_types: list[str] = None,
+    ) -> dict:
         if ctx.deps.state.get("intent") != INTENT_GENERATE_CURRENT_STEP_RESOURCE:
             raise ModelRetry(
                 "generate_current_step_resource is only allowed when inferred intent is "
                 "generate_current_step_resource. For feedback or skip turns, return after recording "
                 "the update and reading get_next_learning_task."
             )
+        if resource_types:
+            payload = ctx.deps.state.setdefault("payload", {})
+            payload["resource_types"] = list(resource_types)
         return _remember_terminal(ctx, TOOL_GENERATE_CURRENT_STEP_RESOURCE, tool_generate_current_step_resource(ctx.deps.state))
 
     @agent.tool(sequential=True)
@@ -313,26 +323,153 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         error_message=error_message,
     )
 
-    # Trigger study buddy proactive message.
+    # Trigger at most one study-buddy proactive message per total-agent turn.
     try:
-        from tasks.study_buddy_task import trigger_study_buddy
+        from tasks.study_buddy_task import notify_study_buddy_event, trigger_study_buddy
         payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
         uid = int(payload.get("user_id") or 0)
         sid = int(payload.get("syllabus_id") or 0) if payload.get("syllabus_id") else None
         if uid:
-            plan = result.get("accept_learning_plan", {}).get("plan") if isinstance(
-                result.get("accept_learning_plan"), dict
-            ) else None
-            buddy_msg = trigger_study_buddy(
-                user_id=uid,
-                syllabus_id=sid or 0,
-                plan=plan,
+            selected_event = _select_buddy_event(
+                terminal_tool=terminal_tool,
+                recommendation_terminal=recommendation_terminal,
+                accept_terminal=accept_terminal,
+                resource_terminal=resource_terminal,
+                feedback_terminal=feedback_terminal,
+                skip_terminal=skip_terminal,
+                answer_terminal=answer_terminal,
             )
+            plan = selected_event.get("plan") if isinstance(selected_event.get("plan"), dict) else None
+            if not plan and isinstance(result.get("accept_learning_plan"), dict):
+                plan = result.get("accept_learning_plan", {}).get("plan")
+            buddy_msg = None
+            if selected_event:
+                buddy_msg = notify_study_buddy_event(
+                    user_id=uid,
+                    syllabus_id=sid or 0,
+                    event_type=str(selected_event.get("event_type") or ""),
+                    payload=selected_event.get("payload") if isinstance(selected_event.get("payload"), dict) else {},
+                    plan=plan if isinstance(plan, dict) else None,
+                )
+            if not buddy_msg:
+                buddy_msg = trigger_study_buddy(
+                    user_id=uid,
+                    syllabus_id=sid or 0,
+                    plan=plan if isinstance(plan, dict) else None,
+                )
             if buddy_msg:
                 final["buddy_message"] = buddy_msg
+                if selected_event:
+                    final["buddy_event"] = {
+                        "event_type": selected_event.get("event_type") or "",
+                        "payload": selected_event.get("payload") if isinstance(selected_event.get("payload"), dict) else {},
+                    }
     except Exception:
-        pass  # Study buddy failures must not break the main path.
+        import traceback
+        traceback.print_exc()  # Study buddy failures must not break the main path, but must be visible.
     return final
+
+
+def _first_resource_summary(resource_terminal: dict) -> dict:
+    resources = resource_terminal.get("resources") if isinstance(resource_terminal.get("resources"), list) else []
+    if resources:
+        item = resources[0] if isinstance(resources[0], dict) else {}
+        return {
+            "resource_id": item.get("resource_id") or "",
+            "resource_type": item.get("resource_type") or "",
+            "title": item.get("title") or "",
+            "topic": item.get("topic") or "",
+            "count": len(resources),
+        }
+    generation_result = resource_terminal.get("generation_result") if isinstance(resource_terminal.get("generation_result"), dict) else {}
+    raw_resources = generation_result.get("resources") if isinstance(generation_result.get("resources"), list) else []
+    item = raw_resources[0] if raw_resources and isinstance(raw_resources[0], dict) else {}
+    return {
+        "resource_id": item.get("resource_id") or "",
+        "resource_type": item.get("resource_type") or "",
+        "title": item.get("title") or "",
+        "topic": item.get("topic") or "",
+        "count": len(raw_resources),
+    }
+
+
+def _select_buddy_event(
+    *,
+    terminal_tool: str,
+    recommendation_terminal: dict,
+    accept_terminal: dict,
+    resource_terminal: dict,
+    feedback_terminal: dict,
+    skip_terminal: dict,
+    answer_terminal: dict,
+) -> dict:
+    events: list[tuple[int, dict]] = []
+    if accept_terminal.get("accepted"):
+        next_task = accept_terminal.get("next_task") if isinstance(accept_terminal.get("next_task"), dict) else {}
+        metrics = accept_terminal.get("metrics") if isinstance(accept_terminal.get("metrics"), dict) else {}
+        events.append((100, {
+            "event_type": "plan_accepted",
+            "payload": {
+                "next_task_title": next_task.get("title") or next_task.get("topic") or "",
+                "total_steps": metrics.get("total_steps"),
+            },
+            "plan": accept_terminal.get("plan") if isinstance(accept_terminal.get("plan"), dict) else None,
+        }))
+    if resource_terminal and resource_terminal.get("success", True):
+        next_task = resource_terminal.get("next_task") if isinstance(resource_terminal.get("next_task"), dict) else {}
+        events.append((90, {
+            "event_type": "resource_ready",
+            "payload": {
+                "next_task_title": next_task.get("title") or next_task.get("topic") or "",
+                "overall_status": resource_terminal.get("overall_status") or "",
+                "resource": _first_resource_summary(resource_terminal),
+            },
+        }))
+    if feedback_terminal and feedback_terminal.get("success", True):
+        updated_step = feedback_terminal.get("updated_step") if isinstance(feedback_terminal.get("updated_step"), dict) else {}
+        activated_step = feedback_terminal.get("activated_step") if isinstance(feedback_terminal.get("activated_step"), dict) else {}
+        events.append((80, {
+            "event_type": "learning_feedback_recorded",
+            "payload": {
+                "updated_step_title": updated_step.get("title") or "",
+                "updated_step_status": updated_step.get("status") or "",
+                "activated_step_title": activated_step.get("title") or "",
+                "metrics": feedback_terminal.get("metrics") if isinstance(feedback_terminal.get("metrics"), dict) else {},
+            },
+        }))
+    if skip_terminal and skip_terminal.get("success", True):
+        next_task = skip_terminal.get("next_task") if isinstance(skip_terminal.get("next_task"), dict) else {}
+        events.append((75, {
+            "event_type": "step_skipped",
+            "payload": {
+                "next_task_title": next_task.get("title") or next_task.get("topic") or "",
+                "metrics": skip_terminal.get("metrics") if isinstance(skip_terminal.get("metrics"), dict) else {},
+            },
+        }))
+    if recommendation_terminal and recommendation_terminal.get("has_best_path"):
+        recommendation = recommendation_terminal.get("recommendation") if isinstance(recommendation_terminal.get("recommendation"), dict) else {}
+        best_path = recommendation.get("best_path") if isinstance(recommendation.get("best_path"), dict) else {}
+        events.append((60, {
+            "event_type": "recommendation_ready",
+            "payload": {
+                "recommendation_id": recommendation_terminal.get("recommendation_id") or recommendation.get("recommendation_id") or "",
+                "path_title": best_path.get("title") or "",
+                "path_length": len(best_path.get("path") or []) if isinstance(best_path.get("path"), list) else None,
+            },
+        }))
+    if answer_terminal and terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
+        answer = answer_terminal.get("answer") if isinstance(answer_terminal.get("answer"), dict) else {}
+        events.append((40, {
+            "event_type": "question_answered",
+            "payload": {
+                "question_type": answer_terminal.get("question_profile", {}).get("question_type")
+                if isinstance(answer_terminal.get("question_profile"), dict)
+                else "",
+                "next_actions": answer.get("next_actions") if isinstance(answer.get("next_actions"), list) else [],
+            },
+        }))
+    events.sort(key=lambda item: item[0], reverse=True)
+    return events[0][1] if events else {}
 
 # Chat history persistence (session-isolated, DB + file fallback)
 
