@@ -1,4 +1,5 @@
 from extensions import db
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 
 class LearningPlan(db.Model):
@@ -61,13 +62,13 @@ class RecommendationSnapshot(db.Model):
     schema_version = db.Column(db.String(60), nullable=False, default="recommendation_snapshot.v1")
     goal_json = db.Column(db.Text, nullable=True)
     query_text = db.Column(db.Text, nullable=True)
-    graph_json = db.Column(db.Text, nullable=True)
-    candidates_json = db.Column(db.Text, nullable=True)
-    selected_json = db.Column(db.Text, nullable=True)
-    best_path_json = db.Column(db.Text, nullable=True)
-    rag_overlay_json = db.Column(db.Text, nullable=True)
-    planning_hints_json = db.Column(db.Text, nullable=True)
-    result_summary_json = db.Column(db.Text, nullable=True)
+    graph_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    candidates_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    selected_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    best_path_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    rag_overlay_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    planning_hints_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    result_summary_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
     accepted_plan_id = db.Column(db.String(80), nullable=True, index=True)
     accepted_candidate_index = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.Integer, nullable=False, default=0)

@@ -270,31 +270,35 @@ def _persist_snapshot_db(snapshot: dict) -> None:
     from extensions import db
     from schemas.agent_runtime_state import RecommendationSnapshot
 
-    row = db.session.get(RecommendationSnapshot, snapshot["recommendation_id"])
-    if row is None:
-        row = RecommendationSnapshot(recommendation_id=snapshot["recommendation_id"])
-        db.session.add(row)
-    recommendation = _as_dict(snapshot.get("recommendation"))
-    row.user_id = int(snapshot["user_id"])
-    row.syllabus_id = snapshot.get("syllabus_id")
-    row.session_id = snapshot.get("session_id") or None
-    row.status = snapshot.get("status") or RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
-    row.schema_version = snapshot.get("schema_version") or RECOMMENDATION_SNAPSHOT_SCHEMA_VERSION
-    row.goal_json = _json_dumps(_as_dict(snapshot.get("goal")))
-    row.query_text = snapshot.get("query_text") or ""
-    row.graph_json = _json_dumps(_as_dict(recommendation.get("graph")))
-    row.candidates_json = _json_dumps(_as_list(recommendation.get("candidates")))
-    row.selected_json = _json_dumps(_as_list(recommendation.get("selected")))
-    row.best_path_json = _json_dumps(_as_dict(recommendation.get("best_path")))
-    row.rag_overlay_json = _json_dumps(_as_dict(recommendation.get("rag_overlay")))
-    row.planning_hints_json = _json_dumps(_as_dict(recommendation.get("planning_hints")))
-    row.result_summary_json = _json_dumps(_as_dict(snapshot.get("summary")))
-    row.accepted_plan_id = snapshot.get("accepted_plan_id")
-    row.accepted_candidate_index = snapshot.get("accepted_candidate_index")
-    row.created_at = int(snapshot.get("created_at") or row.created_at or _utc_timestamp())
-    row.updated_at = int(snapshot.get("updated_at") or _utc_timestamp())
-    row.expires_at = snapshot.get("expires_at")
-    db.session.commit()
+    try:
+        row = db.session.get(RecommendationSnapshot, snapshot["recommendation_id"])
+        if row is None:
+            row = RecommendationSnapshot(recommendation_id=snapshot["recommendation_id"])
+            db.session.add(row)
+        recommendation = _as_dict(snapshot.get("recommendation"))
+        row.user_id = int(snapshot["user_id"])
+        row.syllabus_id = snapshot.get("syllabus_id")
+        row.session_id = snapshot.get("session_id") or None
+        row.status = snapshot.get("status") or RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
+        row.schema_version = snapshot.get("schema_version") or RECOMMENDATION_SNAPSHOT_SCHEMA_VERSION
+        row.goal_json = _json_dumps(_as_dict(snapshot.get("goal")))
+        row.query_text = snapshot.get("query_text") or ""
+        row.graph_json = _json_dumps(_as_dict(recommendation.get("graph")))
+        row.candidates_json = _json_dumps(_as_list(recommendation.get("candidates")))
+        row.selected_json = _json_dumps(_as_list(recommendation.get("selected")))
+        row.best_path_json = _json_dumps(_as_dict(recommendation.get("best_path")))
+        row.rag_overlay_json = _json_dumps(_as_dict(recommendation.get("rag_overlay")))
+        row.planning_hints_json = _json_dumps(_as_dict(recommendation.get("planning_hints")))
+        row.result_summary_json = _json_dumps(_as_dict(snapshot.get("summary")))
+        row.accepted_plan_id = snapshot.get("accepted_plan_id")
+        row.accepted_candidate_index = snapshot.get("accepted_candidate_index")
+        row.created_at = int(snapshot.get("created_at") or row.created_at or _utc_timestamp())
+        row.updated_at = int(snapshot.get("updated_at") or _utc_timestamp())
+        row.expires_at = snapshot.get("expires_at")
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
 
 
 def save_recommendation_snapshot(

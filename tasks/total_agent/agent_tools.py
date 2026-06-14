@@ -1784,7 +1784,7 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
         request_payload=payload,
         session_id=payload.get("session_id"),
         persist_snapshot=payload.get("persist_snapshot") is not False,
-        allow_proposed_resave=True,
+        allow_proposed_resave=bool(injected),
     )
     state["recommendation_result"] = recommendation
     best_path = _safe_dict(recommendation).get("best_path")
