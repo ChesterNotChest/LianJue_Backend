@@ -208,6 +208,7 @@ class ChatTurn(db.Model):
     session_id = db.Column(db.String(120), db.ForeignKey("chat_session.session_id", ondelete="CASCADE"), nullable=False, index=True)
     role = db.Column(db.String(20), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    metadata_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.Integer, nullable=False, default=0)
 
     __table_args__ = (

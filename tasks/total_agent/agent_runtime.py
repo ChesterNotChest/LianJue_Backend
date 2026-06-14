@@ -61,6 +61,16 @@ from tasks.total_agent.agent_tools import (
     tool_skip_current_step,
 )
 
+CHAT_TERMINAL_TOOLS = {
+    TOOL_RUN_LEARNING_RECOMMENDATION,
+    TOOL_ACCEPT_LEARNING_PLAN,
+    TOOL_NORMALIZE_LEARNING_GOAL,
+    TOOL_GENERATE_CURRENT_STEP_RESOURCE,
+    TOOL_RECORD_LEARNING_FEEDBACK,
+    TOOL_SKIP_CURRENT_STEP,
+    TOOL_ANSWER_LEARNING_QUESTION,
+}
+
 
 def build_total_agent_model():
     return build_openai_compatible_model(agent_name="total agent")
@@ -73,17 +83,17 @@ def get_total_agent() -> Agent:
         deps_type=TotalAgentDeps,
         system_prompt=(
             "You are a dedicated teacher helping a student learn. "
-            "Before taking any action, briefly tell the student what you're about to do and why — be clear and encouraging. "
+            "Before taking any action, briefly tell the student what you're about to do and why - be clear and encouraging. "
             "Always start by understanding their current learning context (load_total_context, infer_user_intent). "
             "When they want a learning path: recommend first (run_learning_recommendation), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
             "When they accept a plan: confirm it (accept_learning_plan). "
             "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
             "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
-            "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal — include the topic in record_learning_feedback as a knowledge_point entry (e.g. {\\\"knowledge_points\\\": [\\\"HDFS 基础\\\"], \\\"correct\\\": true}). "
+            "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal and include that topic in record_learning_feedback. "
             "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
             "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
             "When class-wide context might help: check the course overview (get_course_learning_tree_summary). "
-            "Never make up learning plans, paths, resources, or study data — always use the tools."
+            "Never make up learning plans, paths, resources, or study data - always use the tools."
         ),
         name="total_agent",
         description="Tool-calling agent for multi-turn learning process scheduling",
@@ -91,15 +101,8 @@ def get_total_agent() -> Agent:
         defer_model_check=True,
     )
 
-    _TERMINAL = {
-        TOOL_RUN_LEARNING_RECOMMENDATION, TOOL_ACCEPT_LEARNING_PLAN,
-        TOOL_NORMALIZE_LEARNING_GOAL, TOOL_GENERATE_CURRENT_STEP_RESOURCE,
-        TOOL_RECORD_LEARNING_FEEDBACK, TOOL_SKIP_CURRENT_STEP,
-        TOOL_ANSWER_LEARNING_QUESTION,
-    }
-
     def _remember_terminal(ctx: RunContext[TotalAgentDeps], tool_name: str, result: dict) -> dict:
-        if tool_name in _TERMINAL:
+        if tool_name in CHAT_TERMINAL_TOOLS:
             ctx.deps.state["terminal_tool_result"] = result
         return result
 
@@ -310,7 +313,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         error_message=error_message,
     )
 
-    # ── 触发学伴主动消息 ──
+    # Trigger study buddy proactive message.
     try:
         from tasks.study_buddy_task import trigger_study_buddy
         payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
@@ -328,14 +331,30 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
             if buddy_msg:
                 final["buddy_message"] = buddy_msg
     except Exception:
-        pass  # 学伴失败不影响主链路
-
+        pass  # Study buddy failures must not break the main path.
     return final
 
-# ── Chat history persistence (session-isolated, DB + file fallback) ──────────
+# Chat history persistence (session-isolated, DB + file fallback)
 
 def _now_ts():
     return int(datetime.now(timezone.utc).timestamp())
+
+
+def _safe_log_text(value):
+    try:
+        return str(value)
+    except Exception:
+        return "<unprintable>"
+
+
+def _chat_log(msg):
+    try:
+        log_dir = os.path.join(os.getcwd(), 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        with open(os.path.join(log_dir, 'chat_debug.log'), 'a', encoding='utf-8') as f:
+            f.write(f"{_now_ts()} {msg}\n")
+    except Exception:
+        pass
 
 
 def _resolve_session_id(payload):
@@ -382,35 +401,52 @@ def _load_chat_history(user_id, syllabus_id, session_id, max_turns=20):
         return []
     try:
         return _load_chat_history_db(user_id, syllabus_id, session_id, max_turns)
-    except Exception:
+    except Exception as exc:
+        _chat_log(f"load_history DB FAIL {type(exc).__name__}: {_safe_log_text(exc)}; file fallback")
+        try:
+            from extensions import db
+            db.session.rollback()
+        except Exception:
+            pass
         return _load_chat_history_file(user_id, syllabus_id, session_id, max_turns)
 
 
-def _append_chat_turn_db(_user_id, _syllabus_id, session_id, role, content):
+def _chat_title_from_message(message):
+    text = str(message or '').strip()
+    return (text[:40] + ('...' if len(text) > 40 else '')) if text else 'New chat'
+
+
+def _get_chat_session_db(user_id, syllabus_id, session_id, now, title=None):
     from extensions import db
-    from schemas.agent_runtime_state import ChatSession, ChatTurn
-    if not content or not session_id:
-        return
-    now = _now_ts()
+    from schemas.agent_runtime_state import ChatSession
+
     sess = ChatSession.query.get(session_id)
+    if sess and sess.user_id != user_id:
+        raise ValueError(
+            f"chat session owner mismatch: session_id={session_id} "
+            f"existing_user={sess.user_id} request_user={user_id}"
+        )
     if not sess:
-        title = (content[:40] + ('...' if len(content) > 40 else '')) if role == 'user' else '新对话'
         sess = ChatSession(
-            session_id=session_id, user_id=_user_id, syllabus_id=_syllabus_id,
-            title=title, turn_count=0, created_at=now, updated_at=now,
+            session_id=session_id,
+            user_id=user_id,
+            syllabus_id=syllabus_id,
+            title=title or 'New chat',
+            turn_count=0,
+            created_at=now,
+            updated_at=now,
         )
         db.session.add(sess)
     else:
+        sess.syllabus_id = syllabus_id
         sess.updated_at = now
-        if role == 'user' and (not sess.title or sess.title == '新对话'):
-            sess.title = content[:40] + ('...' if len(content) > 40 else '')
-    sess.turn_count = (sess.turn_count or 0) + 1
-    turn = ChatTurn(session_id=session_id, role=role, content=content, created_at=now)
-    db.session.add(turn)
-    db.session.commit()
+        if title and (not sess.title or sess.title == 'New chat'):
+            sess.title = title
+    return sess
 
 
 def _append_chat_turn_file(user_id, syllabus_id, session_id, role, content):
+    content = str(content or '')
     if not content or not session_id:
         return
     path = _chat_history_path(user_id, syllabus_id, session_id)
@@ -430,50 +466,102 @@ def _append_chat_turn_file(user_id, syllabus_id, session_id, role, content):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 
-def _append_chat_turn(user_id, syllabus_id, session_id, role, content):
-    if not content or not session_id:
+def _append_chat_message_db(user_id, syllabus_id, session_id, role, content, metadata=None):
+    from extensions import db
+    from schemas.agent_runtime_state import ChatTurn
+
+    content = str(content or '')
+    if not content:
+        return
+    now = _now_ts()
+    title = _chat_title_from_message(content) if role == 'user' else None
+    sess = _get_chat_session_db(user_id, syllabus_id, session_id, now, title=title)
+    metadata_json = None
+    if metadata:
+        metadata_json = json.dumps(metadata, ensure_ascii=False)
+    db.session.add(ChatTurn(session_id=session_id, role=role, content=content, metadata_json=metadata_json, created_at=now))
+    sess.turn_count = (sess.turn_count or 0) + 1
+    sess.updated_at = now
+    db.session.commit()
+
+
+def _append_chat_message(user_id, syllabus_id, session_id, role, content, metadata=None):
+    content = str(content or '')
+    _chat_log(f"append_message role={role} ses={session_id} len={len(content)}")
+    if not session_id or not content:
+        _chat_log(f"append_message SKIP ses={bool(session_id)} content={bool(content)}")
         return
     try:
-        _append_chat_turn_db(user_id, syllabus_id, session_id, role, content)
-    except Exception:
+        _append_chat_message_db(user_id, syllabus_id, session_id, role, content, metadata=metadata)
+        _chat_log("append_message DB OK")
+    except Exception as exc:
+        _chat_log(f"append_message DB FAIL {type(exc).__name__}: {_safe_log_text(exc)}; file fallback")
+        try:
+            from extensions import db
+            db.session.rollback()
+        except Exception:
+            pass
         _append_chat_turn_file(user_id, syllabus_id, session_id, role, content)
+
+
+def _persist_user_chat_turn(payload):
+    if payload.get('_chat_user_turn_persisted'):
+        return
+    uid = payload.get('user_id')
+    sid = payload.get('syllabus_id')
+    session_id = _resolve_session_id(payload)
+    if not uid or not sid or not session_id:
+        _chat_log("persist_user_turn SKIP missing fields")
+        return
+    try:
+        uid = int(uid)
+        sid = int(sid)
+    except (TypeError, ValueError):
+        _chat_log("persist_user_turn SKIP invalid ids")
+        return
+    user_msg = str(payload.get('message') or payload.get('question') or '')
+    if not user_msg:
+        _chat_log("persist_user_turn SKIP empty message")
+        return
+    _append_chat_message(uid, sid, session_id, 'user', user_msg)
+    payload['_chat_user_turn_persisted'] = True
 
 
 def _ensure_session_created(payload):
     uid = payload.get('user_id')
     sid = payload.get('syllabus_id')
     session_id = _resolve_session_id(payload)
+    _chat_log(f"ensure_session uid={uid} sid={sid} ses={session_id} msg={str(payload.get('message',''))[:30]}")
     if not uid or not sid or not session_id:
+        _chat_log("ensure_session SKIP missing fields")
         return
     try:
         uid = int(uid)
         sid = int(sid)
     except (TypeError, ValueError):
+        _chat_log("ensure_session SKIP invalid ids")
         return
-    user_msg = str(payload.get('message') or payload.get('question') or '')
-    title = (user_msg[:40] + ('...' if len(user_msg) > 40 else '')) if user_msg else '新对话'
     now = _now_ts()
     try:
         from flask import has_app_context
         if has_app_context():
             from extensions import db
-            from schemas.agent_runtime_state import ChatSession
-            sess = ChatSession.query.get(session_id)
-            if sess and sess.user_id != uid:
-                sess = None
-            if not sess:
-                sess = ChatSession(
-                    session_id=session_id, user_id=uid, syllabus_id=sid,
-                    title=title, turn_count=0, created_at=now, updated_at=now,
-                )
-                db.session.add(sess)
-            else:
-                sess.updated_at = now
-                if sess.title == '新对话' and user_msg:
-                    sess.title = title
+            _get_chat_session_db(
+                uid,
+                sid,
+                session_id,
+                now,
+                title=_chat_title_from_message(payload.get('message') or payload.get('question')),
+            )
             db.session.commit()
-    except Exception:
-        pass
+            _chat_log("ensure_session DB OK")
+    except Exception as exc:
+        _chat_log(f"ensure_session DB FAIL {type(exc).__name__}: {_safe_log_text(exc)}")
+        try:
+            from extensions import db
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 def _inject_chat_history(payload):
@@ -505,43 +593,155 @@ def _inject_chat_history(payload):
     return payload
 
 
-def _save_chat_exchange(payload, state):
+def _extract_agent_reply(final_result, state, terminal=None):
+    terminal = terminal if isinstance(terminal, dict) else {}
+    candidates = []
+    if isinstance(final_result, dict):
+        result = final_result.get('result') if isinstance(final_result.get('result'), dict) else {}
+        candidates.extend([
+            final_result.get('reply'),
+            final_result.get('message'),
+            final_result.get('summary'),
+            result.get('reply'),
+            result.get('message'),
+            result.get('summary'),
+        ])
+        for key in (
+            'answer_learning_question',
+            'resource_generation',
+            'record_learning_feedback',
+            'skip_current_step',
+            'accept_learning_plan',
+            'goal_normalization',
+            'recommendation',
+            'next_task',
+        ):
+            value = result.get(key)
+            if isinstance(value, dict):
+                answer = value.get('answer')
+                if isinstance(answer, dict):
+                    candidates.extend([answer.get('text'), answer.get('content'), answer.get('message')])
+                candidates.extend([value.get('reply'), value.get('message'), value.get('summary'), value.get('answer')])
+    if isinstance(terminal, dict):
+        answer = terminal.get('answer')
+        if isinstance(answer, dict):
+            candidates.extend([answer.get('text'), answer.get('content'), answer.get('message')])
+        candidates.extend([terminal.get('reply'), terminal.get('message'), terminal.get('summary'), terminal.get('answer')])
+    for value in candidates:
+        if value:
+            if isinstance(value, (dict, list)):
+                return json.dumps(value, ensure_ascii=False)[:2000]
+            return str(value)
+    if terminal:
+        return json.dumps(terminal, ensure_ascii=False)[:2000]
+    ctx = state.get('total_context') if isinstance(state.get('total_context'), dict) else {}
+    for key in ('reply', 'message', 'summary'):
+        if ctx.get(key):
+            return str(ctx.get(key))
+    return '(no reply)'
+
+
+def _persist_agent_chat_turn(payload, state):
+    if state.get('_chat_agent_turn_persisted'):
+        _chat_log("persist_agent_turn SKIP already persisted")
+        return
+    _chat_log(f"persist_agent_turn uid={payload.get('user_id')} ses={payload.get('session_id')} terminal={bool(state.get('terminal_tool_result'))}")
     uid = payload.get('user_id')
     sid = payload.get('syllabus_id')
     session_id = _resolve_session_id(payload)
     if not uid or not sid or not session_id:
+        _chat_log("persist_agent_turn SKIP missing fields")
         return
     try:
         uid = int(uid)
         sid = int(sid)
     except (TypeError, ValueError):
+        _chat_log("persist_agent_turn SKIP invalid ids")
         return
-    user_msg = str(payload.get('message') or payload.get('question') or '')
-    _append_chat_turn(uid, sid, session_id, 'user', user_msg)
+    final_result = state.get('final_result') if isinstance(state.get('final_result'), dict) else {}
     terminal = state.get('terminal_tool_result') if isinstance(state.get('terminal_tool_result'), dict) else {}
-    agent_reply = str(terminal.get('reply') or terminal.get('message') or terminal.get('summary') or '')
-    if not agent_reply:
-        ctx = state.get('total_context') if isinstance(state.get('total_context'), dict) else {}
-        agent_reply = str(ctx.get('reply') or ctx.get('message') or '')
-    _append_chat_turn(uid, sid, session_id, 'agent', agent_reply)
+    agent_reply = _extract_agent_reply(final_result, state, terminal)
+    if not agent_reply or agent_reply == '(no reply)':
+        _chat_log("persist_agent_turn SKIP empty reply")
+        return
+    _chat_log(f"persist_agent_turn len={len(agent_reply)}")
+    _append_chat_message(uid, sid, session_id, 'agent', agent_reply)
+    state['_chat_agent_turn_persisted'] = True
 
+
+def _persist_final_agent_turn(payload, state, final):
+    if isinstance(state, dict):
+        state['final_result'] = final if isinstance(final, dict) else {}
+    _persist_agent_chat_turn(payload, state)
+
+
+def persist_streamed_agent_reply(payload, content, metadata=None):
+    state = {
+        'payload': payload or {},
+        'terminal_tool_result': {'reply': str(content or '')},
+        'total_context': {},
+    }
+    uid = (payload or {}).get('user_id')
+    sid = (payload or {}).get('syllabus_id')
+    session_id = _resolve_session_id(payload or {})
+    try:
+        from flask import has_app_context
+        if has_app_context() and uid and sid and session_id:
+            from extensions import db
+            from schemas.agent_runtime_state import ChatTurn
+            last = (
+                ChatTurn.query.filter_by(session_id=session_id, role='agent')
+                .order_by(ChatTurn.id.desc())
+                .first()
+            )
+            if last and last.content == str(content or ''):
+                if metadata:
+                    last.metadata_json = json.dumps(metadata, ensure_ascii=False)
+                    db.session.commit()
+                    return
+            if last and last.content != str(content or '') and metadata:
+                last.content = str(content or '')
+                last.metadata_json = json.dumps(metadata, ensure_ascii=False)
+                db.session.commit()
+                return
+    except Exception:
+        try:
+            from extensions import db
+            db.session.rollback()
+        except Exception:
+            pass
+    uid = (payload or {}).get('user_id')
+    sid = (payload or {}).get('syllabus_id')
+    session_id = _resolve_session_id(payload or {})
+    try:
+        uid = int(uid)
+        sid = int(sid)
+    except (TypeError, ValueError):
+        _persist_agent_chat_turn(payload or {}, state)
+        return
+    if uid and sid and session_id:
+        _append_chat_message(uid, sid, session_id, 'agent', str(content or ''), metadata=metadata)
+        return
+    _persist_agent_chat_turn(payload or {}, state)
 
 
 def run_total_agent(payload: Dict[str, Any], *, use_llm: bool = False, stream: bool = False):
-    """运行总 agent（统一入口）。
-
-    Args:
-        payload: 总 agent 输入。
-        use_llm: True 时走 LLM Agent；False 时确定性执行。
-        stream: True 时返回 AsyncGenerator[dict, None]（仅 use_llm=True 时生效）。
-
-    Returns:
-        dict（非流式）或 AsyncGenerator[dict, None]（流式）。
-    """
+    """Run Total Agent."""
+    payload = payload or {}
+    _chat_log(f"run_total_agent uid={payload.get('user_id')} ses={payload.get('session_id')}")
     _inject_chat_history(payload)
+    _persist_user_chat_turn(payload)
     if use_llm:
         return run_total_agent_agent(payload, stream=stream)
-    return deterministic_run_total_agent(payload)
+    final = deterministic_run_total_agent(payload)
+    state = {
+        'payload': payload,
+        'terminal_tool_result': {},
+        'total_context': final.get('result', {}).get('context', {}) if isinstance(final, dict) else {},
+        'final_result': final if isinstance(final, dict) else {},
+    }
+    _persist_final_agent_turn(payload, state, final)
+    return final
 
 
 def _ts() -> int:
@@ -583,16 +783,22 @@ def _safe_result_data(result: Any) -> Any:
     return str(result)
 
 
-async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
-    """流式运行总 agent，逐事件 yield。
+def _safe_tool_result_event_data(event: Any) -> tuple[str, str, Any]:
+    raw_result = getattr(event, "result", None)
+    tool_name = getattr(event, "tool_name", "") or getattr(raw_result, "tool_name", "")
+    tool_call_id = getattr(event, "tool_call_id", "") or getattr(raw_result, "tool_call_id", "")
+    if hasattr(raw_result, "content"):
+        result = _safe_result_data(getattr(raw_result, "content", None))
+    else:
+        result = _safe_result_data(raw_result)
+    return str(tool_name or ""), str(tool_call_id or ""), result
 
-    Yields events of types: text_delta, text_start, tool_call, tool_start,
-    tool_end, tool_status, final.
-    """
+
+async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+    """Stream Total Agent events."""
     payload = payload or {}
     status_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
 
-    # ── status_callback：桥接同步 emit_status_event → 异步队列 ──
     def _status_callback(event: dict) -> None:
         try:
             status_queue.put_nowait(
@@ -615,10 +821,11 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
     deps = TotalAgentDeps(state=state)
     agent = get_total_agent()
     user_prompt = build_total_agent_user_prompt(state)
+    run = None
 
+    _chat_log("GEN_START")
     async with agent.iter(user_prompt, deps=deps) as run:
         async for node in run:
-            # 排出上一轮工具执行期间积压的 tool_status 事件
             while not status_queue.empty():
                 try:
                     yield status_queue.get_nowait()
@@ -629,12 +836,9 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                 continue
 
             node_type = type(node).__name__
-
-            # ── ModelRequestNode：LLM 响应阶段 ──────────────────
             if node_type == "ModelRequestNode":
                 text_started = False
                 async with node.stream(run.ctx) as agent_stream:
-                    # 文本：token 级流式（output_type 移除后可用）
                     if hasattr(agent_stream, "stream_text"):
                         async for text_delta in agent_stream.stream_text(delta=True):
                             if text_delta:
@@ -644,7 +848,6 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                                 else:
                                     yield {"type": STREAM_EVENT_TEXT_DELTA, "data": {"content_delta": text_delta}, "timestamp": _ts()}
 
-                    # tool_call
                     async for event in agent_stream:
                         ek = getattr(event, "event_kind", "")
                         if ek == "part_start":
@@ -660,7 +863,6 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                                     "timestamp": _ts(),
                                 }
 
-                    # tool_call（从 ModelResponse 提取）
                     response = getattr(agent_stream, "response", None)
                     if response is not None:
                         for tc in getattr(response, "tool_calls", None) or []:
@@ -674,12 +876,10 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                                 "timestamp": _ts(),
                             }
 
-            # ── CallToolsNode：工具执行阶段 ─────────────────────
             elif node_type == "CallToolsNode":
                 async with node.stream(run.ctx) as tool_stream:
                     async for event in tool_stream:
                         evt_type = type(event).__name__
-
                         if evt_type == "FunctionToolCallEvent":
                             yield {
                                 "type": STREAM_EVENT_TOOL_START,
@@ -690,36 +890,25 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                                 },
                                 "timestamp": _ts(),
                             }
-
                         elif evt_type == "FunctionToolResultEvent":
+                            tool_name, tool_call_id, tool_result = _safe_tool_result_event_data(event)
+                            if tool_name in CHAT_TERMINAL_TOOLS and isinstance(tool_result, dict):
+                                state["terminal_tool_result"] = tool_result
+                                _chat_log(f"STREAM_TERMINAL_TOOL_SAVE tool={tool_name}")
+                                _persist_agent_chat_turn(payload, state)
                             yield {
                                 "type": STREAM_EVENT_TOOL_END,
                                 "data": {
-                                    "tool_name": getattr(event, "tool_name", ""),
-                                    "tool_call_id": getattr(event, "tool_call_id", ""),
-                                    "result": _safe_result_data(getattr(event, "result", None)),
+                                    "tool_name": tool_name,
+                                    "tool_call_id": tool_call_id,
+                                    "result": tool_result,
                                 },
                                 "timestamp": _ts(),
                             }
 
-    # ── 最终排出 + 结果 ──
-    while not status_queue.empty():
-        try:
-            yield status_queue.get_nowait()
-        except asyncio.QueueEmpty:
-            break
+            _chat_log("LOOP_BOTTOM")
 
-    model_output = None
-    if hasattr(run, "result") and hasattr(run.result, "output"):
-        raw = run.result.output
-        if isinstance(raw, TotalAgentResult):
-            model_output = raw
-
-    _save_chat_exchange(payload, state)
-    final = _build_agent_final_result(state, model_output)
-    yield {"type": STREAM_EVENT_FINAL, "data": final, "timestamp": _ts()}
-
-    # ── 最终排出 + 结果 ──
+    _chat_log("AFTER_LOOP_MARKER")
     while not status_queue.empty():
         try:
             yield status_queue.get_nowait()
@@ -732,26 +921,20 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         if isinstance(raw, TotalAgentResult):
             model_output = raw
 
-    _save_chat_exchange(payload, state)
     final = _build_agent_final_result(state, model_output)
+    _chat_log("PRE_SAVE_1")
+    _persist_final_agent_turn(payload, state, final)
     yield {"type": STREAM_EVENT_FINAL, "data": final, "timestamp": _ts()}
 
 
 def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
-    """运行 LLM 版总 agent。
-
-    Args:
-        payload: 总 agent 输入 payload。
-        stream: True 时返回 AsyncGenerator[dict, None]，False 时返回 dict（行为不变）。
-
-    Returns:
-        dict（非流式）或 AsyncGenerator[dict, None]（流式）。
-    """
+    """Run the LLM Total Agent."""
+    payload = payload or {}
+    _inject_chat_history(payload)
+    _persist_user_chat_turn(payload)
     if stream:
         return _stream_total_agent_agent(payload)
 
-    # ── 原有同步逻辑不变 ──
-    payload = payload or {}
     state = {
         "payload": payload,
         "tool_trace": [],
@@ -767,5 +950,5 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
     result = agent.run_sync(build_total_agent_user_prompt(state), deps=deps)
     output = result.output if isinstance(result.output, TotalAgentResult) else None
     final = _build_agent_final_result(state, output)
-    _save_chat_exchange(payload, state)
+    _persist_final_agent_turn(payload, state, final)
     return final

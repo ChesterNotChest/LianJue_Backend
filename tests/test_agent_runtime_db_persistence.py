@@ -1,8 +1,13 @@
+import json
+
 import pytest
 from flask import Flask
+from pydantic_ai.messages import FunctionToolResultEvent, ToolReturnPart
 
 from extensions import db
 from schemas.agent_runtime_state import (
+    ChatSession,
+    ChatTurn,
     GeneratedResource,
     LearningPlan,
     LearningPlanEvent,
@@ -16,6 +21,7 @@ from tasks import generative_task as gt
 from tasks import personal_recommendation_task as prt
 from tasks.common import status_events
 from tasks.total_agent import agent_contracts as tac
+from tasks.total_agent import agent_runtime
 from tasks.total_agent import agent_tools as tagt
 from tasks.study_graph import storage as study_graph_storage
 from tasks.study_graph_task import build_study_graph_changes_from_student_payload, get_student_learning_tree, submit_learning_tree_changes
@@ -239,3 +245,179 @@ def test_runtime_persistence_does_not_silently_fallback_to_manifest(monkeypatch)
         study_graph_storage.load_tree_manifest(1, 2)
     with pytest.raises(RuntimeError, match="recommendation snapshot persistence requires a database app context"):
         prt.get_recommendation_snapshot("recommendation_missing")
+
+
+def test_total_agent_deterministic_run_persists_chat_session_and_turns(monkeypatch):
+    app = _make_sqlite_app()
+
+    final = {
+        "success": True,
+        "result": {
+            "answer_learning_question": {
+                "answer": {"text": "Persisted answer"},
+            },
+            "context": {},
+        },
+    }
+
+    def fake_deterministic_run(payload):
+        return final
+
+    monkeypatch.setattr(agent_runtime, "deterministic_run_total_agent", fake_deterministic_run)
+
+    with app.app_context():
+        result = agent_runtime.run_total_agent(
+            {
+                "user_id": 101,
+                "syllabus_id": 202,
+                "session_id": "sess-chat-db",
+                "message": "hello persistence",
+            },
+            use_llm=False,
+        )
+
+        assert result is final
+        session = ChatSession.query.get("sess-chat-db")
+        assert session is not None
+        assert session.user_id == 101
+        assert session.syllabus_id == 202
+        assert session.turn_count == 2
+
+        turns = ChatTurn.query.filter_by(session_id="sess-chat-db").order_by(ChatTurn.id.asc()).all()
+        assert [(turn.role, turn.content) for turn in turns] == [
+            ("user", "hello persistence"),
+            ("agent", "Persisted answer"),
+        ]
+
+
+def test_total_agent_stream_creation_persists_user_turn_before_consumption():
+    app = _make_sqlite_app()
+
+    with app.app_context():
+        stream = agent_runtime.run_total_agent(
+            {
+                "user_id": 101,
+                "syllabus_id": 202,
+                "session_id": "sess-stream-db",
+                "message": "hello stream",
+            },
+            use_llm=True,
+            stream=True,
+        )
+
+        assert stream is not None
+        session = ChatSession.query.get("sess-stream-db")
+        assert session is not None
+        assert session.turn_count == 1
+
+        turns = ChatTurn.query.filter_by(session_id="sess-stream-db").order_by(ChatTurn.id.asc()).all()
+        assert [(turn.role, turn.content) for turn in turns] == [
+            ("user", "hello stream"),
+        ]
+
+
+def test_terminal_tool_result_persists_agent_turn_once():
+    app = _make_sqlite_app()
+
+    payload = {
+        "user_id": 101,
+        "syllabus_id": 202,
+        "session_id": "sess-terminal-tool-db",
+        "message": "hello terminal",
+    }
+    state = {
+        "terminal_tool_result": {
+            "success": True,
+            "answer": {"text": "Terminal persisted answer"},
+        },
+        "total_context": {},
+    }
+
+    with app.app_context():
+        agent_runtime._persist_user_chat_turn(payload)
+        agent_runtime._persist_agent_chat_turn(payload, state)
+        agent_runtime._persist_agent_chat_turn(payload, state)
+
+        session = ChatSession.query.get("sess-terminal-tool-db")
+        assert session is not None
+        assert session.turn_count == 2
+
+        turns = ChatTurn.query.filter_by(session_id="sess-terminal-tool-db").order_by(ChatTurn.id.asc()).all()
+        assert [(turn.role, turn.content) for turn in turns] == [
+            ("user", "hello terminal"),
+            ("agent", "Terminal persisted answer"),
+        ]
+
+
+def test_real_tool_result_event_unwraps_terminal_content():
+    event = FunctionToolResultEvent(
+        result=ToolReturnPart(
+            tool_name=agent_runtime.TOOL_ANSWER_LEARNING_QUESTION,
+            tool_call_id="call-answer",
+            content={"success": True, "answer": {"text": "Real event answer"}},
+        )
+    )
+
+    tool_name, tool_call_id, tool_result = agent_runtime._safe_tool_result_event_data(event)
+
+    assert tool_name == agent_runtime.TOOL_ANSWER_LEARNING_QUESTION
+    assert tool_call_id == "call-answer"
+    assert tool_result == {"success": True, "answer": {"text": "Real event answer"}}
+
+
+def test_streamed_text_persistence_uses_agent_turn():
+    app = _make_sqlite_app()
+    payload = {
+        "user_id": 101,
+        "syllabus_id": 202,
+        "session_id": "sess-streamed-text-db",
+        "message": "hello streamed text",
+    }
+
+    with app.app_context():
+        agent_runtime._persist_user_chat_turn(payload)
+        agent_runtime.persist_streamed_agent_reply(payload, "hello from the same SSE stream")
+
+        turns = ChatTurn.query.filter_by(session_id="sess-streamed-text-db").order_by(ChatTurn.id.asc()).all()
+        assert [(turn.role, turn.content) for turn in turns] == [
+            ("user", "hello streamed text"),
+            ("agent", "hello from the same SSE stream"),
+        ]
+
+
+def test_streamed_text_persistence_stores_tool_metadata():
+    app = _make_sqlite_app()
+    payload = {
+        "user_id": 101,
+        "syllabus_id": 202,
+        "session_id": "sess-streamed-tool-db",
+        "message": "hello tools",
+    }
+    metadata = {
+        "toolCalls": [
+            {
+                "tool_name": "load_total_context",
+                "tool_call_id": "call-load",
+                "args": {},
+                "status": "succeeded",
+                "result": {"success": True},
+            }
+        ],
+        "subagentEvents": [],
+        "segments": [
+            {"kind": "text", "content": "before"},
+            {"kind": "tools", "toolCallIds": ["call-load"], "subagentEventIds": []},
+            {"kind": "text", "content": "after"},
+        ],
+        "finalResult": None,
+    }
+
+    with app.app_context():
+        agent_runtime._persist_user_chat_turn(payload)
+        agent_runtime.persist_streamed_agent_reply(payload, "beforeafter", metadata=metadata)
+
+        turn = ChatTurn.query.filter_by(session_id="sess-streamed-tool-db", role="agent").one()
+        assert turn.metadata_json
+        saved = json.loads(turn.metadata_json)
+        assert saved["toolCalls"][0]["tool_call_id"] == "call-load"
+        assert saved["segments"][1]["kind"] == "tools"
