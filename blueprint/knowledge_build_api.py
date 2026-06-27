@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from tasks import graph_task, jobs_task
+from utils.auth import require_operator
 
 
 def _parse_job_id(value):
@@ -93,6 +94,7 @@ def delete_job_api():
 
 # 理论先执行file_transmit_api里的上传，再执行这个，再来做图谱构建的job管理接口
 @bp.route('/job_graph_create', methods=['POST'])
+@require_operator
 def create_graph_api():
     data = request.get_json(silent=True) or {}
     graph_name = data.get('graph_name')
@@ -152,6 +154,7 @@ def list_graphs_brief_info_api():
 
 
 @bp.route('/job_create', methods=['POST'])
+@require_operator
 def create_job_api():
     '''
     通讯格式：

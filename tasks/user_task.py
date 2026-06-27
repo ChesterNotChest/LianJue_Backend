@@ -13,7 +13,6 @@ from repositories.user_repo import (
 )
 from repositories.syllabus_repo import list_all_syllabuses
 from repositories.user_syllabus_repo import create_user_syllabus
-from constant import SyllabusPermission
 
 
 def register(user_name: str, password: str, email: str) -> Optional[dict]:
@@ -34,7 +33,6 @@ def register(user_name: str, password: str, email: str) -> Optional[dict]:
             create_user_syllabus(
                 user_id=u.user_id,
                 syllabus_id=syllabus_id,
-                syllabus_permission=SyllabusPermission.USER.value,
             )
     except Exception:
         # registering the user itself has succeeded; relation backfill failure should not mask it
@@ -50,7 +48,7 @@ def login(user_name: str, password: str) -> Optional[dict]:
         return None
     if not check_password_hash(u.password_hash, password):
         return None
-    return {'user_id': u.user_id, 'user_name': u.user_name, 'email': u.email}
+    return {'user_id': u.user_id, 'user_name': u.user_name, 'email': u.email, 'permission': u.permission}
 
 
 def change_password(user_id: int, old_password: str, new_password: str) -> bool:

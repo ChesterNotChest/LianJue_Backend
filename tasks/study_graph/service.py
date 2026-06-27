@@ -355,24 +355,81 @@ def submit_learning_tree_changes(
 
 
 def get_student_lifelong_overview(user_id: int) -> dict:
+    """Return a merged force-graph of all StudyGraphTrees for a user.
+
+    The merged graph uses the user as the central root node, each subject
+    as a child branch, and all knowledge nodes as leaves.  Designed for
+    D3GraphViewer with layout='force'.
+    """
     from schemas.agent_runtime_state import StudyGraphTree
 
     trees = StudyGraphTree.query.filter_by(user_id=user_id).order_by(StudyGraphTree.updated_at.desc()).all()
-    syllabi = []
+
+    user_root = {
+        "node_id": f"user_root:{user_id}",
+        "tree_id": f"student_{user_id}",
+        "type": "user_root",
+        "title": "学习全景",
+        "label": "学习全景",
+        "group": "user_root",
+        "virtual": False,
+        "radius": 18,
+        "mastery": {},
+    }
+
+    all_nodes: list[dict] = [user_root]
+    all_edges: list[dict] = []
+    syllabi: list[dict] = []
+
     for tree in trees:
-        node_count = len(list_nodes(tree.tree_id))
+        raw_nodes = [n for n in list_nodes(tree.tree_id) if isinstance(n, dict)]
+        raw_edges = [e for e in list_edges(tree.tree_id) if isinstance(e, dict)]
+
+        subject_id = f"subject:{tree.syllabus_id}"
+        all_nodes.append({
+            "node_id": subject_id,
+            "type": "subject",
+            "title": tree.subject_title or f"学科 {tree.syllabus_id}",
+            "label": tree.subject_title or f"学科 {tree.syllabus_id}",
+            "group": "chapter",
+            "radius": 12,
+            "mastery": {},
+        })
+        all_edges.append({
+            "source": user_root["node_id"],
+            "target": subject_id,
+            "edge_type": "enrolled",
+        })
+
+        # prefix node ids with syllabus_id to avoid collisions across subjects
+        for n in raw_nodes:
+            original_id = n.get("node_id", "")
+            n["original_node_id"] = original_id
+            n["node_id"] = f"{tree.syllabus_id}:{original_id}"
+            if n.get("parent_node_id"):
+                n["parent_node_id"] = f"{tree.syllabus_id}:{n['parent_node_id']}"
+            all_nodes.append(n)
+
+        for e in raw_edges:
+            e["source"] = f"{tree.syllabus_id}:{e.get('source', '')}"
+            e["target"] = f"{tree.syllabus_id}:{e.get('target', '')}"
+            all_edges.append(e)
+
         syllabi.append({
             "syllabus_id": tree.syllabus_id,
             "subject_title": tree.subject_title,
             "tree_id": tree.tree_id,
-            "node_count": node_count,
+            "node_count": len(raw_nodes),
         })
+
     return {
         "success": True,
         "tree": {
             "tree_id": f"student_{user_id}",
             "type": "student",
             "user_id": user_id,
+            "nodes": all_nodes,
+            "edges": all_edges,
             "syllabi": syllabi,
         },
     }

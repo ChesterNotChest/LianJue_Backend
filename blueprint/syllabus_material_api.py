@@ -1,11 +1,26 @@
 from flask import Blueprint, request, jsonify
 from tasks import generative_task, syllabus_task
-
+from utils.auth import require_operator
+from constant import SyllabusStatus
 
 bp = Blueprint('syllabus_material_api', __name__, url_prefix='/api')
 
 
+def _check_not_published(syllabus_id):
+    """Return error_response if syllabus is published/locked, else None."""
+    from repositories.syllabus_repo import get_syllabus_by_id
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if syllabus and getattr(syllabus, 'status', None) == SyllabusStatus.PUBLISHED.value:
+        return jsonify({
+            'success': False, 'syllabus': None,
+            'error_message': '已发布的学科不可编辑',
+            'error_code': 'syllabus_locked',
+        }), 403
+    return None
+
+
 @bp.route('/syllabus_build_draft', methods=['POST'])
+@require_operator
 def build_syllabus_draft_api():
     '''
     通讯格式：
@@ -42,6 +57,7 @@ def build_syllabus_draft_api():
 
 
 @bp.route('/syllabus_build', methods=['POST'])
+@require_operator
 def build_syllabus_api():
     '''
     通讯格式：
@@ -67,6 +83,7 @@ def build_syllabus_api():
 
 
 @bp.route('/syllabus_update_draft', methods=['POST'])
+@require_operator
 def update_syllabus_draft_api():
     '''
     通讯格式：
@@ -86,6 +103,9 @@ def update_syllabus_draft_api():
     syllabus_draft_json = data.get('syllabus_draft_json')
     if not syllabus_id or not isinstance(syllabus_draft_json, dict):
         return jsonify({'success': False, 'syllabus': None, 'error_message': 'missing syllabus_id/syllabus_draft_json', 'error_code': 'missing_fields'}), 400
+    locked = _check_not_published(int(syllabus_id))
+    if locked:
+        return locked
     try:
         s = syllabus_task.update_syllabus_draft_json(int(syllabus_id), syllabus_draft_json)
         if not s:
@@ -96,6 +116,7 @@ def update_syllabus_draft_api():
 
 
 @bp.route('/syllabus_update', methods=['POST'])
+@require_operator
 def update_syllabus_api():
     '''
     Input:
@@ -116,6 +137,9 @@ def update_syllabus_api():
     syllabus_json = data.get('syllabus_json')
     if not syllabus_id or not isinstance(syllabus_json, dict):
         return jsonify({'success': False, 'syllabus': None, 'error_message': 'missing syllabus_id/syllabus_json', 'error_code': 'missing_fields'}), 400
+    locked = _check_not_published(int(syllabus_id))
+    if locked:
+        return locked
     try:
         s = syllabus_task.update_syllabus_json(int(syllabus_id), syllabus_json)
         if not s:
@@ -194,36 +218,22 @@ def get_syllabus_draft_detail_api():
 def list_syllabuses_api():
     '''
     通讯格式：
-    输入：{ } (可选过滤字段 future)
+    输入：{ "user_id": int (optional) }
 
     输出：{ "success": true|false, "syllabuses": [ {...} ], "error_message": "", "error_code": "" }
+    - user_id 不传：返回所有学科（teacher-style）
+    - user_id 为 operator：返回所有学科含 bound_users + status
+    - user_id 为普通 user：仅返回已发布且已绑定的学科
     '''
     try:
         data = request.get_json(silent=True) or {}
         user_id = data.get('user_id')
-        manage_raw = data.get('manage', False)
-        if isinstance(manage_raw, bool):
-            manage = manage_raw
-        elif isinstance(manage_raw, int) and manage_raw in (0, 1):
-            manage = bool(manage_raw)
-        elif isinstance(manage_raw, str):
-            normalized = manage_raw.strip().lower()
-            if normalized in ('true', '1', 'yes', 'y', 'on'):
-                manage = True
-            elif normalized in ('false', '0', 'no', 'n', 'off', ''):
-                manage = False
-            else:
-                return jsonify({'success': False, 'syllabuses': [], 'error_message': 'invalid manage', 'error_code': 'invalid_fields'}), 400
-        else:
-            return jsonify({'success': False, 'syllabuses': [], 'error_message': 'invalid manage', 'error_code': 'invalid_fields'}), 400
         if user_id is not None:
             try:
                 user_id = int(user_id)
             except (TypeError, ValueError):
                 return jsonify({'success': False, 'syllabuses': [], 'error_message': 'invalid user_id', 'error_code': 'invalid_fields'}), 400
-        elif manage:
-            return jsonify({'success': False, 'syllabuses': [], 'error_message': 'missing user_id for manage view', 'error_code': 'missing_fields'}), 400
-        rows = syllabus_task.list_all_syllabuses_brief_info(user_id=user_id, manage=manage)
+        rows = syllabus_task.list_all_syllabuses_brief_info(user_id=user_id)
         return jsonify({'success': True, 'syllabuses': rows, 'error_message': '', 'error_code': ''}), 200
     except Exception as e:
         return jsonify({'success': False, 'syllabuses': [], 'error_message': str(e), 'error_code': 'exception'}), 500

@@ -1,6 +1,7 @@
 
 from flask import Blueprint, request, jsonify, send_file
 import base64
+from utils.auth import require_operator
 import os
 import logging
 from tasks.file_task import (
@@ -139,6 +140,7 @@ def upload_knowledge_source():
 
 
 @bp.route('/file_upload_calendar', methods=['POST'])
+@require_operator
 def upload_calendar():
     '''
     通讯格式：
