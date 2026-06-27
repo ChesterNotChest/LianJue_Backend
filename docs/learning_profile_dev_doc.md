@@ -12,6 +12,8 @@ Total Agent 消费画像时不会要求 profile 原生提供 `documents / quiz /
 
 真实 Profile Agent -> Total Agent 的窄集成和全真实 E2E 当前统一通过 `tests/total_agent/test_total_agent_e2e.py` 或 `tests/test_total_agent_agent_choice.py` 回归；旧拆分 E2E 文件不再作为入口。
 
+个人大纲周状态同步保留两种语义：`sync_knowledge_to_weeks(..., allow_upgrade=True)` 是默认批处理/初始化语义，允许把 `by_knowledge_point` 的真实掌握度直接写入 personal syllabus；画像构建过程中的 `_merge_weeks_into_profile()` 使用 `allow_upgrade=False`，只避免 freshly rebuilt profile 把已有周状态向上越级，防止覆盖多轮建议阈值推进逻辑。若旧文档只描述其中一种，以本文档这里的分层语义为准。
+
 ## 0. 新增的常量定义
 
 路径常量位于 `constant.py`：
@@ -62,6 +64,7 @@ Total Agent 消费画像时不会要求 profile 原生提供 `documents / quiz /
 - `tasks/common/agent_model.py`
   - 统一构造 OpenAI-compatible pydantic-ai 模型。
   - 处理 DashScope Qwen/QwQ/DeepSeek thinking 与 tool calling 的兼容参数。
+  - 兼容 pydantic-ai 新旧命名：优先使用 `OpenAIModel`，不可用时回退到 `OpenAIChatModel`。
 - `tasks/learning_profile/__init__.py`
   - 仅作为包说明，不作为外部业务入口。
 - `repositories/user_syllabus_repo.py`
@@ -223,6 +226,7 @@ Agent tools 会在运行时补齐以下上下文：
   - 读取 `user_syllabus.personal_syllabus_path`
   - 读取原始 `syllabus.syllabus_path`
   - 若指定课程但没有个人大纲，则初始化 `schedule/student_alt/user_{user_id}/{syllabus_id}_personal.json`
+  - 初始化路径经由 `learning_profile.service` 桥接仓储依赖，避免 agent tool 直接绑定包内 personal syllabus repo hook。
 - `_tool_normalize_events`
   - 汇总 `history_entries / learning_records / answer_records / resource_usage / dialogue_texts`
 - `_tool_compute_features`
@@ -337,6 +341,46 @@ append_profile_personal_syllabus_suggestion
   -> 达到 WEEK_REVIEW_THRESHOLD 后推进 competance / competance_progress
   -> 写回个人大纲 JSON
 ```
+
+## 2.7 状态机
+
+学习画像模块自身主要产出持久化 profile；长期可推进状态集中在 personal syllabus 的周状态上。
+
+| 状态对象 | 字段 | 取值 | 写入方 | 读取方 |
+|---|---|---|---|---|
+| profile 缓存 | `profile_saved`、`profile_path` | `false/true`、路径字符串 | `_tool_save_or_update_profile` | Total Agent、学习画像 API |
+| profile 来源摘要 | `profile_source` | `persisted_profile`、`built_profile`、`none` | Total Agent `normalize_profile_summary` | Total Agent 路由/资源策略 |
+| personal syllabus week | `competance` | `none`、`weak`、`normal`、`master` | `sync_knowledge_to_weeks`、`append_profile_personal_syllabus_suggestion` | 学习画像、Total Agent、前端 |
+| personal syllabus suggestion | `suggestion_review_count`、`suggested_competance_list`、`suggestion_history` | 数字、列表 | `append_profile_personal_syllabus_suggestion` | 学习画像、调试/审计 |
+
+个人大纲周状态推进有两条路径：
+
+```text
+batch/profile sync:
+  by_knowledge_point
+  -> sync_knowledge_to_weeks(..., allow_upgrade=True)
+  -> 允许直接写 competance
+
+fresh profile merge:
+  by_knowledge_point
+  -> _merge_weeks_into_profile
+  -> sync_knowledge_to_weeks(..., allow_upgrade=False)
+  -> 不把已有 competance 向上越级
+
+suggestion path:
+  append suggestion
+  -> confidence < CONFIDENCE_MIN: reject
+  -> append suggested_competance_list / suggestion_history
+  -> suggestion_review_count reaches WEEK_REVIEW_THRESHOLD
+  -> promote competance and reset/advance progress fields
+```
+
+边界：
+
+- `competance` 是 personal syllabus 周级状态，不等同于 profile 的 overall score。
+- `allow_upgrade=False` 只限制 fresh profile merge 的向上覆盖，不改变批处理/初始化的默认直写语义。
+- Total Agent 只消费画像摘要和 personal syllabus 上下文，不直接写 `competance`。
+- 低置信 suggestion 不进入推进计数，避免偶发 Agent 输出改变周状态。
 
 ## 3. 精确到输入输出的函数级收口
 

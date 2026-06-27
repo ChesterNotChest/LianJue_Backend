@@ -27,6 +27,40 @@ Total Agent 触发资源生成的统一 E2E 回归入口是：
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/total_agent/test_total_agent_e2e.py -m "llm and search and mysql" --capture=tee-sys -rs
 ```
 
+## 状态机
+
+资源生成存在三层状态，分别服务不同 UI 和调试目的：
+
+| 状态对象 | 字段 | 取值 | 写入方 | 读取方 |
+|---|---|---|---|---|
+| 单资源持久化结果 | `status` | `ready` | `persist_generated_resource` / `GeneratedResource.status` | 资源列表、资源详情、Total Agent 结果 |
+| Total Agent 单类型任务 | `resource_tasks[].status` | `pending`、`running`、`succeeded`、`failed` | `process_resource_generation_request` | Total Agent 结果、前端多资源状态 |
+| 多资源聚合结果 | `overall_status` | `succeeded`、`partial_success`、`failed` | `aggregate_resource_generation_results` | Total Agent 结果、学伴 `resource_ready` 判断 |
+
+单类型任务状态机：
+
+```text
+pending
+  -> running
+  -> succeeded  # 单类型 generative_task 返回 success=true
+  -> failed     # 单类型调用异常或 success=false
+```
+
+多资源聚合状态机：
+
+```text
+all tasks succeeded      -> overall_status=succeeded
+some succeeded, some not -> overall_status=partial_success
+no task succeeded        -> overall_status=failed
+```
+
+边界：
+
+- `GeneratedResource.status=ready` 只表示资源文件和 metadata 已成功落盘；质量仍以 `validation.valid`、`validation.errors` 和资源类型 schema 为准。
+- `resource_tasks[].status` 是 Total Agent 批量编排层状态，不直接写入资源数据库。
+- `overall_status=partial_success` 仍允许前端展示成功资源，并通过 `failed_resource_types` 展示失败类型。
+- 资源模块不推进 learning plan；只有 Total Agent 的反馈/跳过工具会改变 plan step 状态。
+
 ## 0. 新增的常量定义
 
 路径常量位于 `constant.py`：

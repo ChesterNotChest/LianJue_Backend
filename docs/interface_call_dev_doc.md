@@ -1,6 +1,6 @@
 # 接口调用总览文档
 
-本文档用于把当前后端的接口调用关系统一收口，避免把“小计划 / 收口计划 / 执行 / 关闭报告”这几层内容混在一起。重点只回答四件事：哪些是对外 HTTP 入口，哪些是 task 门户，四个核心模块分别怎么调用，以及 4 个 agent 产物应该展示什么。
+本文档用于把当前后端的接口调用关系统一收口，避免把“小计划 / 收口计划 / 执行 / 关闭报告”这几层内容混在一起。重点只回答四件事：哪些是对外 HTTP 入口，哪些是 task 门户，核心模块分别怎么调用，以及 agent 产物应该展示什么。
 
 ## 1. 总体分层
 
@@ -14,15 +14,16 @@
         -> JSON / 文件 / manifest / tree / 图结构结果
 ```
 
-四个核心业务模块如下：
+核心业务模块如下：
 
 1. 学习画像模块：生成用户画像、学习状态、个人大纲初始化与详情读取。
 2. 学习路径推荐模块：基于画像和课程大纲生成推荐路径。
 3. 资源生成模块：生成 documents / mindmap / quiz / coding_practice / ppt 等资源。
 4. 学习成长树模块：把学生事件、资源事件和 RAG 上下文沉淀到学习树。
 5. 总 Agent 模块：统一调度画像、推荐、资源生成和学习成长树，是跨模块编排入口，不直接产出教学内容。
+6. 学伴 Agent 模块：维护独立学习记录树、短期消息历史和标签式记忆，提供主动消息与独立对话。
 
-其中，`knowledge_build_api` 和 `file_transmit_api` 属于支撑链路，不是 4 个 agent 产物的主展示面。
+其中，`knowledge_build_api` 和 `file_transmit_api` 属于支撑链路，不是 agent 产物的主展示面。
 
 ## 2. 调用关系总图
 
@@ -37,6 +38,7 @@ flowchart TD
   B --> C4[file_transmit_api]
   B --> C5[study_graph_api]
   B --> C6[total_agent_api]
+  B --> C7[study_buddy_api]
   C1 --> D1[learning_profile_task]
   C1 --> D2[personal_recommendation_task]
   C2 --> D3[generative_task]
@@ -44,8 +46,10 @@ flowchart TD
   C4 --> D5[file_task / syllabus_task]
   C5 --> D6[study_graph_task]
   C6 --> D7[total_agent_task]
+  C7 --> D8[study_buddy_task]
   A --> E[总 Agent / 内部任务]
   E --> D6[study_graph_task]
+  E --> D8[study_buddy_task]
   D6 --> F1[Student Agent runtime]
   F1 --> F2[study_graph service / storage / contracts]
   D1 --> F3[学习画像 JSON]
@@ -53,6 +57,7 @@ flowchart TD
   D3 --> F5[资源 manifest / 资源文件]
   D4 --> F6[作业与图谱管理结果]
   D5 --> F7[文件与课程绑定结果]
+  D8 --> F8[学伴树 / 记忆 tag / 消息历史]
 ```
 
 调用关系可以按“外部入口 -> 路由层 -> task 门户 -> 包内实现 -> 返回结果”来理解。前端不应该直接跳过 blueprint 去碰 `tasks.*` 包内实现，`study_graph_task` 这种任务层入口则主要供总 Agent 和内部编排调用。
@@ -67,8 +72,10 @@ flowchart TD
 | 前端 / API 客户端 | `blueprint.file_transmit_api` | 用户上传文件或查看下载 | file、syllabus 绑定信息 |
 | 前端 / API 客户端 | `blueprint.study_graph_api` | 查看学习树、查看特征、触发 Student Agent 更新 | 学习树、特征、变更轨迹 |
 | 前端 / API 客户端 | `blueprint.total_agent_api` | 统一调度学习画像、推荐、资源生成和学习树 | Total Agent 结果、tool_trace、状态事件 |
+| 前端 / API 客户端 | `blueprint.study_buddy_api` | 学伴独立对话、读取消息、调试主动消息 | 学伴回复、消息历史、记忆 tag 更新 |
 | 总 Agent / 内部任务 | `tasks.study_graph_task` | 学生事件、资源事件、RAG 结果需要沉淀到学习树 | 学习树、特征、变更轨迹 |
 | 总 Agent / 内部任务 | `tasks.total_agent_task` | 统一路由学习画像、推荐、资源生成和学习树 | Total Agent 统一结果 |
+| 总 Agent / 内部任务 | `tasks.study_buddy_task` | 学习计划、资源、反馈或答疑事件需要触发学伴消息 | 单条学伴主动消息、学伴消息持久化 |
 | `learning_api` | `learning_profile_task` | 画像构建、个人大纲读取与初始化 | profile、personal_syllabus |
 | `learning_api` | `run_recommendation_route_from_payload` | 需要生成学习路径推荐 | 推荐图、候选路径、选中路径 |
 | `generative_api` | `generative_task` | 需要批量或单条资源生成 | 资源 manifest、资源详情 |
@@ -84,9 +91,10 @@ flowchart TD
 | 资源生成 | `/api/generative_generate`、`/api/generative_list`、`/api/generative_detail` | `tasks.generative_task` | 资源 manifest、资源详情、渲染文件 |
 | 学习成长树 | `/api/study_graph/detail`、`/api/study_graph/features`、`/api/study_graph/agent_run` | `tasks.study_graph_task` | `tree`、`features`、`changes`、`tool_trace` |
 | 总 Agent | `/api/total_agent/detail`、`/api/total_agent/run`、`/api/total_agent/agent_run` | `tasks.total_agent_task` | `result`、`tool_trace`、`tool_status_events`、`suggested_next_action` |
+| 学伴 Agent | `/api/study_buddy/chat`、`/api/study_buddy/messages`、`/api/study_buddy/proactive` | `tasks.study_buddy_task` | `reply`、`buddy_message`、`messages`、`memory_tags_written` |
 | 支撑作业 / 文件 | `/api/job_*`、`/api/file_*` | `tasks.jobs_task`、`tasks.file_task`、`tasks.syllabus_task`、`tasks.graph_task` | job、file、graph、syllabus 记录 |
 
-## 4. 4 个模块的调用链
+## 4. 核心模块的调用链
 
 ### 4.1 学习画像模块
 
@@ -228,11 +236,45 @@ API 请求
 - `tool_trace` 与 `tool_status_events`。
 - 统一的 `result`，其中可按意图读取画像、推荐、资源或答疑结果。
 
+### 4.6 学伴 Agent 模块
+
+外部接口：
+
+- `POST /api/study_buddy/chat`
+- `GET|POST /api/study_buddy/messages`
+- `POST /api/study_buddy/proactive`
+
+任务层入口：
+
+- `buddy_chat(user_id, syllabus_id, message, plan=None, study_graph_features=None)`
+- `trigger_study_buddy(user_id, syllabus_id, plan=None, study_graph_features=None)`
+- `notify_study_buddy_event(user_id, syllabus_id, event_type, payload=None, plan=None, study_graph_features=None)`
+- `list_buddy_messages(user_id, syllabus_id, limit=30)`
+
+调用链：
+
+```text
+API 请求 / Total Agent 事件
+  -> study_buddy_task
+    -> build_buddy_tree(active plan + study graph features)
+    -> load buddy_memory.jsonl + buddy_messages.jsonl
+    -> study_buddy_agent
+    -> persist tree.json / buddy_memory.jsonl / buddy_messages.jsonl
+    -> 返回 reply 或 buddy_message
+```
+
+适合前端展示的内容：
+
+- 学伴回复 `reply` 或主动消息 `buddy_message`。
+- 消息历史 `messages`。
+- 本轮新增记忆 `memory_tags_written`。
+- 管理员/观察面板可展示 `buddy_tree.regions.trunk / learned / explore`。
+
 ## 5. 支撑接口的定位
 
 ### 5.1 `knowledge_build_api`
 
-这个蓝图主要负责作业和图谱构建的管理，不是 4 个 agent 产物的主展示面。
+这个蓝图主要负责作业和图谱构建的管理，不是 agent 产物的主展示面。
 
 核心接口：
 
@@ -270,7 +312,7 @@ API 请求
 - 文件与图谱 / 课程的绑定关系。
 - 文件详情和下载链接。
 
-## 6. 四个 agent 产物应该展示什么
+## 6. Agent 产物应该展示什么
 
 ### 6.1 学习画像产物
 
@@ -308,6 +350,15 @@ API 请求
 - `features.learned_topics`、`weak_topics`、`mastered_topics`、`tree_growth`。
 - `changes`、`tool_trace`。
 
+### 6.5 学伴 Agent 产物
+
+推荐展示字段：
+
+- `reply`、`buddy_message`。
+- `messages[].from`、`messages[].text`、`messages[].source`、`messages[].created_at`。
+- `memory_tags_written`。
+- `buddy_tree.regions.trunk`、`learned`、`explore`。
+
 ## 7. 推荐调用顺序
 
 如果你要在一个完整业务流程里串起来，推荐按下面的顺序理解：
@@ -318,6 +369,7 @@ API 请求
 3. 学习路径推荐
 4. 资源生成
 5. 学习成长树沉淀
+6. 学伴消息触发或独立对话
 ```
 
 这不是强制顺序，但它最符合当前工程里的职责分工：先有数据和上下文，再做推荐和生成，最后把学生行为沉到学习树里。
@@ -338,4 +390,4 @@ API 请求
 文件/课程上下文 -> 学习画像 -> 学习路径推荐 -> 资源生成 -> 学习成长树
 ```
 
-如果前端要展示 4 个 agent 产物，就分别展示：画像、推荐路径、生成资源、学习树。
+如果前端要展示 agent 产物，就分别展示：画像、推荐路径、生成资源、学习树和学伴消息/学伴树。
