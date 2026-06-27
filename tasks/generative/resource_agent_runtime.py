@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pydantic_ai.models.openai import OpenAIModel
 
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.models.openai import OpenAIModel
 
 from tasks.common.agent_model import build_openai_compatible_model
 from tasks.common.status_events import get_status_events

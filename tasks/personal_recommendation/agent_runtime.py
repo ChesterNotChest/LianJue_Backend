@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import json
 import os
 from functools import lru_cache
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pydantic_ai.models.openai import OpenAIModel
 
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.models.openai import OpenAIModel
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
 from tasks.common.agent_model import build_openai_compatible_model

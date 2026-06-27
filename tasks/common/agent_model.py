@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
-from pydantic_ai.models.openai import OpenAIModel
+if TYPE_CHECKING:
+    from pydantic_ai.models.openai import OpenAIModel
+
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
+
+
+def _import_openai_model():
+    """Lazy import to avoid collection-time failures on incompatible pydantic-ai versions."""
+    from pydantic_ai.models.openai import OpenAIModel
+
+    return OpenAIModel
 
 
 def _safe_text(value: Any) -> str:
@@ -47,7 +56,7 @@ def disable_dashscope_qwen_thinking(model_config: Dict[str, Any]) -> Dict[str, A
     return normalized_config
 
 
-def build_openai_compatible_model(model_key: str = "text", *, agent_name: str = "agent") -> OpenAIModel:
+def build_openai_compatible_model(model_key: str = "text", *, agent_name: str = "agent") -> "OpenAIModel":
     """Build a pydantic-ai OpenAIModel from project OpenAI-compatible config.
 
     DashScope Qwen thinking models reject required/object tool_choice while
@@ -76,4 +85,5 @@ def build_openai_compatible_model(model_key: str = "text", *, agent_name: str = 
         extra_body.setdefault("enable_thinking", False)
         settings["extra_body"] = extra_body
 
+    OpenAIModel = _import_openai_model()
     return OpenAIModel(model_name, provider=provider, settings=settings or None)
