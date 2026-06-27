@@ -406,6 +406,36 @@ def _message_has_any(message: str, markers: Iterable[str]) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def _message_is_vague_resource_request(message: str) -> bool:
+    lowered = _safe_text(message).lower()
+    if not lowered:
+        return False
+    vague_markers = ("随便", "任意", "都行", "来一个", "anything", "whatever", "random")
+    if not any(marker in lowered for marker in vague_markers):
+        return False
+    concrete_markers = (
+        "ppt",
+        "slide",
+        "slides",
+        "文档",
+        "资料",
+        "quiz",
+        "练习",
+        "题",
+        "代码",
+        "coding",
+        "mindmap",
+        "思维导图",
+        "总结",
+        "复习",
+        "继续",
+        "下一步",
+        "学习",
+        "resource",
+    )
+    return not any(marker in lowered for marker in concrete_markers)
+
+
 def _unique_texts(items: Iterable[Any]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -772,18 +802,18 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     elif message_requests_doc:
         resource_types = ["documents"]
         reason = "message explicitly requests documents"
-    elif message_requests_practice:
-        resource_types = ["quiz"]
-        reason = "message explicitly requests quiz/practice"
     elif message_requests_coding:
         resource_types = ["coding_practice"]
         reason = "message requests coding practice"
-    elif message_requests_review:
-        resource_types = ["mindmap"]
-        reason = "message requests review or summary"
     elif matched_profile_weak_point or matched_study_graph_weak_node:
         resource_types = _unique_texts([RESOURCE_STRATEGY_DEFAULT_TYPE, "quiz", *preferred_formats])
         reason = "current step is weak and profile/study graph indicates targeted practice"
+    elif message_requests_practice:
+        resource_types = ["quiz"]
+        reason = "message explicitly requests quiz/practice"
+    elif message_requests_review:
+        resource_types = ["mindmap"]
+        reason = "message requests review or summary"
     else:
         resource_types = [RESOURCE_STRATEGY_DEFAULT_TYPE]
         reason = "default lightweight current-step resource"
@@ -1827,7 +1857,10 @@ def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
         intent = INTENT_RECOMMEND_LEARNING_PATH
         confidence = 0.82
         reason = "message asks for learning path recommendation"
-    elif _message_has_any(message, ("继续", "下一步", "开始学习", "给我资料", "生成资源", "给我生成", "来生成", "resource", "continue", "next", "生成", "产", "给我", "帮我生成", "帮我做", "帮我产")):
+    elif (
+        _message_has_any(message, ("继续", "下一步", "开始学习", "给我资料", "生成资源", "给我生成", "来生成", "resource", "continue", "next", "生成", "产", "给我", "帮我生成", "帮我做", "帮我产"))
+        and (active_plan or not _message_is_vague_resource_request(message))
+    ):
         intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE
         confidence = 0.88
         reason = "message explicitly asks to generate learning resources"

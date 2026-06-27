@@ -13,6 +13,41 @@ from tasks.learning_profile.agent_tools import _tool_load_existing_profile_conte
 from tasks.learning_profile.models import LearningProfileResult
 from tasks.learning_profile.storage import load_existing_profile, load_json_file, profile_has_required_identity
 
+def _get_user_syllabus_relation(user_id: int, syllabus_id: int):
+	for row in list_user_syllabuses(user_id):
+		if getattr(row, 'syllabus_id', None) == syllabus_id:
+			return row
+	return None
+
+
+def _init_profile_personal_syllabus_from_service(user_id: int, syllabus_id: int) -> Optional[dict]:
+	"""Create a personal syllabus using service-level repository hooks.
+
+	Profile building already resolves users, syllabuses, and relations through
+	this service module. Keeping bootstrap here avoids mixing two repository
+	entry points in one request while preserving the personal-syllabus JSON
+	shape and path helpers.
+	"""
+	from tasks.learning_profile import personal_syllabus as profile_syllabus
+
+	original_get_syllabus = profile_syllabus.get_syllabus_by_id
+	original_set_path = profile_syllabus.set_personal_syllabus_path
+
+	def _set_personal_syllabus_path(user_id, syllabus_id, path):
+		relation = _get_user_syllabus_relation(user_id, syllabus_id)
+		if relation is not None and hasattr(relation, 'personal_syllabus_path'):
+			setattr(relation, 'personal_syllabus_path', path)
+			return relation
+		return original_set_path(user_id, syllabus_id, path)
+
+	try:
+		profile_syllabus.get_syllabus_by_id = get_syllabus_by_id
+		profile_syllabus.set_personal_syllabus_path = _set_personal_syllabus_path
+		return profile_syllabus.init_profile_personal_syllabus(user_id, syllabus_id)
+	finally:
+		profile_syllabus.get_syllabus_by_id = original_get_syllabus
+		profile_syllabus.set_personal_syllabus_path = original_set_path
+
 
 def get_persisted_learning_profile(user_id: int, syllabus_id: int) -> Optional[dict]:
 	profile, profile_path = load_existing_profile(user_id, syllabus_id)
@@ -85,7 +120,6 @@ def load_personal_syllabus_rows(user_id: int, syllabus_id: Optional[int] = None)
 
 def _tool_ensure_personal_syllabus(state):
 	"""Ensure a personal syllabus exists for the profile scope, creating one if missing."""
-	from tasks.learning_profile.personal_syllabus import init_profile_personal_syllabus
 	from tasks.learning_profile_task import read_profile_personal_syllabus
 
 	sid = state.get('syllabus_id')
@@ -98,7 +132,7 @@ def _tool_ensure_personal_syllabus(state):
 		if os.getenv("DEBUG_PROFILE_SYNC") == "1": print("[ENSURE] personal syllabus already exists")
 		return
 	if os.getenv("DEBUG_PROFILE_SYNC") == "1": print("[ENSURE] creating for uid=" + str(uid) + " sid=" + str(sid))
-	init_profile_personal_syllabus(uid, sid)
+	_init_profile_personal_syllabus_from_service(uid, sid)
 	if os.getenv("DEBUG_PROFILE_SYNC") == "1": print("[ENSURE] created")
 
 
@@ -127,7 +161,7 @@ def _merge_weeks_into_profile(state):
 		from tasks.learning_profile import profile_builder
 
 		by_kp = (state.get('profile') or {}).get('knowledge_mastery', {}).get('by_knowledge_point', {})
-		result = sync_knowledge_to_weeks(uid, sid, by_knowledge_point=by_kp) if by_kp else None
+		result = sync_knowledge_to_weeks(uid, sid, by_knowledge_point=by_kp, allow_upgrade=False) if by_kp else None
 		if not result or not result.get('synced_weeks'):
 			return
 
@@ -177,13 +211,11 @@ def build_learning_profile(
 	if syllabus_id is not None:
 		user_syllabuses = [row for row in user_syllabuses if getattr(row, 'syllabus_id', None) == syllabus_id]
 
-
-		# Ensure personal syllabus exists before capturing its path in profile_scope
-		if syllabus_id is not None:
-			_tool_ensure_personal_syllabus({"user_id": user_id, "syllabus_id": syllabus_id})
-			# re-read UserSyllabus to pick up the path set by init
-			user_syllabuses = list_user_syllabuses(user_id)
-			user_syllabuses = [row for row in user_syllabuses if getattr(row, 'syllabus_id', None) == syllabus_id]
+	# Ensure personal syllabus exists before capturing its path in profile_scope.
+	if syllabus_id is not None:
+		_tool_ensure_personal_syllabus({"user_id": user_id, "syllabus_id": syllabus_id})
+		user_syllabuses = list_user_syllabuses(user_id)
+		user_syllabuses = [row for row in user_syllabuses if getattr(row, 'syllabus_id', None) == syllabus_id]
 
 	profile_scope = []
 	for row in user_syllabuses:
@@ -276,4 +308,3 @@ def get_or_build_learning_profile(
 	if isinstance(profile, dict):
 		profile['profile_refreshed'] = True
 	return profile
-

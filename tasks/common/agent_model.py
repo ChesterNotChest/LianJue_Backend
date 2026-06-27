@@ -15,7 +15,10 @@ from config import OPENAI_COMPAT_MODEL_CONFIGS
 
 def _import_openai_model():
     """Lazy import to avoid collection-time failures on incompatible pydantic-ai versions."""
-    from pydantic_ai.models.openai import OpenAIModel
+    try:
+        from pydantic_ai.models.openai import OpenAIModel
+    except ImportError:
+        from pydantic_ai.models.openai import OpenAIChatModel as OpenAIModel
 
     return OpenAIModel
 

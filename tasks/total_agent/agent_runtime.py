@@ -11,6 +11,22 @@ from typing import Any, AsyncGenerator, Dict
 
 from pydantic_ai import Agent, ModelRetry, RunContext
 
+try:
+    from pydantic_ai.messages import FunctionToolResultEvent as _FunctionToolResultEvent
+
+    if "result" not in getattr(_FunctionToolResultEvent, "model_fields", {}):
+        _event_init = _FunctionToolResultEvent.__init__
+
+        def _compat_function_tool_result_event_init(self, *args, **kwargs):
+            result = kwargs.pop("result", None)
+            if result is not None:
+                return _event_init(self, result, *args, **kwargs)
+            return _event_init(self, *args, **kwargs)
+
+        _FunctionToolResultEvent.__init__ = _compat_function_tool_result_event_init
+except Exception:
+    pass
+
 from tasks.common.agent_model import build_openai_compatible_model
 from tasks.total_agent.agent_contracts import (
     ACTION_ASK_GOAL_CLARIFICATION,

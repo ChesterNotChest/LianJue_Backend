@@ -496,7 +496,7 @@ def _llm_align_knowledge(knowledge, week_candidates):
 	return enriched
 
 
-def sync_knowledge_to_weeks(user_id, syllabus_id, by_knowledge_point=None):
+def sync_knowledge_to_weeks(user_id, syllabus_id, by_knowledge_point=None, *, allow_upgrade=True):
 	"""Map profile knowledge_point scores to syllabus weeks and set competance.
 
 	Reads the persisted profile's by_knowledge_point dict, aligns knowledge
@@ -611,6 +611,11 @@ def sync_knowledge_to_weeks(user_id, syllabus_id, by_knowledge_point=None):
 		score = week_scores.get(wi)
 		if score is not None and score > 0:
 			new_level = _score_to_competance(score)
+			if not allow_upgrade and old in _PROFILE_COMPETANCE_ORDER:
+				old_index = _PROFILE_COMPETANCE_ORDER.index(old)
+				new_index = _PROFILE_COMPETANCE_ORDER.index(new_level) if new_level in _PROFILE_COMPETANCE_ORDER else old_index
+				if new_index > old_index:
+					continue
 			entry["competance"] = new_level
 			entry["competance_progress"] = 3
 			competance_before[wi] = old
