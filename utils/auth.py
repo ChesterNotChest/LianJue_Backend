@@ -19,7 +19,7 @@ def require_operator(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         data = request.get_json(silent=True) or {}
-        user_id = data.get("user_id") or request.args.get("user_id")
+        user_id = data.get("user_id") or request.form.get("user_id") or request.args.get("user_id")
         if not user_id:
             return (
                 jsonify(

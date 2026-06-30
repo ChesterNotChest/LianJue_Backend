@@ -161,41 +161,39 @@ def upload_calendar():
         "error_code": "短错误码"
     }
     '''
-    data = None
-    try:
-        data = request.get_json(force=True)
-    except Exception:
+    if request.files:
+        uploaded_file = request.files.get('file')
+        file_name = request.form.get('file_name') or (uploaded_file.filename if uploaded_file else None)
+        upload_time = request.form.get('upload_time')
+        user_id = request.form.get('user_id')
+        file_bytes = uploaded_file.read() if uploaded_file else None
+    else:
+        data = request.get_json(silent=True) or {}
+        file_name = data.get('file_name')
+        file_bytes_b64 = data.get('file_bytes')
+        upload_time = data.get('upload_time')
+        user_id = data.get('user_id')
+        if file_bytes_b64:
+            try:
+                file_bytes = base64.b64decode(file_bytes_b64)
+            except Exception:
+                return jsonify({
+                    "success": False,
+                    "file": None,
+                    "syllabus": None,
+                    "error_message": "invalid base64 file_bytes",
+                    "error_code": "invalid_base64"
+                }), 400
+        else:
+            file_bytes = None
+
+    if not file_name or not file_bytes:
         return jsonify({
             "success": False,
             "file": None,
             "syllabus": None,
-            "error_message": "invalid json",
-            "error_code": "invalid_json"
-        }), 400
-
-    file_name = data.get('file_name')
-    file_bytes_b64 = data.get('file_bytes')
-    upload_time = data.get('upload_time')
-    user_id = data.get('user_id')
-
-    if not file_name or not file_bytes_b64:
-        return jsonify({
-            "success": False,
-            "file": None,
-            "syllabus": None,
-            "error_message": "file_name and file_bytes are required",
+            "error_message": "file_name and file are required",
             "error_code": "missing_fields"
-        }), 400
-
-    try:
-        file_bytes = base64.b64decode(file_bytes_b64)
-    except Exception:
-        return jsonify({
-            "success": False,
-            "file": None,
-            "syllabus": None,
-            "error_message": "invalid base64 file_bytes",
-            "error_code": "invalid_base64"
         }), 400
 
     # determine calendar save dir
