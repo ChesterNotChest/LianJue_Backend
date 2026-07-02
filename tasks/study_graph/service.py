@@ -401,6 +401,10 @@ def get_student_lifelong_overview(user_id: int) -> dict:
             "edge_type": "enrolled",
         })
 
+        prefixed_node_ids: set[str] = set()
+        prefixed_parent_targets: set[str] = set()
+        prefixed_edge_pairs: set[tuple[str, str]] = set()
+
         # prefix node ids with syllabus_id to avoid collisions across subjects
         for n in raw_nodes:
             original_id = n.get("node_id", "")
@@ -408,12 +412,35 @@ def get_student_lifelong_overview(user_id: int) -> dict:
             n["node_id"] = f"{tree.syllabus_id}:{original_id}"
             if n.get("parent_node_id"):
                 n["parent_node_id"] = f"{tree.syllabus_id}:{n['parent_node_id']}"
+            prefixed_node_ids.add(n["node_id"])
             all_nodes.append(n)
 
         for e in raw_edges:
             e["source"] = f"{tree.syllabus_id}:{e.get('source', '')}"
             e["target"] = f"{tree.syllabus_id}:{e.get('target', '')}"
+            prefixed_edge_pairs.add((e["source"], e["target"]))
+            if e.get("edge_type") == "parent_of" and e["source"] in prefixed_node_ids and e["target"] in prefixed_node_ids:
+                prefixed_parent_targets.add(e["target"])
             all_edges.append(e)
+
+        for n in raw_nodes:
+            node_id = n.get("node_id")
+            parent_id = n.get("parent_node_id")
+            has_valid_parent = bool(parent_id and parent_id in prefixed_node_ids)
+            has_parent_edge = bool(node_id in prefixed_parent_targets)
+            if node_id and has_valid_parent and not has_parent_edge and (parent_id, node_id) not in prefixed_edge_pairs:
+                all_edges.append({
+                    "source": parent_id,
+                    "target": node_id,
+                    "edge_type": "parent_of",
+                })
+            elif node_id and not has_valid_parent and not has_parent_edge:
+                n["parent_node_id"] = subject_id
+                all_edges.append({
+                    "source": subject_id,
+                    "target": node_id,
+                    "edge_type": "parent_of",
+                })
 
         syllabi.append({
             "syllabus_id": tree.syllabus_id,

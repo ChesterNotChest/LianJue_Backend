@@ -27,6 +27,7 @@ from tasks import personal_recommendation_task as prt
 from tasks import study_graph_task as sgt
 from tasks.generative_task import generate_resources_from_request
 
+DEMO_SYLLABUS_IDS = [8]
 WORKING_SYLLABUS_PATH = "tests/fixtures/大数据概论_20260322235507.json"
 DEMO_PASSWORD = "demo123"
 DEMO_SUMMARY_ROOT = Path(__file__).resolve().parents[1] / "artifacts" / "total_agent" / "demo_students"
@@ -64,8 +65,8 @@ def _require_seed_demo_env():
         pytest.skip(
             "Set RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1"
         )
-    if not Path(WORKING_SYLLABUS_PATH).exists():
-        pytest.skip(f"Missing: {WORKING_SYLLABUS_PATH}")
+    if not DEMO_SYLLABUS_IDS:
+        pytest.skip("DEMO_SYLLABUS_IDS is empty")
 
 
 def _normalize_model_for_dashscope():
@@ -86,6 +87,15 @@ def _graph_name() -> str:
     )
 
 
+def _get_demo_syllabus():
+    """Pick the first configured demo syllabus. Add more ids to DEMO_SYLLABUS_IDS later."""
+    for syllabus_id in DEMO_SYLLABUS_IDS:
+        syllabus = Syllabus.query.filter_by(syllabus_id=syllabus_id).first()
+        if syllabus is not None:
+            return syllabus
+    pytest.skip(f"No configured demo syllabus found; expected one of {DEMO_SYLLABUS_IDS}")
+
+
 @pytest.fixture
 def demo_db_env():
     _require_seed_demo_env()
@@ -97,10 +107,7 @@ def demo_db_env():
             password_hash=generate_password_hash(DEMO_PASSWORD),
             email=f"demo_{suffix}@lianjue.example.com",
         )
-        syllabus = Syllabus.query.filter_by(syllabus_path=WORKING_SYLLABUS_PATH).first()
-        if syllabus is None:
-            syllabus = Syllabus(title="大数据概论", syllabus_path=WORKING_SYLLABUS_PATH)
-            db.session.add(syllabus)
+        syllabus = _get_demo_syllabus()
         db.session.add(user)
         db.session.commit()
         relation = UserSyllabus(
