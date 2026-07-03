@@ -613,8 +613,27 @@ def _get_primary_graph_info(syllabus_id: int):
     return _get_graph_info_from_legacy_payload(syllabus_id)
 
 
+def _get_all_graph_info(syllabus_id: int) -> list[dict]:
+    """Return all graph_id + graphId (graph name) pairs for a syllabus."""
+    graph_ids = list_graphs_by_syllabus(syllabus_id)
+    result = []
+    for gid in graph_ids:
+        graph = get_graph_by_id(gid)
+        if graph:
+            result.append({
+                'graph_id': getattr(graph, 'graph_id', gid),
+                'graph_name': getattr(graph, 'graphId', None),
+            })
+    if not result:
+        primary_id, primary_name = _get_graph_info_from_legacy_payload(syllabus_id)
+        if primary_id is not None:
+            result.append({'graph_id': primary_id, 'graph_name': primary_name})
+    return result
+
+
 def _serialize_teacher_syllabus(syllabus, user_binding=None):
     graph_id, graph_name = _get_primary_graph_info(getattr(syllabus, 'syllabus_id', None))
+    all_graphs = _get_all_graph_info(getattr(syllabus, 'syllabus_id', None))
 
     return {
         'syllabus_id': getattr(syllabus, 'syllabus_id', None),
@@ -626,17 +645,22 @@ def _serialize_teacher_syllabus(syllabus, user_binding=None):
         'day_one_time': _serialize_day_one_time(getattr(syllabus, 'day_one_time', None)),
         'graph_id': graph_id,
         'graph_name': graph_name,
+        'graph_ids': [g['graph_id'] for g in all_graphs],
+        'graph_names': [g['graph_name'] for g in all_graphs if g.get('graph_name')],
     }
 
 
 def _serialize_student_syllabus(syllabus, user_binding):
     personal_path = getattr(user_binding, 'personal_syllabus_path', None)
+    all_graphs = _get_all_graph_info(getattr(syllabus, 'syllabus_id', None))
     return {
         'syllabus_id': getattr(syllabus, 'syllabus_id', None),
         'title': getattr(syllabus, 'title', None),
         'personal_syllabus_path': personal_path,
         'day_one_time': _serialize_day_one_time(getattr(syllabus, 'day_one_time', None)),
         'isLearning': bool(personal_path),
+        'graph_ids': [g['graph_id'] for g in all_graphs],
+        'graph_names': [g['graph_name'] for g in all_graphs if g.get('graph_name')],
     }
 
 

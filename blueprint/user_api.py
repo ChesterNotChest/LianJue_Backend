@@ -443,3 +443,110 @@ def demo_students_api():
         'error_code': '',
         'error_message': '',
     })
+
+
+@bp.route('/knowledge-graph/snapshot', methods=['GET'])
+def knowledge_graph_snapshot_api():
+    """返回指定 graph 的知识图谱快照（合并多个 graph）。
+
+    Query params:
+      graph_ids: 逗号分隔的 graphId 列表，如 RAG,Algorithm,Software
+      refresh: 传 1 强制重读文件（未来可替换为实时采集）
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    graph_ids_param = request.args.get('graph_ids', '')
+    if not graph_ids_param:
+        return jsonify({
+            'success': False,
+            'snapshot': None,
+            'error_message': 'missing graph_ids parameter',
+            'error_code': 'missing_graph_ids',
+        }), 400
+
+    graph_ids = [gid.strip() for gid in graph_ids_param.split(',') if gid.strip()]
+    if not graph_ids:
+        return jsonify({
+            'success': False,
+            'snapshot': None,
+            'error_message': 'empty graph_ids',
+            'error_code': 'empty_graph_ids',
+        }), 400
+
+    data_dir = Path(os.getcwd()) / 'data' / 'knowledge_graph'
+    snapshots = []
+    missing = []
+
+    for graph_id in graph_ids:
+        cache_path = data_dir / f'{graph_id.lower()}_probe_full_result.json'
+        # fallback: try original naming
+        if not cache_path.exists():
+            cache_path = data_dir / f'{graph_id.lower()}_snapshot_full.json'
+        if not cache_path.exists():
+            # try rag_probe_full_result.json etc.
+            for candidate in data_dir.glob(f'{graph_id.lower()}_*_full_result.json'):
+                cache_path = candidate
+                break
+        if not cache_path.exists():
+            missing.append(graph_id)
+            continue
+        try:
+            raw = json.loads(cache_path.read_text(encoding='utf-8'))
+            if isinstance(raw, dict) and 'graphSnapshot' in raw:
+                raw = raw['graphSnapshot']
+            if isinstance(raw, dict) and 'nodes' in raw:
+                snapshots.append(raw)
+            else:
+                missing.append(graph_id)
+        except Exception:
+            missing.append(graph_id)
+
+    if not snapshots:
+        return jsonify({
+            'success': False,
+            'snapshot': None,
+            'error_message': f'no cached data found for: {", ".join(missing)}',
+            'error_code': 'no_cached_data',
+        }), 404
+
+    # merge
+    all_nodes = []
+    all_edges = []
+    all_recs = []
+    for snap in snapshots:
+        all_nodes.extend(snap.get('nodes') or [])
+        all_edges.extend(snap.get('edges') or [])
+        all_recs.extend(snap.get('recommendations') or [])
+
+    merged = {
+        'schemaVersion': 1,
+        'generatedAt': max(
+            (s.get('generatedAt', '') for s in snapshots if s.get('generatedAt')),
+            key=lambda t: t or '', default='',
+        ) or None,
+        'layout': {
+            'mode': 'spiral',
+            'radius': 5200,
+            'graphId': '+'.join(graph_ids),
+        },
+        'nodes': all_nodes,
+        'edges': all_edges,
+        'recommendations': sorted(
+            all_recs, key=lambda r: r.get('score', 0), reverse=True
+        )[:36],
+        '_meta': {
+            'graph_ids': graph_ids,
+            'missing': missing,
+            'node_count': len(all_nodes),
+            'edge_count': len(all_edges),
+            'cached': True,
+        },
+    }
+    return jsonify({
+        'success': True,
+        'snapshot': merged,
+        'error_code': '',
+        'error_message': '',
+    })
