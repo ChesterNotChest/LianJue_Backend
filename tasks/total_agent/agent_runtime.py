@@ -30,10 +30,12 @@ except Exception:
 from tasks.common.agent_model import build_openai_compatible_model
 from tasks.total_agent.agent_contracts import (
     ACTION_ASK_GOAL_CLARIFICATION,
+    ACTION_GET_NEXT_LEARNING_TASK,
     ACTION_GENERATE_CURRENT_STEP_RESOURCE,
     ACTION_OFFER_PRACTICE_OR_RESOURCE,
     ACTION_RECORD_LEARNING_FEEDBACK,
     ACTION_WAIT_USER_ACCEPTANCE,
+    INTENT_ABANDON_LEARNING_PLAN,
     INTENT_ACCEPT_RECOMMENDATION,
     INTENT_ANSWER_LEARNING_QUESTION,
     INTENT_GENERATE_CURRENT_STEP_RESOURCE,
@@ -47,6 +49,7 @@ from tasks.total_agent.agent_contracts import (
     STREAM_EVENT_TOOL_END,
     STREAM_EVENT_TOOL_START,
     STREAM_EVENT_TOOL_STATUS,
+    TOOL_ABANDON_LEARNING_PLAN,
     TOOL_ACCEPT_LEARNING_PLAN,
     TOOL_ANSWER_LEARNING_QUESTION,
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
@@ -77,6 +80,7 @@ from tasks.total_agent.agent_tools import (
     tool_record_learning_feedback,
     tool_run_learning_recommendation,
     tool_skip_current_step,
+    tool_abandon_learning_plan,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,6 +92,7 @@ CHAT_TERMINAL_TOOLS = {
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_SKIP_CURRENT_STEP,
+    TOOL_ABANDON_LEARNING_PLAN,
     TOOL_ANSWER_LEARNING_QUESTION,
 }
 
@@ -111,7 +116,9 @@ def get_total_agent() -> Agent:
             "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
             "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal and include that topic in record_learning_feedback. "
             "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
+            "When they want to abandon the current plan: abandon it (abandon_learning_plan). "
             "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
+            "When all steps in a plan are completed, the plan will finish automatically - guide the student to either review weak points or get a new recommendation. "
             "When class-wide context might help: check the course overview (get_course_learning_tree_summary). "
             "IMPORTANT: When the student explicitly asks you to generate a specific resource type (PPT, document, quiz, mindmap, coding practice), just do it. Do NOT ask for confirmation or offer multiple plans. Call generate_current_step_resource immediately after load_total_context and infer_user_intent. "
             "When calling generate_current_step_resource, you MUST pass the resource_types parameter as a list. Available types: [\"ppt\", \"documents\", \"quiz\", \"mindmap\", \"coding_practice\"]. "
@@ -210,6 +217,10 @@ def get_total_agent() -> Agent:
     def skip_current_step(ctx: RunContext[TotalAgentDeps]) -> dict:
         return _remember_terminal(ctx, TOOL_SKIP_CURRENT_STEP, tool_skip_current_step(ctx.deps.state))
 
+    @agent.tool(sequential=True)
+    def abandon_learning_plan(ctx: RunContext[TotalAgentDeps]) -> dict:
+        return _remember_terminal(ctx, TOOL_ABANDON_LEARNING_PLAN, tool_abandon_learning_plan(ctx.deps.state))
+
     return agent
 
 
@@ -285,6 +296,13 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         if isinstance(state.get("skip_current_step_result"), dict)
         else {}
     )
+    abandon_terminal = (
+        terminal
+        if terminal_tool == TOOL_ABANDON_LEARNING_PLAN
+        else state.get("abandon_learning_plan_result")
+        if isinstance(state.get("abandon_learning_plan_result"), dict)
+        else {}
+    )
     answer_terminal = (
         terminal
         if terminal_tool == TOOL_ANSWER_LEARNING_QUESTION
@@ -319,6 +337,8 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
             result["reply"] = guidance["reply"]
     if skip_terminal:
         result["skip_current_step"] = skip_terminal
+    if abandon_terminal:
+        result["abandon_learning_plan"] = abandon_terminal
     if evidence_terminal:
         result["retrieve_learning_evidence"] = evidence_terminal
     if answer_terminal:
@@ -336,6 +356,8 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
         suggested = feedback_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
     elif intent == INTENT_SKIP_CURRENT_STEP or terminal_tool == TOOL_SKIP_CURRENT_STEP:
         suggested = skip_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif intent == INTENT_ABANDON_LEARNING_PLAN or terminal_tool == TOOL_ABANDON_LEARNING_PLAN:
+        suggested = abandon_terminal.get("suggested_next_action") or ACTION_GET_NEXT_LEARNING_TASK
     elif intent == INTENT_ANSWER_LEARNING_QUESTION or terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
         suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
 
@@ -379,6 +401,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
                 resource_terminal=resource_terminal,
                 feedback_terminal=feedback_terminal,
                 skip_terminal=skip_terminal,
+                abandon_terminal=abandon_terminal,
                 answer_terminal=answer_terminal,
             )
             logger.info(
@@ -485,6 +508,7 @@ def _select_buddy_event(
     resource_terminal: dict,
     feedback_terminal: dict,
     skip_terminal: dict,
+    abandon_terminal: dict,
     answer_terminal: dict,
 ) -> dict:
     events: list[tuple[int, dict]] = []
@@ -528,6 +552,15 @@ def _select_buddy_event(
             "payload": {
                 "next_task_title": next_task.get("title") or next_task.get("topic") or "",
                 "metrics": skip_terminal.get("metrics") if isinstance(skip_terminal.get("metrics"), dict) else {},
+            },
+        }))
+    if abandon_terminal and abandon_terminal.get("success", True):
+        events.append((70, {
+            "event_type": "plan_abandoned",
+            "payload": {
+                "plan_id": abandon_terminal.get("plan_id") or "",
+                "status": abandon_terminal.get("status") or "abandoned",
+                "reason": abandon_terminal.get("reason") or "",
             },
         }))
     if recommendation_terminal and recommendation_terminal.get("has_best_path"):

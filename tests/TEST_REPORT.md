@@ -144,7 +144,7 @@ PERSONAL_RECOMMENDATION_DECOMPOSER_TOP_K=5
 
 ### 1.o 演示学生播种
 
-播种 3 个演示学生（低/中/高进度），全量真实 LLM + RAG + DB：
+播种 5 个演示学生（低/偏低/中/偏高/高进度），每个学生对 3 个学科（8/18/104），全量真实 LLM + RAG + DB：
 
 ```bash
 RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 pytest tests/total_agent/test_seed_demo_students.py -v
@@ -166,6 +166,12 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 pytest tests/total_agent/tes
 播种后在登录页输入用户名 + 密码 `demo123` 即可进入。
 
 每个用户以 `demo_{level}_{uuid}` 命名，多次运行不冲突。
+
+### 1.p 计划生命周期 smoke 测试
+
+```bash
+pytest tests/total_agent/test_plan_lifecycle.py -v
+```
 
 ## 2 用例描述
 
@@ -741,7 +747,7 @@ tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_
 
 ### 2.o 演示学生播种
 
-目标：生成 3 个有真实学习数据的持久化演示学生（低/中/高进度），供前端登录页选择并展示完整平台能力。
+目标：生成 5 个有真实学习数据的持久化演示学生（低/偏低/中/偏高/高进度），每人对 3 个学科（8/18/104）走同一套完整链路，供前端登录页选择并展示完整平台能力。
 
 覆盖文件：
 
@@ -749,18 +755,38 @@ tests/artifacts/personal_recommendation/agent_choice_real_rag/agent_choice_real_
 
 覆盖范围：
 
-- 画像：低/中/高三级不同的 `profile_input_records`，通过真实 LLM Agent 构建并持久化到 `<CWD>/profiles/`
-- 学习计划（中/高）：真实推荐 Agent → deterministic fallback → snapshot → accept，落 `manifest.jsonl`
-- 学习树（中/高）：`submit_learning_tree_changes` 写入批次变更（Medium 5 batches / High 9 batches）
-- 生成资源（中/高）：`generate_resources_from_request` 产出 documents/mindmap
-- Summary 输出：`tests/artifacts/total_agent/demo_students/summary.json`
+- 画像：五档不同的 `profile_input_records`，按 `syllabus.title` 动态生成，通过真实 LLM Agent 构建并持久化到 `<CWD>/profiles/`
+- 推荐：真实推荐 Agent → deterministic fallback → snapshot（proposed，不 auto-accept）
+- 学习树：`submit_learning_tree_changes` 写入批次变更（low 2 nodes → high 10 nodes），五档使用不同知识主题
+- 生成资源：`generate_resources_from_request` 产出不同资源类型（documents / quiz / ppt / mindmap）
+- Summary 输出：`tests/artifacts/total_agent/demo_students/summary.json`，按 level 去重保留最新
 
 不可 monkeypatch，所有数据落到生产路径。多次运行不冲突（`demo_{level}_{uuid}` 命名）。
 
 播种后使用方式：
 
 - 前端登录页输入用户名 + 密码 `demo123`
-- 或调用 `GET /api/demo_students` 获取最新学生列表
+- 或调用 `GET /api/demo_students` 获取最新 5 个学生列表
+
+### 2.p 计划生命周期 smoke 测试
+
+目标：验证学习计划状态机——plan creation、step completion、auto-complete on last step、plan abandon、plan supersede——全部不依赖 LLM/RAG/DB。
+
+覆盖文件：
+
+- `tests/total_agent/test_plan_lifecycle.py`
+
+覆盖范围：
+
+- 推荐 accept 后创建 active plan，首步 active、其余 pending
+- 单步完成 → 自动激活下一步
+- 所有步骤完成 + `complete_learning_plan` → plan status = completed，`get_active_learning_plan` 返回 None
+- `abandon_learning_plan(reason)` → plan status = abandoned，`get_active_learning_plan` 返回 None
+- 新推荐 accept → 旧 plan superseded，新 plan active
+- 已完成后 plan 再次 accept → 不 supersede（旧 plan 已是终态）
+- 步骤跳过 → 自动激活下一步
+
+测试用 mock profile + mock learning tree 替换真实 Agent/LLM 依赖，产物流向 `tests/artifacts/plan_lifecycle/`。
 
 ## 3 生成文件说明
 

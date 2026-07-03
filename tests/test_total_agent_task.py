@@ -308,6 +308,7 @@ def test_total_agent_buddy_event_selector_prefers_single_highest_priority_event(
             "updated_step": {"title": "Old", "status": "completed"},
         },
         skip_terminal={},
+        abandon_terminal={},
         answer_terminal={},
     )
 

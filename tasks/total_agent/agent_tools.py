@@ -101,6 +101,7 @@ from tasks.total_agent.agent_contracts import (
     REUSE_REJECT_TOO_EASY,
     REUSE_REJECT_TOO_HARD,
     REUSE_REJECT_TOPIC_MISMATCH,
+    TOOL_ABANDON_LEARNING_PLAN,
     TOOL_ACCEPT_LEARNING_PLAN,
     TOOL_ANSWER_LEARNING_QUESTION,
     TOOL_APPLY_LEARNING_EFFECT_SIGNAL,
@@ -399,6 +400,23 @@ def _confirmation_requested(payload: dict) -> bool:
     message = _safe_text(payload.get("message"))
     markers = ("采纳", "确认", "就按", "按这条", "开始这条", "接受", "accept", "confirm")
     return any(marker in message.lower() for marker in markers)
+
+
+def _has_pending_recommendation(state: Dict[str, Any]) -> bool:
+    """Check if there's a proposed recommendation that can be accepted."""
+    # Direct recommendation result in state (from prior agent tool call)
+    recommendation = _safe_dict(state.get("recommendation_result"))
+    if recommendation.get("best_path"):
+        return True
+    # Payload may carry a recommendation_result (e.g. from tests or API)
+    payload = _safe_dict(state.get("payload"))
+    payload_rec = _safe_dict(payload.get("recommendation_result"))
+    if payload_rec.get("best_path"):
+        return True
+    # Total context may embed it from load_total_context
+    total_context = _safe_dict(state.get("total_context"))
+    rec_context = _safe_dict(total_context.get("recommendation") or total_context.get("recommendation_result"))
+    return bool(rec_context.get("best_path"))
 
 
 def _message_has_any(message: str, markers: Iterable[str]) -> bool:
@@ -1837,10 +1855,16 @@ def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
         intent = explicit_intent
         confidence = 0.98
         reason = "payload provided explicit intent"
-    elif _confirmation_requested(payload):
+    elif _confirmation_requested(payload) and _has_pending_recommendation(state):
         intent = INTENT_ACCEPT_RECOMMENDATION
         confidence = 0.9
-        reason = "message confirms a recommendation path"
+        reason = "message confirms a pending recommendation path"
+    elif _confirmation_requested(payload):
+        # User used confirmation language but there's nothing to accept —
+        # fall through to later stages instead of blocking on accept.
+        intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE if active_plan else INTENT_RECOMMEND_LEARNING_PATH
+        confidence = 0.72
+        reason = "confirmation-like message but no pending recommendation; treating as continue/recommend"
     elif _message_has_any(message, ("完成", "做完", "看完", "学完", "得分", "通过", "done", "completed", "finished", "score")):
         intent = INTENT_RECORD_LEARNING_FEEDBACK
         confidence = 0.86
@@ -2555,8 +2579,17 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
     updated_step = _safe_dict(_find_step(updated_plan, step.get("step_id")) or step)
     activated_step, final_plan = _activate_next_pending(user_id, syllabus_id, plan.get("plan_id"), updated_plan)
     next_task = _find_next_step(final_plan) or {}
-    state["active_plan"] = final_plan
-    state["next_task"] = next_task
+    # Auto-complete the plan when all steps are finished
+    plan_completed = False
+    if not activated_step and not next_task and final_plan.get("plan_id"):
+        try:
+            prt.complete_learning_plan(user_id, str(final_plan["plan_id"]), syllabus_id=syllabus_id)
+            plan_completed = True
+            final_plan["status"] = prt.LEARNING_PLAN_STATUS_COMPLETED
+        except Exception:
+            pass
+    state["active_plan"] = final_plan if not plan_completed else {}
+    state["next_task"] = {} if plan_completed else next_task
     study_graph_sync = _safe_dict(update.get("study_graph_sync"))
     if status == prt.LEARNING_PLAN_STEP_STATUS_SKIPPED:
         study_graph_sync = {"attempted": False, "success": True, "warning": "skipped step is not synced"}
@@ -2588,6 +2621,44 @@ def tool_skip_current_step(state: Dict[str, Any]) -> dict:
     payload.setdefault("event_type", "step_skipped")
     state["payload"] = payload
     return _record_step_status(state, prt.LEARNING_PLAN_STEP_STATUS_SKIPPED, TOOL_SKIP_CURRENT_STEP)
+
+
+def tool_abandon_learning_plan(state: Dict[str, Any]) -> dict:
+    _append_trace(state, TOOL_ABANDON_LEARNING_PLAN)
+    payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id"))
+    if not user_id:
+        return _tool_result(
+            TOOL_ABANDON_LEARNING_PLAN,
+            False,
+            state=state,
+            error_code="missing_user_id",
+            error_message="user_id must be a positive integer",
+        )
+    total_context = _safe_dict(state.get("total_context"))
+    active_plan = _safe_dict(total_context.get("active_plan"))
+    plan_id = str(active_plan.get("plan_id") or "")
+    if not plan_id:
+        return _tool_result(
+            TOOL_ABANDON_LEARNING_PLAN,
+            False,
+            state=state,
+            error_code="no_active_plan",
+            error_message="no active learning plan to abandon",
+        )
+    reason = _safe_text(payload.get("reason") or payload.get("message") or "student_request")
+    result = prt.abandon_learning_plan(user_id, plan_id, syllabus_id=syllabus_id, reason=reason)
+    state["active_plan"] = {}
+    state["next_task"] = {}
+    return _tool_result(
+        TOOL_ABANDON_LEARNING_PLAN,
+        bool(result.get("success")),
+        state=state,
+        plan_id=plan_id,
+        status=result.get("status"),
+        reason=reason,
+    )
 
 
 def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
@@ -2753,4 +2824,5 @@ __all__ = [
     "tool_record_learning_feedback",
     "tool_run_learning_recommendation",
     "tool_skip_current_step",
+    "tool_abandon_learning_plan",
 ]
