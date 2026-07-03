@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 
 from extensions import db
 from schemas.user import User
+from schemas.user_syllabus import UserSyllabus
 from tasks.user_task import (
     register,
     login,
@@ -398,6 +399,10 @@ def learning_profile_refresh_api():
 
 def _guess_level(user_name: str) -> str:
     name = (user_name or "").lower()
+    if "medium_high" in name or "medium-high" in name:
+        return "medium_high"
+    if "low_medium" in name or "low-medium" in name:
+        return "low_medium"
     if "high" in name:
         return "high"
     if "medium" in name:
@@ -409,12 +414,12 @@ def _guess_level(user_name: str) -> str:
 
 @bp.route('/demo_students', methods=['GET'])
 def demo_students_api():
-    """返回最新的 3 个演示学生（按创建时间倒序）。"""
+    """返回最新的 5 个演示学生（按创建时间倒序）。"""
     users = (
         User.query
         .filter(User.user_name.like('demo_%'))
         .order_by(User.create_time.desc())
-        .limit(3)
+        .limit(5)
         .all()
     )
     return jsonify({
@@ -424,6 +429,13 @@ def demo_students_api():
                 'user_id': u.user_id,
                 'user_name': u.user_name,
                 'level': _guess_level(u.user_name),
+                'syllabus_ids': [
+                    row.syllabus_id
+                    for row in UserSyllabus.query
+                    .filter_by(user_id=u.user_id)
+                    .order_by(UserSyllabus.syllabus_id.asc())
+                    .all()
+                ],
                 'created_at': u.create_time.isoformat() if u.create_time else None,
             }
             for u in users
