@@ -445,70 +445,203 @@ def demo_students_api():
     })
 
 
+@bp.route('/graph/list', methods=['GET'])
+def graph_list_api():
+    """返回所有可用图谱的元数据列表。"""
+    from schemas.graph import Graph
+
+    graphs = Graph.query.all()
+    return jsonify({
+        'success': True,
+        'graphs': [
+            {
+                'graph_id': g.graph_id,
+                'graphId': g.graphId,
+                'snapshot_cache_path': g.snapshot_cache_path,
+            }
+            for g in graphs
+        ],
+        'error_code': '',
+        'error_message': '',
+    })
+
+
+@bp.route('/status/version', methods=['GET'])
+def status_version_api():
+    """四维版本摘要，供前端心跳轮询 diff。"""
+    from tasks.graph_task import get_galaxy_version
+
+    user_id = request.args.get('user_id', type=int)
+    syllabus_id = request.args.get('syllabus_id', type=int)
+
+    version = {
+        'galaxy_version': get_galaxy_version(),
+        'study_graph_version': None,
+        'plan_version': None,
+        'recommendation_version': None,
+    }
+
+    if user_id and syllabus_id:
+        try:
+            from tasks.study_graph.service import get_learning_tree_features
+            features = get_learning_tree_features(user_id, syllabus_id)
+            version['study_graph_version'] = str(features.get('updated_at') or '')
+        except Exception:
+            pass
+
+        try:
+            from tasks.personal_recommendation_task import get_active_learning_plan
+            plan = get_active_learning_plan(user_id, syllabus_id)
+            if plan:
+                version['plan_version'] = str(plan.get('plan_id') or 'active')
+        except Exception:
+            pass
+
+        try:
+            from tasks.personal_recommendation_task import list_recommendation_snapshots
+            snapshots = list_recommendation_snapshots(user_id, syllabus_id)
+            if snapshots:
+                version['recommendation_version'] = str((snapshots[0].get('recommendation_id') or ''))
+        except Exception:
+            pass
+
+    return jsonify({'success': True, 'version': version})
+
+
 @bp.route('/knowledge-graph/snapshot', methods=['GET'])
 def knowledge_graph_snapshot_api():
     """返回指定 graph 的知识图谱快照（合并多个 graph）。
 
     Query params:
-      graph_ids: 逗号分隔的 graphId 列表，如 RAG,Algorithm,Software
-      refresh: 传 1 强制重读文件（未来可替换为实时采集）
+      graph_names: 逗号分隔的 graphId 列表
+      refresh: 传 1 强制重新从 AbutionGraph 采集
+    首次访问且无缓存时自动触发采集，后续走缓存。
     """
     import json
-    import os
     from pathlib import Path
+
+    from schemas.graph import Graph
+    from repositories.graph_repo import get_graph_by_graphId
+    from repositories.syllabus_graph_repo import list_syllabuses_by_graph
 
     graph_ids_param = request.args.get('graph_ids', '')
     if not graph_ids_param:
         return jsonify({
-            'success': False,
-            'snapshot': None,
-            'error_message': 'missing graph_ids parameter',
-            'error_code': 'missing_graph_ids',
+            'success': False, 'snapshot': None,
+            'error_message': 'missing graph_ids parameter', 'error_code': 'missing_graph_ids',
         }), 400
 
-    graph_ids = [gid.strip() for gid in graph_ids_param.split(',') if gid.strip()]
-    if not graph_ids:
+    graph_names = [gid.strip() for gid in graph_ids_param.split(',') if gid.strip()]
+    if not graph_names:
         return jsonify({
-            'success': False,
-            'snapshot': None,
-            'error_message': 'empty graph_ids',
-            'error_code': 'empty_graph_ids',
+            'success': False, 'snapshot': None,
+            'error_message': 'empty graph_ids', 'error_code': 'empty_graph_ids',
         }), 400
 
-    data_dir = Path(os.getcwd()) / 'data' / 'knowledge_graph'
+    data_dir = Path(__file__).resolve().parents[1] / 'data' / 'knowledge_graph'
+    do_refresh = request.args.get('refresh', '0') == '1'
+
+    # ── helpers ──
+    def _resolve_cache_path(name: str) -> Path | None:
+        record = get_graph_by_graphId(name)
+        if record and getattr(record, 'snapshot_cache_path', None):
+            p = Path(record.snapshot_cache_path)
+            if not p.is_absolute():
+                p = Path(__file__).resolve().parents[1] / p
+            if p.exists():
+                return p
+        for c in [
+            data_dir / f'{name.lower()}_probe_full_result.json',
+            data_dir / f'{name.lower()}_snapshot_full.json',
+        ]:
+            if c.exists():
+                return c
+        for c in data_dir.glob(f'{name.lower()}_*_full_result.json'):
+            return c
+        return None
+
+    def _build_syllabus_list(name: str) -> list[dict]:
+        from repositories.syllabus_repo import get_syllabus_by_id
+        result = []
+        for sid in list_syllabuses_by_graph(name):
+            s = get_syllabus_by_id(sid)
+            if s:
+                result.append({'syllabus_id': sid, 'title': getattr(s, 'title', f'学科 {sid}')})
+        return result
+
+    def _read_snapshot(name: str) -> dict | None:
+        cache_path = _resolve_cache_path(name)
+        if not cache_path:
+            return None
+        raw = json.loads(cache_path.read_text(encoding='utf-8'))
+        if isinstance(raw, dict) and 'graphSnapshot' in raw:
+            raw = raw['graphSnapshot']
+        if isinstance(raw, dict) and 'nodes' in raw:
+            raw = dict(raw)
+            raw['syllabusList'] = _build_syllabus_list(name)
+            for node in raw.get('nodes', []):
+                if isinstance(node, dict):
+                    node.setdefault('meta', {})['graphId'] = name
+            return raw
+        return None
+
+    refresh_results: dict = {}
+
+    def _refresh_one(name: str) -> dict:
+        from tasks.graph_task import refresh_graph_cache
+        import logging
+        _log = logging.getLogger(__name__)
+        try:
+            _log.info("refresh_graph_cache: %s starting", name)
+            result = refresh_graph_cache(name)
+            if result.get("success"):
+                _log.info("refresh_graph_cache: %s ok, nodes=%s edges=%s", name, result.get("node_count"), result.get("edge_count"))
+            else:
+                _log.warning("refresh_graph_cache: %s failed: %s", name, result.get("error"))
+            refresh_results[name] = result
+            return result
+        except Exception as e:
+            _log.exception("refresh_graph_cache: %s exception: %s", name, e)
+            err = {"success": False, "error": str(e)}
+            refresh_results[name] = err
+            return err
+
+    # ── main: read cache (with auto-refresh on miss) ──
+    if do_refresh:
+        for graph_name in graph_names:
+            _refresh_one(graph_name)
+
     snapshots = []
     missing = []
 
-    for graph_id in graph_ids:
-        cache_path = data_dir / f'{graph_id.lower()}_probe_full_result.json'
-        # fallback: try original naming
-        if not cache_path.exists():
-            cache_path = data_dir / f'{graph_id.lower()}_snapshot_full.json'
-        if not cache_path.exists():
-            # try rag_probe_full_result.json etc.
-            for candidate in data_dir.glob(f'{graph_id.lower()}_*_full_result.json'):
-                cache_path = candidate
-                break
-        if not cache_path.exists():
-            missing.append(graph_id)
-            continue
-        try:
-            raw = json.loads(cache_path.read_text(encoding='utf-8'))
-            if isinstance(raw, dict) and 'graphSnapshot' in raw:
-                raw = raw['graphSnapshot']
-            if isinstance(raw, dict) and 'nodes' in raw:
-                snapshots.append(raw)
+    for graph_name in graph_names:
+        snap = _read_snapshot(graph_name)
+        if snap:
+            snapshots.append(snap)
+        else:
+            missing.append(graph_name)
+
+    # Auto-refresh on first miss (best-effort, never blocks)
+    if missing and not do_refresh:
+        for graph_name in missing:
+            _refresh_one(graph_name)
+        missing_retry = []
+        for graph_name in missing:
+            snap = _read_snapshot(graph_name)
+            if snap:
+                snapshots.append(snap)
             else:
-                missing.append(graph_id)
-        except Exception:
-            missing.append(graph_id)
+                missing_retry.append(graph_name)
+        missing = missing_retry
 
     if not snapshots:
+        refresh_errors = {k: v for k, v in refresh_results.items() if not v.get('success')}
         return jsonify({
-            'success': False,
-            'snapshot': None,
+            'success': False, 'snapshot': None,
             'error_message': f'no cached data found for: {", ".join(missing)}',
             'error_code': 'no_cached_data',
+            'refresh_attempted': not not refresh_results,
+            'refresh_errors': refresh_errors,
         }), 404
 
     # merge
@@ -529,7 +662,7 @@ def knowledge_graph_snapshot_api():
         'layout': {
             'mode': 'spiral',
             'radius': 5200,
-            'graphId': '+'.join(graph_ids),
+            'graphId': '+'.join(graph_names),
         },
         'nodes': all_nodes,
         'edges': all_edges,
@@ -537,11 +670,16 @@ def knowledge_graph_snapshot_api():
             all_recs, key=lambda r: r.get('score', 0), reverse=True
         )[:36],
         '_meta': {
-            'graph_ids': graph_ids,
+            'graph_ids': graph_names,
             'missing': missing,
             'node_count': len(all_nodes),
             'edge_count': len(all_edges),
             'cached': True,
+            'syllabusListPerGraph': {
+                graph_name: _build_syllabus_list(graph_name)
+                for graph_name in graph_names
+                if graph_name not in missing
+            },
         },
     }
     return jsonify({

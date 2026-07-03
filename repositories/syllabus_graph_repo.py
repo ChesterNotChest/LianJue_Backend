@@ -43,3 +43,13 @@ def list_graphs_by_syllabus(syllabus_id: int):
 def list_syllabi_by_graph(graph_id: int):
     rows = SyllabusGraph.query.filter_by(graph_id=graph_id).all()
     return [r.syllabus_id for r in rows]
+
+
+def list_syllabuses_by_graph(graphId: str) -> list[int]:
+    """Return syllabus_ids associated with a graph by its string graphId."""
+    from schemas.graph import Graph
+    graph = Graph.query.filter_by(graphId=graphId).first()
+    if not graph:
+        return []
+    rows = SyllabusGraph.query.filter_by(graph_id=graph.graph_id).all()
+    return [r.syllabus_id for r in rows]
