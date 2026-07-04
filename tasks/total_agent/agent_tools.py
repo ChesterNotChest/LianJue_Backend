@@ -2759,6 +2759,23 @@ def tool_list_my_resources(
     """查看已生成的个人学习资源。"""
     _append_trace(state, TOOL_LIST_MY_RESOURCES)
     payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id"))
+    # ── 从 manifest 加载用户资源 ──
+    all_resources = []
+    if user_id:
+        try:
+            from tasks import generative_task
+            manifest = generative_task.load_manifest(int(user_id))
+            for item in manifest.get("resources", []):
+                if not isinstance(item, dict):
+                    continue
+                if syllabus_id and _positive_int(item.get("syllabus_id")) not in (None, syllabus_id):
+                    continue
+                all_resources.append(item)
+        except Exception:
+            pass
+    payload["resources"] = all_resources
     payload["resource_types"] = [resource_type] if resource_type else []
     payload["knowledge_items"] = [knowledge_item] if knowledge_item else []
     result = find_personal_resources(payload)

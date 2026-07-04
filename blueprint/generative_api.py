@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from tasks import generative_task
 from tasks.generative.storage import _get_backend_root
@@ -237,3 +237,63 @@ def generative_detail_api():
                 "error_code": "exception",
             }
         ), 500
+
+
+@bp.route('/resource/download', methods=['GET'])
+def resource_download_api():
+    """下载生成资源的原始文件。
+
+    Query params:
+        user_id: 用户 ID
+        resource_id: 资源 ID
+        key: main_files 中的键，如 md_path, pptx_path, mermaid_path, json_path
+    """
+    user_id = request.args.get('user_id')
+    resource_id = request.args.get('resource_id')
+    key = request.args.get('key', 'md_path')
+
+    if not user_id or not resource_id:
+        return jsonify({
+            "success": False,
+            "error_message": "missing user_id/resource_id",
+            "error_code": "missing_fields",
+        }), 400
+
+    try:
+        manifest = generative_task.load_manifest(int(user_id))
+        entry = None
+        for item in manifest.get("resources", []):
+            if isinstance(item, dict) and str(item.get("resource_id") or "") == str(resource_id):
+                entry = item
+                break
+        if not entry:
+            return jsonify({
+                "success": False,
+                "error_message": "resource not found",
+                "error_code": "not_found",
+            }), 404
+
+        main_files = entry.get("main_files", {})
+        file_path_str = main_files.get(key)
+        if not file_path_str:
+            return jsonify({
+                "success": False,
+                "error_message": f"file key not found: {key}",
+                "error_code": "file_not_found",
+            }), 404
+
+        abs_path = _get_backend_root() / file_path_str
+        if not abs_path.exists():
+            return jsonify({
+                "success": False,
+                "error_message": "file not found on disk",
+                "error_code": "file_not_found",
+            }), 404
+
+        return send_file(str(abs_path), as_attachment=True, download_name=abs_path.name, conditional=True)
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error_message": str(e),
+            "error_code": "exception",
+        }), 500
