@@ -47,6 +47,13 @@ def _learning_plan_root() -> Path:
 
 
 def _use_file_backend() -> bool:
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context() and bool(getattr(current_app, "testing", False)):
+            return True
+    except Exception:
+        pass
     return bool(os.getenv("PERSONAL_RECOMMENDATION_ROOT") or os.getenv("LEARNING_PLAN_FILE_BACKEND") == "1")
 
 
@@ -440,7 +447,7 @@ def complete_learning_plan(
     plan_id: str,
     syllabus_id: Optional[int] = None,
 ) -> dict:
-    """Mark a plan as completed (all steps finished)."""
+    """Mark a plan as completed (all steps finished). Also expire the latest snapshot."""
     append_learning_plan_manifest_entry(
         user_id,
         {
@@ -451,6 +458,11 @@ def complete_learning_plan(
         },
         syllabus_id,
     )
+    from tasks.personal_recommendation.snapshot import expire_latest_snapshot
+    try:
+        expire_latest_snapshot(user_id, syllabus_id)
+    except Exception:
+        pass  # best-effort: plan completion should not fail on snapshot expiry
     return {"success": True, "plan_id": str(plan_id), "status": LEARNING_PLAN_STATUS_COMPLETED}
 
 
@@ -460,7 +472,7 @@ def abandon_learning_plan(
     syllabus_id: Optional[int] = None,
     reason: str = "",
 ) -> dict:
-    """Abandon a plan mid-way (student request or external signal)."""
+    """Abandon a plan mid-way (student request or external signal). Also expire the latest snapshot."""
     append_learning_plan_manifest_entry(
         user_id,
         {
@@ -471,6 +483,11 @@ def abandon_learning_plan(
         },
         syllabus_id,
     )
+    from tasks.personal_recommendation.snapshot import expire_latest_snapshot
+    try:
+        expire_latest_snapshot(user_id, syllabus_id)
+    except Exception:
+        pass  # best-effort
     return {"success": True, "plan_id": str(plan_id), "status": LEARNING_PLAN_STATUS_ABANDONED}
 
 

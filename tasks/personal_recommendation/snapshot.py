@@ -362,6 +362,74 @@ def save_recommendation_snapshot(
     }
 
 
+def _get_latest_non_expired_snapshot_id(user_id: int, syllabus_id: int | None) -> str | None:
+    """Return the recommendation_id of the latest non-expired snapshot for (user, syllabus)."""
+    if not _use_file_backend():
+        _require_db_backend()
+        from schemas.agent_runtime_state import RecommendationSnapshot
+
+        query = RecommendationSnapshot.query.filter_by(user_id=user_id)
+        if syllabus_id is not None:
+            query = query.filter_by(syllabus_id=syllabus_id)
+        row = (
+            query
+            .filter(RecommendationSnapshot.status != RECOMMENDATION_SNAPSHOT_STATUS_EXPIRED)
+            .order_by(RecommendationSnapshot.created_at.desc())
+            .first()
+        )
+        return row.recommendation_id if row is not None else None
+    else:
+        latest_id = None
+        latest_ts = 0
+        root = _snapshot_root()
+        if root.exists():
+            for path in _iter_snapshot_files(user_id, syllabus_id):
+                item = _json_loads(path.read_text(encoding="utf-8"), {}) or {}
+                if item.get("status") == RECOMMENDATION_SNAPSHOT_STATUS_EXPIRED:
+                    continue
+                ts = int(item.get("created_at") or 0)
+                if ts > latest_ts:
+                    latest_ts = ts
+                    latest_id = str(item.get("recommendation_id") or "")
+        return latest_id
+
+
+def expire_latest_snapshot(user_id: int, syllabus_id: int | None) -> dict:
+    """Mark the latest non-expired snapshot for (user, syllabus) as expired.
+
+    Returns the expired snapshot id on success, or an error dict.
+    """
+    try:
+        normalized_user_id = _normalize_positive_int(user_id, "user_id")
+        normalized_syllabus_id = _normalize_optional_positive_int(syllabus_id, "syllabus_id")
+    except ValueError as exc:
+        return {"success": False, "error_code": "invalid_input", "error_message": str(exc)}
+
+    snapshot_id = _get_latest_non_expired_snapshot_id(normalized_user_id, normalized_syllabus_id)
+    if not snapshot_id:
+        return {"success": True, "recommendation_id": None, "message": "no non-expired snapshot to expire"}
+
+    result = get_recommendation_snapshot(snapshot_id)
+    if not result.get("success"):
+        return result
+
+    snapshot = _as_dict(result.get("snapshot"))
+    now_ts = _utc_timestamp()
+    snapshot["status"] = RECOMMENDATION_SNAPSHOT_STATUS_EXPIRED
+    snapshot["expires_at"] = now_ts
+    snapshot["updated_at"] = now_ts
+
+    if not _use_file_backend():
+        _require_db_backend()
+        _persist_snapshot_db(snapshot)
+    else:
+        path = _snapshot_path(normalized_user_id, normalized_syllabus_id, str(snapshot["recommendation_id"]))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json_dumps(snapshot), encoding="utf-8")
+
+    return {"success": True, "recommendation_id": snapshot_id, "status": RECOMMENDATION_SNAPSHOT_STATUS_EXPIRED}
+
+
 def get_recommendation_snapshot(recommendation_id: str) -> dict:
     recommendation_id = str(recommendation_id or "").strip()
     if not recommendation_id:
@@ -390,6 +458,7 @@ def list_recommendation_snapshots(
     user_id: int,
     syllabus_id: int | None = None,
     limit: int = 20,
+    include_expired: bool = False,
 ) -> dict:
     try:
         normalized_user_id = _normalize_positive_int(user_id, "user_id")
@@ -408,6 +477,8 @@ def list_recommendation_snapshots(
         query = RecommendationSnapshot.query.filter_by(user_id=normalized_user_id)
         if normalized_syllabus_id is not None:
             query = query.filter_by(syllabus_id=normalized_syllabus_id)
+        if not include_expired:
+            query = query.filter(RecommendationSnapshot.status != RECOMMENDATION_SNAPSHOT_STATUS_EXPIRED)
         rows = query.order_by(RecommendationSnapshot.created_at.desc()).limit(normalized_limit).all()
         snapshots = [_summary_item(_row_to_snapshot(row)) for row in rows]
     else:
@@ -415,6 +486,8 @@ def list_recommendation_snapshots(
         for path in _iter_snapshot_files(normalized_user_id, normalized_syllabus_id):
             item = _json_loads(path.read_text(encoding="utf-8"), {}) or {}
             if isinstance(item, dict):
+                if not include_expired and item.get("status") == RECOMMENDATION_SNAPSHOT_STATUS_EXPIRED:
+                    continue
                 loaded.append(item)
         loaded.sort(key=lambda item: int(item.get("created_at") or 0), reverse=True)
         snapshots = [_summary_item(item) for item in loaded[:normalized_limit]]
@@ -486,6 +559,23 @@ def accept_recommendation_snapshot_path(
     if normalized_syllabus_id is not None and snapshot_syllabus_id is not None and int(snapshot_syllabus_id) != normalized_syllabus_id:
         return {"success": False, "error_code": "wrong_syllabus", "error_message": "recommendation snapshot syllabus_id does not match"}
 
+    # ----- staleness guard: reject accept when a newer non-expired snapshot exists -----
+    latest_id = _get_latest_non_expired_snapshot_id(normalized_user_id, normalized_syllabus_id)
+    if latest_id and latest_id != recommendation_id:
+        latest_result = get_recommendation_snapshot(latest_id)
+        return {
+            "success": False,
+            "recommendation_id": recommendation_id,
+            "snapshot_status": snapshot.get("status"),
+            "error_code": "stale_snapshot",
+            "error_message": (
+                f"this snapshot ({recommendation_id}) is not the latest; "
+                f"a newer snapshot ({latest_id}) exists. "
+                "Please refresh and accept the latest snapshot."
+            ),
+            "latest_snapshot": _summary_item(latest_result.get("snapshot")) if latest_result.get("success") else {},
+        }
+
     recommendation_result = _recommendation_result_from_snapshot(snapshot)
     if normalized_candidate_index is not None:
         candidates = _as_list(recommendation_result.get("candidates"))
@@ -530,6 +620,7 @@ __all__ = [
     "RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED",
     "RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED",
     "accept_recommendation_snapshot_path",
+    "expire_latest_snapshot",
     "get_recommendation_snapshot",
     "list_recommendation_snapshots",
     "save_recommendation_snapshot",

@@ -11,6 +11,7 @@ from tasks import personal_recommendation_task as prt
 from tasks.common.status_events import (
     STATUS_FAILED,
     STATUS_RUNNING,
+    STATUS_SKIPPED,
     STATUS_SUCCEEDED,
     emit_status_event,
     emit_status_pair,
@@ -237,11 +238,33 @@ def _extend_status_events(target_state: Dict[str, Any], source_state_or_result: 
         target_state["tool_status_events"] = list(events)
 
 
+# ── error_code 白名单：这些 code 映射为 skipped 而非 failed ──
+_TOOL_END_SKIPPED_ERROR_CODES: frozenset = frozenset({
+    "no_active_plan",
+    "no_next_task",
+    "no_target_step",
+    "no_resource_tasks",
+    "active_plan_exists",
+    "stale_snapshot",
+})
+
+
+def _tool_end_status(success: bool, error_code: str) -> str:
+    """根据 success 和 error_code 计算 tool_end 的展示状态。"""
+    if success:
+        return STATUS_SUCCEEDED
+    if error_code in _TOOL_END_SKIPPED_ERROR_CODES:
+        return STATUS_SKIPPED
+    return STATUS_FAILED
+
+
 def _tool_result(tool_name: str, success: bool = True, state: Optional[Dict[str, Any]] = None, **payload: Any) -> dict:
     result = {"tool": tool_name, "success": bool(success)}
     result.update(_json_safe(payload))
     result.setdefault("error_code", "" if success else "tool_failed")
     result.setdefault("error_message", "")
+    # tool_end 展示状态：前端直接使用，不再从 success 推断
+    result["_status"] = _tool_end_status(success, str(result.get("error_code") or ""))
     if state is not None:
         emit_status_event(
             state,

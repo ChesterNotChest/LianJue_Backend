@@ -1507,7 +1507,11 @@ def run_recommendation_route(
 
 
 def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate and run the route using an API/task payload."""
+    """Validate and run the route using an API/task payload.
+
+    Guard: rejects generation when an active learning plan exists.
+    The plan must be completed or abandoned before a new recommendation can be generated.
+    """
     payload = payload or {}
     user_id = payload.get("user_id")
     if not user_id:
@@ -1519,9 +1523,30 @@ def run_recommendation_route_from_payload(payload: Dict[str, Any]) -> Dict[str, 
             "error_code": "missing_fields",
         }
 
+    # ----- guard: don't generate new recommendation when an active plan exists -----
+    syllabus_id = int(payload["syllabus_id"]) if payload.get("syllabus_id") else None
+    active_plan = None
+    try:
+        from tasks.personal_recommendation.learning_plan import get_active_learning_plan
+        active_plan = get_active_learning_plan(int(user_id), syllabus_id)
+    except Exception:
+        pass  # best-effort: allow if plan lookup is unavailable
+    if active_plan is not None:
+        return {
+            "success": False,
+            "candidates": [],
+            "selected": [],
+            "error_message": (
+                f"an active learning plan ({active_plan.get('plan_id', 'unknown')}) already exists. "
+                "Complete or abandon the current plan before generating a new recommendation."
+            ),
+            "error_code": "active_plan_exists",
+            "active_plan_id": active_plan.get("plan_id"),
+        }
+
     result = run_recommendation_route(
         user_id=int(user_id),
-        syllabus_id=int(payload["syllabus_id"]) if payload.get("syllabus_id") else None,
+        syllabus_id=syllabus_id,
         goals=payload.get("goals"),
         L_max=int(payload.get("L_max") or 6),
         T_max=int(payload.get("T_max") or 100),

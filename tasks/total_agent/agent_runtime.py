@@ -1155,6 +1155,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                                 "data": {
                                     "tool_name": tool_name,
                                     "tool_call_id": tool_call_id,
+                                    "status": str(tool_result.get("_status") or "") if isinstance(tool_result, dict) else "",
                                     "result": tool_result,
                                 },
                                 "timestamp": _ts(),
