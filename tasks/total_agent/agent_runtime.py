@@ -45,13 +45,6 @@ from tasks.total_agent.agent_contracts import (
     ACTION_OFFER_PRACTICE_OR_RESOURCE,
     ACTION_RECORD_LEARNING_FEEDBACK,
     ACTION_WAIT_USER_ACCEPTANCE,
-    INTENT_ABANDON_LEARNING_PLAN,
-    INTENT_ACCEPT_RECOMMENDATION,
-    INTENT_ANSWER_LEARNING_QUESTION,
-    INTENT_GENERATE_CURRENT_STEP_RESOURCE,
-    INTENT_RECORD_LEARNING_FEEDBACK,
-    INTENT_RECOMMEND_LEARNING_PATH,
-    INTENT_SKIP_CURRENT_STEP,
     STREAM_EVENT_FINAL,
     STREAM_EVENT_TEXT_DELTA,
     STREAM_EVENT_TEXT_START,
@@ -66,6 +59,9 @@ from tasks.total_agent.agent_contracts import (
     TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
     TOOL_GET_NEXT_LEARNING_TASK,
     TOOL_NORMALIZE_LEARNING_GOAL,
+    TOOL_LIST_MY_RESOURCES,
+    TOOL_NOTE_INTENT,
+    TOOL_NOTE_PROFILE_OBSERVATION,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_RETRIEVE_LEARNING_EVIDENCE,
     TOOL_RUN_LEARNING_RECOMMENDATION,
@@ -85,9 +81,10 @@ from tasks.total_agent.agent_tools import (
     tool_accept_learning_plan,
     tool_generate_current_step_resource,
     tool_get_next_learning_task,
-    tool_infer_user_intent,
+    tool_list_my_resources,
     tool_load_total_context,
     tool_normalize_learning_goal_for_recommendation,
+    tool_note_profile_observation,
     tool_record_learning_feedback,
     tool_run_learning_recommendation,
     tool_skip_current_step,
@@ -120,7 +117,9 @@ def get_total_agent() -> Agent:
         system_prompt=(
             "You are a dedicated teacher helping a student learn. "
             "Before taking any action, briefly tell the student what you're about to do and why - be clear and encouraging. "
-            "Always start by understanding their current learning context (load_total_context, infer_user_intent). "
+            "Always start by understanding their current learning context (load_total_context). "
+            "You may optionally call note_intent to record your understanding of the user's goal — "
+            "this helps you stay on track across turns but is not required. "
             "When they want a learning path: recommend first (run_learning_recommendation), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
             "When they accept a plan: confirm it (accept_learning_plan). "
             "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
@@ -131,7 +130,7 @@ def get_total_agent() -> Agent:
             "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
             "When all steps in a plan are completed, the plan will finish automatically - guide the student to either review weak points or get a new recommendation. "
             "When class-wide context might help: check the course overview (get_course_learning_tree_summary). "
-            "IMPORTANT: When the student explicitly asks you to generate a specific resource type (PPT, document, quiz, mindmap, coding practice), just do it. Do NOT ask for confirmation or offer multiple plans. Call generate_current_step_resource immediately after load_total_context and infer_user_intent. "
+            "IMPORTANT: When the student explicitly asks you to generate a specific resource type (PPT, document, quiz, mindmap, coding practice), just do it. Do NOT ask for confirmation or offer multiple plans. Call generate_current_step_resource immediately after load_total_context. "
             "When calling generate_current_step_resource, you MUST pass the resource_types parameter as a list. Available types: [\"ppt\", \"documents\", \"quiz\", \"mindmap\", \"coding_practice\"]. "
             "If the student asks for multiple types (e.g. '给我生成PPT和文档'), pass ALL requested types in the list and the system will generate them in parallel. "
             "If the student does not specify a type, you may omit resource_types and the system will choose based on their profile. "
@@ -161,8 +160,30 @@ def get_total_agent() -> Agent:
         return tool_load_total_context(ctx.deps.state)
 
     @agent.tool(sequential=True)
-    def infer_user_intent(ctx: RunContext[TotalAgentDeps]) -> dict:
-        return tool_infer_user_intent(ctx.deps.state)
+    def note_intent(
+        ctx: RunContext[TotalAgentDeps],
+        intent: str = "",
+        detail: str = "",
+    ) -> dict:
+        """记下你对当前用户意图的理解。不是必调——仅在需要备忘时使用。
+
+        Args:
+            intent: 你推断的用户意图标签。建议用以下之一，但可自定义：
+                    "recommend_learning_path" — 用户想要推荐路径
+                    "accept_recommendation"   — 用户想确认某条候选路径
+                    "generate_resource"       — 用户想要学习资源
+                    "record_feedback"         — 用户在学习反馈
+                    "skip_current_step"       — 用户想跳过当前步骤
+                    "abandon_plan"            — 用户想放弃当前计划
+                    "answer_question"         — 用户问了一个学习问题
+                    "clarify_goal"            — 用户的目标需要澄清
+            detail: 补充细节。例如 "用户想选第3个候选（计划三），需要确认具体步骤数"
+        Returns:
+            dict with intent, detail, noted=True
+        """
+        result = {"intent": str(intent or ""), "detail": str(detail or ""), "noted": True}
+        ctx.deps.state["noted_intent"] = result
+        return result
 
     @agent.tool(sequential=True)
     def run_learning_recommendation(ctx: RunContext[TotalAgentDeps]) -> dict:
@@ -209,19 +230,36 @@ def get_total_agent() -> Agent:
         ctx: RunContext[TotalAgentDeps],
         resource_types: list[str] = None,
     ) -> dict:
-        if ctx.deps.state.get("intent") != INTENT_GENERATE_CURRENT_STEP_RESOURCE:
-            raise ModelRetry(
-                "generate_current_step_resource is only allowed when inferred intent is "
-                "generate_current_step_resource. For feedback or skip turns, return after recording "
-                "the update and reading get_next_learning_task."
-            )
         if resource_types:
             payload = ctx.deps.state.setdefault("payload", {})
             payload["resource_types"] = list(resource_types)
         return _remember_terminal(ctx, TOOL_GENERATE_CURRENT_STEP_RESOURCE, tool_generate_current_step_resource(ctx.deps.state))
 
     @agent.tool(sequential=True)
-    def record_learning_feedback(ctx: RunContext[TotalAgentDeps]) -> dict:
+    def record_learning_feedback(
+        ctx: RunContext[TotalAgentDeps],
+        score: float = None,
+        weak_points: list[str] = None,
+        knowledge_mastery: list[dict] = None,
+        feedback_note: str = "",
+    ) -> dict:
+        """记录用户学习反馈。可传入评分、薄弱点和结构化掌握度。
+
+        Args:
+            score: 0.0-1.0 综合评分
+            weak_points: 薄弱知识点列表
+            knowledge_mastery: [{"knowledge": "xxx", "mastery_label": "mastered|learning|weak|unknown", "score": 0.8, "evidence": "..."}]
+            feedback_note: 自由文本备注
+        """
+        payload = ctx.deps.state.setdefault("payload", {})
+        if score is not None:
+            payload["score"] = float(score)
+        if weak_points:
+            payload["weak_points"] = list(weak_points)
+        if knowledge_mastery:
+            payload["knowledge_mastery"] = list(knowledge_mastery)
+        if feedback_note:
+            payload["feedback_note"] = str(feedback_note)
         return _remember_terminal(ctx, TOOL_RECORD_LEARNING_FEEDBACK, tool_record_learning_feedback(ctx.deps.state))
 
     @agent.tool(sequential=True)
@@ -230,8 +268,6 @@ def get_total_agent() -> Agent:
 
     @agent.tool(sequential=True)
     def answer_learning_question(ctx: RunContext[TotalAgentDeps]) -> dict:
-        if ctx.deps.state.get("intent") != INTENT_ANSWER_LEARNING_QUESTION:
-            raise ModelRetry("answer_learning_question is only allowed when inferred intent is answer_learning_question.")
         if TOOL_RETRIEVE_LEARNING_EVIDENCE not in list(ctx.deps.state.get("tool_trace") or []):
             raise ModelRetry("Call retrieve_learning_evidence before answer_learning_question.")
         return _remember_terminal(ctx, TOOL_ANSWER_LEARNING_QUESTION, tool_answer_learning_question(ctx.deps.state))
@@ -243,6 +279,41 @@ def get_total_agent() -> Agent:
     @agent.tool(sequential=True)
     def abandon_learning_plan(ctx: RunContext[TotalAgentDeps]) -> dict:
         return _remember_terminal(ctx, TOOL_ABANDON_LEARNING_PLAN, tool_abandon_learning_plan(ctx.deps.state))
+
+    @agent.tool(sequential=True)
+    def note_profile_observation(
+        ctx: RunContext[TotalAgentDeps],
+        learning_style: str = "",
+        comprehension_level: str = "",
+        weak_points: list[str] = None,
+        strong_points: list[str] = None,
+        note: str = "",
+    ) -> dict:
+        """记录你对用户学习特征的观察。非必调——仅在注意到值得记录的变化时使用。
+        这些观察会合并到用户画像中，影响后续推荐的质量。"""
+        return tool_note_profile_observation(
+            ctx.deps.state,
+            learning_style=learning_style,
+            comprehension_level=comprehension_level,
+            weak_points=weak_points or [],
+            strong_points=strong_points or [],
+            note=note,
+        )
+
+    @agent.tool(sequential=True)
+    def list_my_resources(
+        ctx: RunContext[TotalAgentDeps],
+        resource_type: str = "",
+        knowledge_item: str = "",
+        include_feedback: bool = False,
+    ) -> dict:
+        """查看已生成的个人学习资源。可过滤类型和知识点。"""
+        return tool_list_my_resources(
+            ctx.deps.state,
+            resource_type=resource_type,
+            knowledge_item=knowledge_item,
+            include_feedback=bool(include_feedback),
+        )
 
     return agent
 
@@ -270,7 +341,8 @@ def build_total_agent_user_prompt(state: Dict[str, Any]) -> str:
 
 
 def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentResult | None = None) -> dict:
-    intent = str(state.get("intent") or getattr(model_output, "intent", "") or "")
+    noted = state.get("noted_intent") if isinstance(state.get("noted_intent"), dict) else {}
+    intent = str(state.get("intent") or getattr(model_output, "intent", "") or noted.get("intent") or "")
     terminal = state.get("terminal_tool_result") if isinstance(state.get("terminal_tool_result"), dict) else {}
     terminal_tool = terminal.get("tool") or ""
 
@@ -279,7 +351,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     context_result = state.get("total_context") if isinstance(state.get("total_context"), dict) else {}
     result: dict[str, Any] = {
         "context": context_result,
-        "intent": state.get("intent_result") or {},
+        "intent": noted if noted else {},
         "terminal_tool": terminal,
     }
     error_code = str(terminal.get("error_code") or "")
@@ -374,22 +446,37 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     if answer_terminal:
         result["answer_learning_question"] = answer_terminal
 
-    if intent == INTENT_RECOMMEND_LEARNING_PATH or terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION:
+    if terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION:
         suggested = recommendation_terminal.get("suggested_next_action") or ACTION_WAIT_USER_ACCEPTANCE
     elif terminal_tool == TOOL_NORMALIZE_LEARNING_GOAL:
         suggested = normalization_terminal.get("suggested_next_action") or ACTION_ASK_GOAL_CLARIFICATION
-    elif intent == INTENT_ACCEPT_RECOMMENDATION or terminal_tool == TOOL_ACCEPT_LEARNING_PLAN:
+    elif terminal_tool == TOOL_ACCEPT_LEARNING_PLAN:
         suggested = accept_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
-    elif intent == INTENT_GENERATE_CURRENT_STEP_RESOURCE or terminal_tool == TOOL_GENERATE_CURRENT_STEP_RESOURCE:
+    elif terminal_tool == TOOL_GENERATE_CURRENT_STEP_RESOURCE:
         suggested = resource_terminal.get("suggested_next_action") or ACTION_RECORD_LEARNING_FEEDBACK
-    elif intent == INTENT_RECORD_LEARNING_FEEDBACK or terminal_tool == TOOL_RECORD_LEARNING_FEEDBACK:
+    elif terminal_tool == TOOL_RECORD_LEARNING_FEEDBACK:
         suggested = feedback_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
-    elif intent == INTENT_SKIP_CURRENT_STEP or terminal_tool == TOOL_SKIP_CURRENT_STEP:
+    elif terminal_tool == TOOL_SKIP_CURRENT_STEP:
         suggested = skip_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
-    elif intent == INTENT_ABANDON_LEARNING_PLAN or terminal_tool == TOOL_ABANDON_LEARNING_PLAN:
+    elif terminal_tool == TOOL_ABANDON_LEARNING_PLAN:
         suggested = abandon_terminal.get("suggested_next_action") or ACTION_GET_NEXT_LEARNING_TASK
-    elif intent == INTENT_ANSWER_LEARNING_QUESTION or terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
+    elif terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
         suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
+    # ── fallback: 从 noted_intent 推断 ──
+    elif noted:
+        noted_intent = str(noted.get("intent") or "").lower()
+        if "recommend" in noted_intent or "accept" in noted_intent:
+            suggested = ACTION_WAIT_USER_ACCEPTANCE
+        elif "generate" in noted_intent or "resource" in noted_intent:
+            suggested = ACTION_GENERATE_CURRENT_STEP_RESOURCE
+        elif "feedback" in noted_intent or "record" in noted_intent:
+            suggested = ACTION_RECORD_LEARNING_FEEDBACK
+        elif "skip" in noted_intent:
+            suggested = ACTION_GENERATE_CURRENT_STEP_RESOURCE
+        elif "abandon" in noted_intent:
+            suggested = ACTION_GET_NEXT_LEARNING_TASK
+        elif "answer" in noted_intent or "question" in noted_intent:
+            suggested = ACTION_OFFER_PRACTICE_OR_RESOURCE
 
     final = build_total_agent_result(
         state,

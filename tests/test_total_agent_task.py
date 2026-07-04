@@ -141,7 +141,6 @@ def test_total_agent_next_closure_constants_are_registered_and_unique():
     assert tac.INTENT_ANSWER_LEARNING_QUESTION in tac.TOTAL_AGENT_INTENTS
     assert tac.TOTAL_AGENT_TOOL_ORDER[tac.INTENT_ANSWER_LEARNING_QUESTION] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
         tac.TOOL_ANSWER_LEARNING_QUESTION,
     ]
@@ -183,7 +182,7 @@ def test_total_agent_agent_final_result_includes_loaded_context():
         "study_graph_state": {"weak_node_ids": ["hbase_intro"]},
     }
     state = {
-        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_INFER_USER_INTENT, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
+        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
         "intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE,
         "intent_result": {"intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE},
         "total_context": context,
@@ -203,7 +202,7 @@ def test_total_agent_agent_final_result_includes_loaded_context():
 
 def test_total_agent_agent_final_result_uses_record_feedback_state_fallback():
     state = {
-        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_INFER_USER_INTENT, tac.TOOL_RECORD_LEARNING_FEEDBACK],
+        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_RECORD_LEARNING_FEEDBACK],
         "intent": tac.INTENT_RECORD_LEARNING_FEEDBACK,
         "intent_result": {"intent": tac.INTENT_RECORD_LEARNING_FEEDBACK},
         "total_context": {"profile_summary": {"profile_source": tac.PROFILE_SOURCE_PERSISTED}},
@@ -231,7 +230,6 @@ def test_total_agent_agent_final_result_uses_answer_state_fallback():
     state = {
         "tool_trace": [
             tac.TOOL_LOAD_TOTAL_CONTEXT,
-            tac.TOOL_INFER_USER_INTENT,
             tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
             tac.TOOL_ANSWER_LEARNING_QUESTION,
         ],
@@ -260,7 +258,6 @@ def test_total_agent_agent_final_result_includes_course_summary_tool_result():
     state = {
         "tool_trace": [
             tac.TOOL_LOAD_TOTAL_CONTEXT,
-            tac.TOOL_INFER_USER_INTENT,
             tac.TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
             tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE,
         ],
@@ -409,7 +406,6 @@ def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_p
     assert active_plan is None
     assert result["tool_trace"] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RUN_LEARNING_RECOMMENDATION,
     ]
 
@@ -1210,7 +1206,6 @@ def test_total_agent_answer_learning_question_uses_mock_evidence_without_mutatin
     assert plan_after["current_step_index"] == plan_before["current_step_index"]
     assert result["tool_trace"] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
         tac.TOOL_ANSWER_LEARNING_QUESTION,
     ]

@@ -547,7 +547,6 @@ def test_total_agent_e2e_answer_learning_question_no_plan_mutation(monkeypatch, 
     assert plan_after["current_step_index"] == plan_before["current_step_index"]
     assert result["tool_trace"] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
         tac.TOOL_ANSWER_LEARNING_QUESTION,
     ]

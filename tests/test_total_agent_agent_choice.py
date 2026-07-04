@@ -135,7 +135,6 @@ def _trace_agent_tools(monkeypatch):
         return traced
 
     monkeypatch.setattr(tar, "tool_load_total_context", wrap(tac.TOOL_LOAD_TOTAL_CONTEXT, tagt.tool_load_total_context))
-    monkeypatch.setattr(tar, "tool_infer_user_intent", wrap(tac.TOOL_INFER_USER_INTENT, tagt.tool_infer_user_intent))
     monkeypatch.setattr(tar, "tool_get_next_learning_task", wrap(tac.TOOL_GET_NEXT_LEARNING_TASK, tagt.tool_get_next_learning_task))
     monkeypatch.setattr(
         tar,
@@ -459,7 +458,7 @@ def test_total_agent_stream_pipeline_with_mock(monkeypatch):
             return self._stream
 
     # ── 组装 mock agent ─────────────────────────────────────
-    # 工具管线：load_total_context → infer_user_intent → generate_current_step_resource
+    # 工具管线：load_total_context → generate_current_step_resource
     TOOL_SPECS = [
         (
             tac.TOOL_LOAD_TOTAL_CONTEXT,
@@ -472,12 +471,6 @@ def test_total_agent_stream_pipeline_with_mock(monkeypatch):
                     "profile_summary": {"learning_goal": "掌握 RowKey 设计"},
                 },
             },
-            True,
-        ),
-        (
-            tac.TOOL_INFER_USER_INTENT,
-            {},
-            {"success": True, "intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE},
             True,
         ),
         (
@@ -501,7 +494,7 @@ def test_total_agent_stream_pipeline_with_mock(monkeypatch):
         """每次调用 get_total_agent() 时创建新的 mock agent。"""
 
         class _FakeAgent:
-            def iter(self, prompt, deps=None):
+            def iter(self, prompt, deps=None, message_history=None):
                 # 从 deps.state 拿到真实的 status_callback
                 callback = None
                 if deps and hasattr(deps, "state"):
