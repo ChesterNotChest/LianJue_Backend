@@ -432,6 +432,23 @@ def accept_recommendation_path(
         normalized_syllabus_id,
     )
     plan = get_active_learning_plan(user_id, normalized_syllabus_id) or {}
+    # ── 通知学伴：计划已确认 ──
+    try:
+        from tasks.study_buddy_task import notify_study_buddy_event
+        next_step = (plan.get("steps") or steps or [{}])[0] if (plan.get("steps") or steps) else {}
+        notify_study_buddy_event(
+            user_id=user_id,
+            syllabus_id=normalized_syllabus_id or 0,
+            event_type="plan_accepted",
+            payload={
+                "plan_id": plan_id,
+                "next_task_title": next_step.get("title") or next_step.get("node_id") or "",
+                "total_steps": len(plan.get("steps") or steps or []),
+            },
+            plan=plan if isinstance(plan, dict) else None,
+        )
+    except Exception:
+        pass
     return {
         "success": True,
         "plan_id": plan_id,
@@ -488,6 +505,17 @@ def abandon_learning_plan(
         expire_latest_snapshot(user_id, syllabus_id)
     except Exception:
         pass  # best-effort
+    # ── 通知学伴：计划已放弃 ──
+    try:
+        from tasks.study_buddy_task import notify_study_buddy_event
+        notify_study_buddy_event(
+            user_id=user_id,
+            syllabus_id=syllabus_id or 0,
+            event_type="plan_abandoned",
+            payload={"plan_id": str(plan_id), "reason": str(reason or "student_request")},
+        )
+    except Exception:
+        pass
     return {"success": True, "plan_id": str(plan_id), "status": LEARNING_PLAN_STATUS_ABANDONED}
 
 

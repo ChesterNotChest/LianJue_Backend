@@ -288,9 +288,12 @@ def proactive_buddy_event_message(
     }
     prompt = (
         f"{context}\n\n"
-        "A learning event just happened. You are the study buddy Xiao Jue.\n"
+        "A learning event just happened. You are the study buddy Xiao Jue (小觉), "
+        "a peer observing the student's conversation with their AI teacher.\n"
         f"Event JSON: {event_brief}\n\n"
         "Say exactly 1 short, natural Chinese message to the student. "
+        "If the event includes a 'reason' field, that is what the student said "
+        "to the teacher — not to you. React as a bystander, not as the addressee. "
         "Do not sound like a system notification. Do not list data. "
         "If useful, gently point to the next action. "
         "Do not repeat memory tags verbatim."

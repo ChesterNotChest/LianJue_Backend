@@ -479,6 +479,7 @@ def status_version_api():
         'study_graph_version': None,
         'plan_version': None,
         'recommendation_version': None,
+        'buddy_version': None,
     }
 
     if user_id and syllabus_id:
@@ -499,9 +500,18 @@ def status_version_api():
 
         try:
             from tasks.personal_recommendation_task import list_recommendation_snapshots
-            snapshots = list_recommendation_snapshots(user_id, syllabus_id)
-            if snapshots:
-                version['recommendation_version'] = str((snapshots[0].get('recommendation_id') or ''))
+            result = list_recommendation_snapshots(user_id, syllabus_id)
+            snapshot_list = result.get("snapshots") if isinstance(result, dict) else []
+            if snapshot_list:
+                version["recommendation_version"] = str((snapshot_list[0].get("recommendation_id") or ""))
+        except Exception:
+            pass
+
+        try:
+            from tasks.study_buddy_task import list_buddy_messages
+            buddy_msgs = list_buddy_messages(user_id, syllabus_id, limit=1)
+            if buddy_msgs:
+                version["buddy_version"] = str(buddy_msgs[0].get("created_at") or buddy_msgs[0].get("message_id") or "")
         except Exception:
             pass
 

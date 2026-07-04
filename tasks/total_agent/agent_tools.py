@@ -195,6 +195,30 @@ def _notify_buddy_resource_ready_from_tool(state: Dict[str, Any], tool_result: d
         logging.getLogger(__name__).exception("[study_buddy.total_agent] resource_tool_notify_failed")
 
 
+def _notify_buddy_plan_accepted(state: Dict[str, Any], plan: dict, next_task: dict) -> None:
+    """计划确认后标记 _study_buddy_event_sent 防止 _build_agent_final_result 重复推送。
+
+    实际学伴通知已下沉到 accept_recommendation_path（learning_plan.py），
+    覆盖前端按钮和 Agent 工具两条路径。
+    """
+    if state.get("_study_buddy_event_sent"):
+        return
+    state["_study_buddy_event_sent"] = True
+    state["_study_buddy_event_type"] = "plan_accepted"
+
+
+def _notify_buddy_plan_abandoned(state: Dict[str, Any], plan_id: str, reason: str) -> None:
+    """计划放弃后标记 _study_buddy_event_sent 防止 _build_agent_final_result 重复推送。
+
+    实际学伴通知已下沉到 abandon_learning_plan（learning_plan.py），
+    覆盖前端按钮和 Agent 工具两条路径。
+    """
+    if state.get("_study_buddy_event_sent"):
+        return
+    state["_study_buddy_event_sent"] = True
+    state["_study_buddy_event_type"] = "plan_abandoned"
+
+
 def _json_safe(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_safe(item) for key, item in value.items() if not callable(item)}
@@ -2108,6 +2132,7 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
     next_task = _find_next_step(plan) or {}
     state["active_plan"] = plan
     state["next_task"] = next_task
+    _notify_buddy_plan_accepted(state, plan, next_task)
     return _tool_result(
         TOOL_ACCEPT_LEARNING_PLAN,
         True,
@@ -2674,6 +2699,7 @@ def tool_abandon_learning_plan(state: Dict[str, Any]) -> dict:
     result = prt.abandon_learning_plan(user_id, plan_id, syllabus_id=syllabus_id, reason=reason)
     state["active_plan"] = {}
     state["next_task"] = {}
+    _notify_buddy_plan_abandoned(state, plan_id, reason)
     return _tool_result(
         TOOL_ABANDON_LEARNING_PLAN,
         bool(result.get("success")),
