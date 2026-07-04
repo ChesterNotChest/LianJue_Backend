@@ -12,6 +12,16 @@ from typing import Any, AsyncGenerator, Dict
 from pydantic_ai import Agent, ModelRetry, RunContext
 
 try:
+    from pydantic_ai.messages import ModelMessagesTypeAdapter as _ModelMessagesTypeAdapter
+except ImportError:
+    _ModelMessagesTypeAdapter = None
+
+try:
+    from pydantic_ai.capabilities import ReinjectSystemPrompt
+except ImportError:
+    ReinjectSystemPrompt = None
+
+try:
     from pydantic_ai.messages import FunctionToolResultEvent as _FunctionToolResultEvent
 
     if "result" not in getattr(_FunctionToolResultEvent, "model_fields", {}):
@@ -61,6 +71,7 @@ from tasks.total_agent.agent_contracts import (
     TOOL_RUN_LEARNING_RECOMMENDATION,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_TOOL_ORDER,
+    MESSAGE_HISTORY_MAX_TURNS,
     TotalAgentDeps,
     TotalAgentResult,
 )
@@ -132,6 +143,14 @@ def get_total_agent() -> Agent:
         defer_model_check=True,
     )
 
+    # message_history 非空时 PydanticAI 不重新生成 system prompt，
+    # ReinjectSystemPrompt 确保 system prompt 始终在上下文中。
+    if ReinjectSystemPrompt is not None:
+        try:
+            agent.capability(ReinjectSystemPrompt())
+        except Exception:
+            pass
+
     def _remember_terminal(ctx: RunContext[TotalAgentDeps], tool_name: str, result: dict) -> dict:
         if tool_name in CHAT_TERMINAL_TOOLS:
             ctx.deps.state["terminal_tool_result"] = result
@@ -154,7 +173,11 @@ def get_total_agent() -> Agent:
         return _remember_terminal(ctx, TOOL_NORMALIZE_LEARNING_GOAL, tool_normalize_learning_goal_for_recommendation(ctx.deps.state))
 
     @agent.tool(sequential=True)
-    def accept_learning_plan(ctx: RunContext[TotalAgentDeps]) -> dict:
+    def accept_learning_plan(ctx: RunContext[TotalAgentDeps], candidate_index: int | None = None) -> dict:
+        if candidate_index is not None:
+            payload = ctx.deps.state.get("payload")
+            if isinstance(payload, dict):
+                payload["candidate_index"] = int(candidate_index)
         return _remember_terminal(ctx, TOOL_ACCEPT_LEARNING_PLAN, tool_accept_learning_plan(ctx.deps.state))
 
     @agent.tool(sequential=True)
@@ -225,12 +248,19 @@ def get_total_agent() -> Agent:
 
 
 def build_total_agent_user_prompt(state: Dict[str, Any]) -> str:
+    """构建用户提示。不再注入 conversation_history——LLM 从 message_history 获取对话。"""
     payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
+    raw_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    # 仅保留前端交互所需字段，不传 conversation_history（LLM 从 message_history 获取）
+    slim_context = {
+        "current_resource_id": raw_context.get("current_resource_id", "") or "",
+        "recent_resource_ids": raw_context.get("recent_resource_ids") or [],
+    }
     summary = {
         "user_id": payload.get("user_id"),
         "syllabus_id": payload.get("syllabus_id"),
         "message": payload.get("message") or payload.get("question") or "",
-        "context": payload.get("context") or {},
+        "context": slim_context,
         "intent_hint": payload.get("intent") or "",
         "resource_types": payload.get("resource_types") or [],
         "auto_accept": bool(payload.get("auto_accept")),
@@ -611,6 +641,96 @@ def _chat_log(msg):
         pass
 
 
+# ── message_history 持久化 ────────────────────────────────────
+
+def _save_message_history(user_id, syllabus_id, session_id, messages):
+    """持久化 message_history 到 DB（fallback 文件）。失败静默。"""
+    if not session_id or not messages:
+        return
+    try:
+        data = None
+        if _ModelMessagesTypeAdapter is not None:
+            try:
+                data = _ModelMessagesTypeAdapter.dump_json(messages).decode()
+            except Exception:
+                pass
+        if not data:
+            data = json.dumps([m.model_dump(mode='json') for m in messages], ensure_ascii=False)
+        _chat_log(f"save_message_history ses={session_id} len={len(messages)} bytes={len(data)}")
+        # DB 优先
+        try:
+            from schemas.agent_runtime_state import ChatSession
+            session = ChatSession.query.filter_by(session_id=session_id).first()
+            if session is not None:
+                session.message_history_json = data
+                from extensions import db
+                db.session.commit()
+                return
+        except Exception:
+            try:
+                from extensions import db
+                db.session.rollback()
+            except Exception:
+                pass
+        # file fallback
+        try:
+            history_dir = os.path.join(os.getcwd(), 'history')
+            os.makedirs(history_dir, exist_ok=True)
+            path = os.path.join(history_dir, f'{syllabus_id}_{user_id}_{session_id}_messages.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(data)
+        except Exception:
+            pass
+    except Exception:
+        pass  # 历史保存失败不阻断主流程
+
+
+def _load_message_history(user_id, syllabus_id, session_id):
+    """加载 message_history。失败或空返回 []。"""
+    if not session_id:
+        return []
+    data = None
+    # DB 优先
+    try:
+        from schemas.agent_runtime_state import ChatSession
+        session = ChatSession.query.filter_by(session_id=session_id).first()
+        if session is not None and session.message_history_json:
+            data = session.message_history_json
+    except Exception:
+        try:
+            from extensions import db
+            db.session.rollback()
+        except Exception:
+            pass
+    # file fallback
+    if not data:
+        try:
+            path = os.path.join(os.getcwd(), 'history', f'{syllabus_id}_{user_id}_{session_id}_messages.json')
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = f.read()
+        except Exception:
+            pass
+    if not data:
+        return []
+    try:
+        if _ModelMessagesTypeAdapter is not None:
+            messages = _ModelMessagesTypeAdapter.validate_json(data)
+        else:
+            raw = json.loads(data)
+            from pydantic_ai.messages import ModelMessage
+            messages = [ModelMessage.model_validate(m) for m in raw]
+        # 截断
+        max_len = MESSAGE_HISTORY_MAX_TURNS * 2 + 1
+        if len(messages) > max_len:
+            messages = messages[-max_len:]
+        _chat_log(f"load_message_history ses={session_id} len={len(messages)}")
+        return messages
+    except Exception:
+        _chat_log(f"load_message_history ses={session_id} FAIL (degraded to empty)")
+        return []
+
+
 def _resolve_session_id(payload):
     sid = str(payload.get('session_id') or payload.get('sessionId') or '')
     return sid.strip()
@@ -819,6 +939,12 @@ def _ensure_session_created(payload):
 
 
 def _inject_chat_history(payload):
+    """注入文本对话历史到 payload.context.conversation_history。
+
+    注意：新的 PydanticAI agent 路径（run_total_agent_agent）已启用 message_history，
+    build_total_agent_user_prompt 不再将 conversation_history 传给 LLM。
+    此函数仍在旧 agent 路径（run_total_agent）中使用，保留。
+    """
     _ensure_session_created(payload)
     uid = payload.get('user_id')
     sid = payload.get('syllabus_id')
@@ -1061,6 +1187,18 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         except asyncio.QueueFull:
             pass
 
+    # ── 加载 message_history ──
+    try:
+        uid = int(payload.get('user_id') or 0)
+    except (TypeError, ValueError):
+        uid = 0
+    try:
+        sid = int(payload.get('syllabus_id') or 0)
+    except (TypeError, ValueError):
+        sid = 0
+    session_id = _resolve_session_id(payload)
+    message_history = _load_message_history(uid, sid, session_id) if uid and sid else []
+
     state: Dict[str, Any] = {
         "payload": payload,
         "tool_trace": [],
@@ -1077,8 +1215,8 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
     user_prompt = build_total_agent_user_prompt(state)
     run = None
 
-    _chat_log("GEN_START")
-    async with agent.iter(user_prompt, deps=deps) as run:
+    _chat_log(f"GEN_START ses={session_id} history_len={len(message_history)}")
+    async with agent.iter(user_prompt, message_history=message_history, deps=deps) as run:
         async for node in run:
             while not status_queue.empty():
                 try:
@@ -1170,6 +1308,16 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         except asyncio.QueueEmpty:
             break
 
+    # ── 捕获本轮新消息并持久化 ──
+    if run is not None and hasattr(run, 'result'):
+        try:
+            new_msgs = run.result.new_messages()
+            message_history.extend(new_msgs)
+            _save_message_history(uid, sid, session_id, message_history)
+            _chat_log(f"capture_new_messages ses={session_id} new={len(new_msgs)} total={len(message_history)}")
+        except Exception:
+            _chat_log("capture_new_messages FAIL (non-blocking)")
+
     model_output = None
     if run is not None and hasattr(run, "result") and hasattr(run.result, "output"):
         raw = run.result.output
@@ -1200,9 +1348,30 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
         "intent": "",
         "terminal_tool_result": None,
     }
+
+    # ── message_history（非流式路径） ──
+    try:
+        uid = int(payload.get('user_id') or 0)
+    except (TypeError, ValueError):
+        uid = 0
+    try:
+        sid = int(payload.get('syllabus_id') or 0)
+    except (TypeError, ValueError):
+        sid = 0
+    session_id = _resolve_session_id(payload)
+    message_history = _load_message_history(uid, sid, session_id) if uid and sid else []
+
     deps = TotalAgentDeps(state=state)
     agent = get_total_agent()
-    result = agent.run_sync(build_total_agent_user_prompt(state), deps=deps)
+    result = agent.run_sync(build_total_agent_user_prompt(state), message_history=message_history, deps=deps)
+
+    # ── 捕获本轮新消息 ──
+    try:
+        new_msgs = result.new_messages()
+        message_history.extend(new_msgs)
+        _save_message_history(uid, sid, session_id, message_history)
+    except Exception:
+        pass
     output = result.output if isinstance(result.output, TotalAgentResult) else None
     final = _build_agent_final_result(state, output)
     _persist_final_agent_turn(payload, state, final)

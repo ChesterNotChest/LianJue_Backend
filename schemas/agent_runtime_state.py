@@ -194,6 +194,7 @@ class ChatSession(db.Model):
     syllabus_id = db.Column(db.Integer, db.ForeignKey("syllabus.syllabus_id", ondelete="SET NULL"), nullable=True, index=True)
     title = db.Column(db.String(255), nullable=True)
     turn_count = db.Column(db.Integer, nullable=False, default=0)
+    message_history_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.Integer, nullable=False, default=0)
     updated_at = db.Column(db.Integer, nullable=False, default=0)
 

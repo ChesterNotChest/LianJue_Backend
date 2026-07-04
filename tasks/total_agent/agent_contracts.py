@@ -220,6 +220,9 @@ STREAM_EVENT_TYPES = {
     STREAM_EVENT_FINAL,
 }
 
+# message_history 最大保留轮数（每轮含 user request + model response 及其 tool 消息）
+MESSAGE_HISTORY_MAX_TURNS = 20
+
 
 @dataclass
 class TotalAgentDeps:
