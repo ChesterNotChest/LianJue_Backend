@@ -1,6 +1,6 @@
 """Study Buddy — 常量与数据结构定义。"""
 
-BUDDY_TREE_SCHEMA_VERSION = "study_buddy.tree.v1"
+BUDDY_TREE_SCHEMA_VERSION = "study_buddy.tree.v2"
 BUDDY_MEMORY_SCHEMA_VERSION = "study_buddy.memory.v1"
 
 # 树区域标识

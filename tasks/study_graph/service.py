@@ -381,16 +381,31 @@ def get_student_lifelong_overview(user_id: int) -> dict:
     all_edges: list[dict] = []
     syllabi: list[dict] = []
 
+    # 缓存 syllabus title 查询
+    _syllabus_titles: dict[int, str] = {}
+
     for tree in trees:
         raw_nodes = [n for n in list_nodes(tree.tree_id) if isinstance(n, dict)]
         raw_edges = [e for e in list_edges(tree.tree_id) if isinstance(e, dict)]
 
         subject_id = f"subject:{tree.syllabus_id}"
+        # 优先用 tree.subject_title，其次查 syllabus 表
+        title = tree.subject_title
+        if not title:
+            sid = tree.syllabus_id
+            if sid not in _syllabus_titles:
+                try:
+                    from repositories.syllabus_repo import get_syllabus_by_id
+                    s = get_syllabus_by_id(sid)
+                    _syllabus_titles[sid] = s.title if s else f"学科 {sid}"
+                except Exception:
+                    _syllabus_titles[sid] = f"学科 {sid}"
+            title = _syllabus_titles[sid]
         all_nodes.append({
             "node_id": subject_id,
             "type": "subject",
-            "title": tree.subject_title or f"学科 {tree.syllabus_id}",
-            "label": tree.subject_title or f"学科 {tree.syllabus_id}",
+            "title": title,
+            "label": title,
             "group": "chapter",
             "radius": 12,
             "mastery": {},

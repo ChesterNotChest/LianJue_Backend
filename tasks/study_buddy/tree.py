@@ -1,15 +1,15 @@
-"""学习记录树构建。
+"""学习进度树构建 — 快照 study_graph + merge plan + 保留 buddy_notes。
 
-三层树结构：
-- trunk:   active_plan.steps（主干学习路径）
-- learned: study_graph 中 mastered/learned 但不在 trunk 中的节点
-- explore: study_graph 中 weak/stale 节点，与 trunk 有关联
+v2 schema:
+  nodes: dict[node_id → {node_id, title, normalized_title, mastery, summary,
+         parent_node_id, edges: [{target, relation}], buddy_notes: [{note,created_at,source,mastery_hint}]}]
+  regions: {trunk: [node_id], learned: [node_id], explore: [node_id]}
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .contracts import (
     BUDDY_REGION_EXPLORE,
@@ -17,6 +17,7 @@ from .contracts import (
     BUDDY_REGION_TRUNK,
     BUDDY_TREE_SCHEMA_VERSION,
 )
+from .tree_store import load_buddy_tree
 
 
 def _safe_text(value: Any) -> str:
@@ -33,12 +34,67 @@ def _safe_list(value: Any) -> list:
     return list(value) if isinstance(value, (list, tuple, set)) else [value]
 
 
+def _safe_dict(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _snapshot_from_study_graph(user_id: int, syllabus_id: int) -> dict:
+    """从 study_graph 读取完整节点+边，映射为 buddy 节点格式。
+
+    Returns: dict with nodes (dict[node_id→node]) and edges list.
+    """
+    nodes: dict = {}
+    edges: list[dict] = []
+    try:
+        from tasks import study_graph_task
+
+        tree_result = study_graph_task.get_student_learning_tree(user_id, syllabus_id)
+        study_tree = _safe_dict(tree_result.get("tree") if isinstance(tree_result, dict) else {})
+        raw_nodes = _safe_list(study_tree.get("nodes"))
+        raw_edges = _safe_list(study_tree.get("edges"))
+
+        for node in raw_nodes:
+            if not isinstance(node, dict):
+                continue
+            nid = _safe_text(node.get("node_id"))
+            title = _safe_text(node.get("title"))
+            if not nid or not title:
+                continue
+            mastery = _safe_dict(node.get("mastery"))
+            nodes[nid] = {
+                "node_id": nid,
+                "title": title,
+                "normalized_title": _safe_text(node.get("normalized_title") or title),
+                "mastery": {
+                    "label": _safe_text(mastery.get("label")) or "learning",
+                    "score": float(mastery.get("score") or 0.5),
+                },
+                "summary": _safe_text(node.get("summary")),
+                "parent_node_id": _safe_text(node.get("parent_node_id")),
+                "edges": [],
+                "buddy_notes": [],
+            }
+
+        for edge in raw_edges:
+            if not isinstance(edge, dict):
+                continue
+            src = _safe_text(edge.get("source") or edge.get("source_node_id"))
+            tgt = _safe_text(edge.get("target") or edge.get("target_node_id"))
+            rel = _safe_text(edge.get("edge_type") or "parent_of")
+            if not src or not tgt:
+                continue
+            edges.append({"source": src, "target": tgt, "relation": rel})
+            if src in nodes:
+                nodes[src]["edges"].append({"target": tgt, "relation": rel})
+    except Exception:
+        pass
+    return {"nodes": nodes, "edges": edges}
+
+
 def _title_in_trunk(title: str, trunk_titles: set[str], trunk_outcomes: set[str]) -> bool:
-    """检查 title 是否已被 trunk 覆盖。"""
     t = title.lower()
     if t in trunk_titles:
         return True
-    # 子串匹配：title 或其片段是否出现在 trunk 的 title/outcome 中
     for tt in trunk_titles:
         if t in tt or tt in t:
             return True
@@ -49,27 +105,23 @@ def _title_in_trunk(title: str, trunk_titles: set[str], trunk_outcomes: set[str]
     return False
 
 
-def _find_association(
-    title: str,
-    outcomes: list[str],
-    trunk_nodes: list[dict],
-) -> list[str]:
-    """找到与 trunk 节点的关联（按 title 或 outcomes 匹配）。"""
-    associated: list[str] = []
-    search_terms = {title.lower()}
-    for o in outcomes:
-        search_terms.add(o.lower())
-    for tn in trunk_nodes:
-        tn_title = _safe_text(tn.get("title")).lower()
-        tn_outcomes = {_safe_text(o).lower() for o in _safe_list(tn.get("outcomes"))}
-        if any(term in tn_title or term in tn_outcomes for term in search_terms if term):
-            associated.append(tn.get("step_id") or tn.get("node_id") or tn_title)
-        elif any(
-            tn_term in title.lower()
-            for tn_term in [tn_title] + list(tn_outcomes)
-        ):
-            associated.append(tn.get("step_id") or tn.get("node_id") or tn_title)
-    return list(dict.fromkeys(associated))  # 去重保序
+def _classify_node(node: dict, trunk_ids: set[str], trunk_titles: set[str], trunk_outcomes: set[str]) -> str | None:
+    """将一个节点分类到 trunk / learned / explore / None（跳过）。"""
+    nid = node.get("node_id", "")
+    title = node.get("title", "")
+    mastery = node.get("mastery", {})
+    label = mastery.get("label", "learning")
+    score = mastery.get("score", 0.5)
+
+    if nid in trunk_ids or _title_in_trunk(title, trunk_titles, trunk_outcomes):
+        return BUDDY_REGION_TRUNK
+    if label == "mastered" or score >= 0.85:
+        return BUDDY_REGION_LEARNED
+    if label == "weak" or score < 0.5:
+        return BUDDY_REGION_EXPLORE
+    if label in ("learning", "practiced"):
+        return BUDDY_REGION_LEARNED if score >= 0.5 else BUDDY_REGION_EXPLORE
+    return None  # unknown — skip
 
 
 def build_buddy_tree(
@@ -78,25 +130,43 @@ def build_buddy_tree(
     plan: dict | None,
     study_graph_features: dict | None,
 ) -> dict:
-    """从 active plan 和 study graph features 构建三层学习记录树。
+    """快照 study_graph + merge plan 投影 + 保留 buddy_notes。
 
     Args:
-        user_id: 用户 ID
-        syllabus_id: 大纲 ID
-        plan: active_learning_plan 返回的 plan dict，含 steps 列表
-        study_graph_features: get_learning_tree_features 返回的 features dict，
-            含 mastered_topics / learned_topics / weak_topics / stale_topics
+        user_id / syllabus_id: 用户和大纲 ID
+        plan: active_learning_plan，含 steps
+        study_graph_features: 当前未使用（保留兼容），节点数据改为从 study_graph 直接读
 
     Returns:
-        tree dict，含 schema_version / user_id / syllabus_id / updated_at / regions
+        v2 tree dict
     """
     plan = plan if isinstance(plan, dict) else {}
-    features = study_graph_features if isinstance(study_graph_features, dict) else {}
-
     now_ts = int(time.time())
 
-    # ── trunk: plan.steps 直接取 ──────────────────────
-    trunk: list[dict] = []
+    # ── 1. 加载已有 buddy_tree（保留 buddy_notes） ──
+    old_tree = load_buddy_tree(user_id, syllabus_id)
+    old_nodes: dict = {}
+    if isinstance(old_tree, dict) and isinstance(old_tree.get("nodes"), dict):
+        old_nodes = old_tree["nodes"]
+
+    # ── 2. 快照 study_graph ──
+    snapshot = _snapshot_from_study_graph(user_id, syllabus_id)
+    sg_nodes = snapshot["nodes"]
+    sg_edges = snapshot["edges"]
+
+    # ── 3. Merge：study_graph 节点覆盖 mastery，保留已有 buddy_notes ──
+    merged_nodes: dict = {}
+    for nid, node in sg_nodes.items():
+        merged = dict(node)
+        old = old_nodes.get(nid) if isinstance(old_nodes.get(nid), dict) else {}
+        # 保留已有 buddy_notes
+        existing_notes = _safe_list(old.get("buddy_notes"))
+        if existing_notes:
+            merged["buddy_notes"] = existing_notes
+        merged_nodes[nid] = merged
+
+    # ── 4. trunk region：从 plan.steps 投影 ──
+    trunk_ids: set[str] = set()
     trunk_titles: set[str] = set()
     trunk_outcomes: set[str] = set()
     steps = _safe_list(plan.get("steps"))
@@ -104,112 +174,53 @@ def build_buddy_tree(
         if not isinstance(step, dict):
             continue
         title = _safe_text(step.get("title"))
-        outcomes = _safe_list(step.get("outcomes"))
-        trunk.append({
-            "step_id": _safe_text(step.get("step_id")),
-            "node_id": _safe_text(step.get("node_id")),
-            "title": title,
-            "outcomes": outcomes,
-            "status": _safe_text(step.get("status")) or "pending",
-            "order_index": int(step.get("order_index") or 0),
-        })
         trunk_titles.add(title.lower())
-        for o in outcomes:
+        for o in _safe_list(step.get("outcomes")):
             trunk_outcomes.add(o.lower())
 
-    # ── learned: mastered/learned 但不在 trunk ─────────
-    learned: list[dict] = []
-    learned_titles: set[str] = set()
-    # 从 features 中收集 mastered 和 learned 节点
-    mastered = _safe_list(features.get("mastered_topics"))
-    weak = _safe_list(features.get("weak_topics"))
-    stale = _safe_list(features.get("stale_topics"))
-    recently_grown = _safe_list(features.get("recently_grown"))
-
-    # 尝试从 features 的 by_topic 或 detail 中获取更丰富的信息
-    topic_details = features.get("topic_details") if isinstance(features.get("topic_details"), dict) else {}
-    weak_details = features.get("weak_topic_details") if isinstance(features.get("weak_topic_details"), dict) else {}
-
-    for topic in mastered:
-        title = _safe_text(topic)
-        if not title or _title_in_trunk(title, trunk_titles, trunk_outcomes):
+    # 尝试将 step 匹配到 study_graph 节点
+    for step in steps:
+        if not isinstance(step, dict):
             continue
-        if title in learned_titles:
-            continue
-        learned_titles.add(title)
-        detail = topic_details.get(title) if isinstance(topic_details.get(title), dict) else {}
-        learned.append({
-            "title": title,
-            "signal": "mastered",
-            "score": float(detail.get("score") or 0.85),
-            "associated_trunk": _find_association(title, [], trunk),
-        })
+        step_title = _safe_text(step.get("title")).lower()
+        matched = False
+        for nid, node in merged_nodes.items():
+            nt = node.get("title", "").lower()
+            if step_title in nt or nt in step_title:
+                trunk_ids.add(nid)
+                matched = True
+                break
+        if not matched and step_title:
+            # step 没有匹配到现有节点，创一个占位
+            sid = _safe_text(step.get("step_id"))
+            trunk_ids.add(sid)
+            merged_nodes[sid] = {
+                "node_id": sid,
+                "title": _safe_text(step.get("title")),
+                "normalized_title": step_title,
+                "mastery": {"label": _safe_text(step.get("status")) or "pending", "score": 0.0},
+                "summary": "",
+                "parent_node_id": "",
+                "edges": [],
+                "buddy_notes": [],
+            }
 
-    # also check by_topic signals
-    by_topic = features.get("by_topic") if isinstance(features.get("by_topic"), dict) else {}
-    for topic_name, info in by_topic.items():
-        title = _safe_text(topic_name)
-        if not title or title in learned_titles:
+    # ── 5. 分类 regions ──
+    regions: dict = {BUDDY_REGION_TRUNK: [], BUDDY_REGION_LEARNED: [], BUDDY_REGION_EXPLORE: []}
+    for nid, node in merged_nodes.items():
+        if nid in trunk_ids:
+            regions[BUDDY_REGION_TRUNK].append(nid)
             continue
-        if _title_in_trunk(title, trunk_titles, trunk_outcomes):
-            continue
-        signal = _safe_text(info.get("signal") or info.get("level") if isinstance(info, dict) else "")
-        if signal in ("mastered", "learned", "practiced"):
-            learned_titles.add(title)
-            learned.append({
-                "title": title,
-                "signal": signal,
-                "score": float(info.get("score") or 0.8) if isinstance(info, dict) else 0.8,
-                "associated_trunk": _find_association(title, [], trunk),
-            })
-
-    # ── explore: weak/stale，和 trunk 有关联 ────────────
-    explore: list[dict] = []
-    explore_titles: set[str] = set()
-
-    for topic_list, signal in [(weak, "weak"), (stale, "stale")]:
-        for topic in topic_list:
-            title = _safe_text(topic)
-            if not title or title in explore_titles:
-                continue
-            if _title_in_trunk(title, trunk_titles, trunk_outcomes):
-                continue
-            if title in learned_titles:
-                continue
-            explore_titles.add(title)
-            detail = weak_details.get(title) if isinstance(weak_details.get(title), dict) else {}
-            explore.append({
-                "title": title,
-                "signal": signal,
-                "score": float(detail.get("score") or 0.3),
-                "associated_trunk": _find_association(title, [], trunk),
-                "associated_learned": _find_association(title, [], learned),
-            })
-
-    # 最近生长但不在 learned/explore 中的
-    for topic in recently_grown:
-        title = _safe_text(topic)
-        if not title or title in explore_titles or title in learned_titles:
-            continue
-        if _title_in_trunk(title, trunk_titles, trunk_outcomes):
-            continue
-        explore_titles.add(title)
-        explore.append({
-            "title": title,
-            "signal": "recently_grown",
-            "score": 0.5,
-            "associated_trunk": _find_association(title, [], trunk),
-            "associated_learned": _find_association(title, [], learned),
-        })
+        region = _classify_node(node, trunk_ids, trunk_titles, trunk_outcomes)
+        if region:
+            regions[region].append(nid)
 
     return {
         "schema_version": BUDDY_TREE_SCHEMA_VERSION,
         "user_id": int(user_id),
         "syllabus_id": int(syllabus_id),
         "updated_at": now_ts,
-        "regions": {
-            BUDDY_REGION_TRUNK: trunk,
-            BUDDY_REGION_LEARNED: learned,
-            BUDDY_REGION_EXPLORE: explore,
-        },
+        "nodes": merged_nodes,
+        "edges": sg_edges,
+        "regions": regions,
     }

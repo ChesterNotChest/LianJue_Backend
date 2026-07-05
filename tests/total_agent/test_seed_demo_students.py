@@ -27,6 +27,8 @@ from tasks import learning_profile_task as lpt
 from tasks import personal_recommendation_task as prt
 from tasks import study_graph_task as sgt
 from tasks.generative_task import generate_resources_from_request
+from tasks.study_buddy.tree import build_buddy_tree
+from tasks.study_buddy.tree_store import save_buddy_tree
 
 DEMO_SYLLABUS_IDS = [8, 18, 104]
 DEMO_PASSWORD = "demo123"
@@ -780,6 +782,13 @@ def _seed_demo_level_for_subject(user: User, syllabus: Syllabus, level: str, now
         f"Expected >={config['min_nodes']} nodes for {level}/{syllabus.syllabus_id}, "
         f"got {graph_result['node_count']}"
     )
+
+    # ── 同步学伴学习进度树 ──
+    try:
+        buddy_tree = build_buddy_tree(user.user_id, syllabus.syllabus_id, plan=None, study_graph_features=None)
+        save_buddy_tree(user.user_id, syllabus.syllabus_id, buddy_tree)
+    except Exception:
+        pass
 
     resource_result = _generate_demo_resource(
         user.user_id, syllabus.syllabus_id, active_step, graph_name, config["resource_type"],
