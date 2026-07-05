@@ -8,6 +8,9 @@ from uuid import uuid4
 from typing import Any, Dict, Iterable, List, Optional
 
 from tasks import personal_recommendation_task as prt
+import json
+from pathlib import Path
+
 from tasks.common.status_events import (
     STATUS_FAILED,
     STATUS_RUNNING,
@@ -127,6 +130,68 @@ from tasks.total_agent.agent_contracts import (
 )
 
 TOTAL_AGENT_STATUS_AGENT = "total_agent"
+
+
+def _ensure_syllabus_term_table(syllabus_id: int) -> list[str]:
+    """从大纲 enhanced_content 提取学科术语表，缓存到 syllabus JSON 的 _term_table 字段。"""
+    from repositories.syllabus_repo import get_syllabus_by_id
+    from tasks.learning_profile.storage import load_json_file
+
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        return []
+    path_str = getattr(syllabus, "syllabus_path", None)
+    if not path_str:
+        return []
+    spath = Path(path_str)
+    if not spath.exists():
+        return []
+
+    data = load_json_file(str(spath))
+    if not isinstance(data, dict):
+        return []
+
+    # 已有缓存
+    cached = data.get("_term_table")
+    if isinstance(cached, list) and cached:
+        return [str(t) for t in cached if t]
+
+    # LLM 提取
+    periods = data.get("period", []) if isinstance(data.get("period"), list) else []
+    content_text = " ".join(
+        str(e.get("enhanced_content") or e.get("content") or "")
+        for e in periods if isinstance(e, dict)
+    )[:6000]
+    if not content_text.strip():
+        return []
+
+    try:
+        from tasks.common.agent_model import build_openai_compatible_model
+        model = build_openai_compatible_model(agent_name="term extractor")
+        result = model.complete(
+            f"Extract 15-30 key subject-specific terminology items from this syllabus content. "
+            f"Return ONLY a JSON array of strings, no explanation. Each term should be 2-8 Chinese characters "
+            f"representing a specific concept, technique, or topic taught in this subject.\n\n{content_text}"
+        )
+        text = str(result or "").strip()
+        # 提取 JSON 数组
+        import re as _re
+        match = _re.search(r"\[.*?\]", text, _re.DOTALL)
+        if match:
+            terms = json.loads(match.group())
+            if isinstance(terms, list):
+                terms = [str(t).strip() for t in terms if str(t).strip()]
+                data["_term_table"] = terms
+                # 写回大纲 JSON
+                try:
+                    spath.parent.mkdir(parents=True, exist_ok=True)
+                    spath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+                return terms
+    except Exception:
+        pass
+    return []
 
 
 def _utc_timestamp() -> int:
@@ -2599,6 +2664,78 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
                 )
         except Exception:
             pass  # knowledge_mastery sync 失败不影响主流程
+
+    # ── learning_record → profile + 刷新 signals ──
+    if status == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED:
+        try:
+            from tasks.learning_profile.storage import load_existing_profile, save_personal_profile
+            step_title = _safe_text(step.get("title"))
+            try:
+                score_val = float(payload.get("score") or 0.7)
+            except (TypeError, ValueError):
+                score_val = 0.7
+            km_items = _safe_list(payload.get("knowledge_mastery"))
+            knowledge_points = []
+            for item in km_items:
+                if isinstance(item, dict):
+                    knowledge_points.append(_safe_text(item.get("knowledge")))
+            if not knowledge_points:
+                knowledge_points.append(step_title)
+            record = {
+                "event_type": "study_session",
+                "topic": step_title,
+                "status": "completed",
+                "score": score_val,
+                "started_at": _utc_timestamp(),
+                "duration_minutes": 20,
+                "meta": {"knowledge_points": knowledge_points[:5]},
+            }
+            existing, _ = load_existing_profile(user_id, syllabus_id)
+            if existing:
+                existing.setdefault("learning_records", []).append(record)
+                # ── 增量更新 signals ──
+                now = _utc_timestamp()
+                lr = existing.get("learning_records", [])
+                ru = existing.get("resource_usage", [])
+                day_stamps = set()
+                total_min = 0
+                all_scores = []
+                for r in lr:
+                    if isinstance(r, dict):
+                        ts = r.get("started_at", 0)
+                        if ts and now - ts <= 7 * 86400:
+                            day_stamps.add(ts // 86400)
+                        total_min += r.get("duration_minutes", 20)
+                        s = r.get("score")
+                        if isinstance(s, (int, float)):
+                            all_scores.append(float(s))
+                for r in ru:
+                    if isinstance(r, dict):
+                        ts = r.get("timestamp", 0)
+                        if ts and now - ts <= 7 * 86400:
+                            day_stamps.add(ts // 86400)
+                sig = existing.setdefault("signals", {})
+                sig["active_days_7d"] = len(day_stamps)
+                if not sig.get("active_days_30d"):
+                    sig["active_days_30d"] = len(day_stamps)
+                sig["avg_duration_minutes"] = round(total_min / max(len(lr), 1))
+                if all_scores:
+                    km = existing.setdefault("knowledge_mastery", {})
+                    km["overall_score"] = round(sum(all_scores) / len(all_scores), 4)
+                # ── term_familiarity ──
+                term_table = _ensure_syllabus_term_table(syllabus_id)
+                if term_table:
+                    topics_text = " ".join(
+                        r.get("topic", "") for r in lr
+                        if isinstance(r, dict) and (now - r.get("started_at", 0) <= 30 * 86400)
+                    )
+                    hits = sum(1 for t in term_table if t.lower() in topics_text.lower())
+                    tf_score = round(min(1.0, 0.12 * hits), 4)
+                    existing.setdefault("term_familiarity", {})["score"] = tf_score
+                save_personal_profile(user_id, syllabus_id, existing)
+        except Exception:
+            pass  # learning_record 写入失败不影响主流程
+
     updated_plan = _safe_dict(update.get("plan") or prt.get_active_learning_plan(user_id, syllabus_id))
     updated_step = _safe_dict(_find_step(updated_plan, step.get("step_id")) or step)
     activated_step, final_plan = _activate_next_pending(user_id, syllabus_id, plan.get("plan_id"), updated_plan)
@@ -2732,6 +2869,56 @@ def tool_note_profile_observation(
         existing, _ = load_existing_profile(user_id, syllabus_id)
         merged = merge_profile_update(existing, observation)
         saved = save_personal_profile(user_id, syllabus_id, merged)
+
+        # ── 周次掌握度同步 ──
+        # ── 周次掌握度同步：弱点推 weak，强点推 mastered ──
+        point_map: list[tuple[list[str], str]] = [
+            (list(weak_points or []), "weak"),
+            (list(strong_points or []), "mastered"),
+        ]
+        if any(points for points, _level in point_map):
+            try:
+                from tasks.learning_profile.personal_syllabus import (
+                    read_profile_personal_syllabus,
+                    init_profile_personal_syllabus,
+                    append_profile_personal_syllabus_suggestion,
+                    maybe_apply_profile_personal_syllabus_progress,
+                )
+                ps = read_profile_personal_syllabus(user_id, syllabus_id, hydrate=True)
+                if not ps:
+                    created = init_profile_personal_syllabus(user_id, syllabus_id)
+                    ps = created.get("personal_syllabus") if isinstance(created, dict) else None
+                if isinstance(ps, dict):
+                    touched_weeks: set[int] = set()
+                    for points, level in point_map:
+                        if not points:
+                            continue
+                        for entry in ps.get("period", []):
+                            if not isinstance(entry, dict):
+                                continue
+                            content = _safe_text(entry.get("content") or entry.get("enhanced_content") or "")
+                            if not content:
+                                continue
+                            if any(p and p.lower() in content.lower() for p in points):
+                                wk = int(entry.get("week_index") or 0)
+                                append_profile_personal_syllabus_suggestion(
+                                    user_id, syllabus_id,
+                                    {"week_index": wk,
+                                     "suggested_competance": level,
+                                     "confidence": 0.8,
+                                     "source": "total_agent",
+                                     "reason": str(note or observation.get("note", ""))[:80]},
+                                )
+                                touched_weeks.add(wk)
+                    # ── 门禁检查：针对被触碰的周 ──
+                    for wk in touched_weeks:
+                        try:
+                            maybe_apply_profile_personal_syllabus_progress(ps, wk)
+                        except Exception:
+                            pass
+            except Exception:
+                pass  # 周次更新失败不影响主流程
+
         updated_fields = [k for k in observation if observation[k]]
         return _tool_result(
             TOOL_NOTE_PROFILE_OBSERVATION,

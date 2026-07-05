@@ -125,6 +125,8 @@ def get_total_agent() -> Agent:
             "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
             "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
             "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal and include that topic in record_learning_feedback. "
+            "After EVERY learning interaction, assess the student's weak_points (what they struggled with) and strong_points (what they clearly mastered). When anything changes, call note_profile_observation — the profile agent needs specific, concise observations (not course descriptions) for accurate recommendations. "
+            "When the student wants to see their existing learning resources, use list_my_resources. "
             "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
             "When they want to abandon the current plan: abandon it (abandon_learning_plan). "
             "When they ask a question: find relevant materials (retrieve_learning_evidence) then answer thoughtfully (answer_learning_question). "
@@ -289,8 +291,20 @@ def get_total_agent() -> Agent:
         strong_points: list[str] = None,
         note: str = "",
     ) -> dict:
-        """记录你对用户学习特征的观察。非必调——仅在注意到值得记录的变化时使用。
-        这些观察会合并到用户画像中，影响后续推荐的质量。"""
+        """每次学习交互后评估并记录用户画像变化，传递给画像 Agent。
+        触发时机：每次学生反馈学习结果后，判断——
+
+        weak_points: NOT course content or syllabus topics. Only list specific
+          knowledge points the student explicitly struggled with (e.g. "不会证算法正确性",
+          "递归边界条件容易写错"). 2-5 short phrases max. Leave empty if no struggle.
+
+        strong_points: Only list points the student clearly demonstrated mastery of
+          (e.g. "能独立解释数学归纳法原理"). 2-5 short phrases. Leave empty if unclear.
+
+        comprehension_level: "weak"/"normal"/"strong" based on overall performance.
+        learning_style: only if you noticed a pattern change.
+
+        画像 Agent 用这些做周次掌握度评估和推荐校准。"""
         return tool_note_profile_observation(
             ctx.deps.state,
             learning_style=learning_style,

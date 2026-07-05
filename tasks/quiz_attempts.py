@@ -121,6 +121,18 @@ def submit_quiz_attempt(
     if len(attempts) > MAX_ATTEMPTS_PER_RESOURCE:
         attempts = attempts[-MAX_ATTEMPTS_PER_RESOURCE:]
     _write_attempts(path, attempts)
+
+    # ── answer_records → profile ──
+    if answer_records:
+        try:
+            from tasks.learning_profile.storage import load_existing_profile, save_personal_profile
+            existing, _ = load_existing_profile(user_id, syllabus_id)
+            if existing:
+                existing.setdefault("answer_records", []).extend(answer_records)
+                save_personal_profile(user_id, syllabus_id, existing)
+        except Exception:
+            pass
+
     return {
         "success": True,
         "attempt": new_attempt,

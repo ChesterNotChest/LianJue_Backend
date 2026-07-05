@@ -51,18 +51,19 @@ def merge_profile_update(existing_profile: Optional[dict], new_profile: dict) ->
     if not isinstance(new_profile, dict):
         return {}
 
-    merged = dict(new_profile)
-    if isinstance(existing_profile, dict) and existing_profile:
-        previous_revision = existing_profile.get('profile_revision') or 0
-        try:
-            previous_revision = int(previous_revision)
-        except Exception:
-            previous_revision = 0
-        merged['previous_profile_updated_at'] = existing_profile.get('updated_at') or existing_profile.get('saved_at')
-        merged['previous_confidence'] = existing_profile.get('confidence')
-        merged['profile_revision'] = previous_revision + 1
-    else:
-        merged['profile_revision'] = int(merged.get('profile_revision') or 1)
+    # 从已有画像开始，保留所有存量数据
+    merged = dict(existing_profile) if isinstance(existing_profile, dict) and existing_profile else {}
+    # 合并新字段
+    for key, value in new_profile.items():
+        if value:
+            merged[key] = value
+    # 修订号递增
+    previous_revision = merged.get('profile_revision') or 0
+    try:
+        previous_revision = int(previous_revision)
+    except Exception:
+        previous_revision = 0
+    merged['profile_revision'] = previous_revision + 1
     return merged
 
 

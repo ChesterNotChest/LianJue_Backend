@@ -397,6 +397,42 @@ def learning_profile_refresh_api():
     return _learning_profile_response(profile)
 
 
+@bp.route('/resource_usage', methods=['POST'])
+def resource_usage_api():
+    """记录一次资源阅读事件——前端预览抽屉关闭时上报停留时长。"""
+    import time
+    from tasks.learning_profile.storage import load_existing_profile, merge_profile_update, save_personal_profile
+
+    data = request.get_json(silent=True) or {}
+    user_id = data.get('user_id')
+    syllabus_id = data.get('syllabus_id')
+    resource_id = str(data.get('resource_id') or '')
+    resource_type = str(data.get('resource_type') or '')
+    try:
+        duration_seconds = int(data.get('duration_seconds') or 0)
+    except (TypeError, ValueError):
+        duration_seconds = 0
+
+    if not user_id or not syllabus_id or duration_seconds < 10:
+        return jsonify({'success': False, 'error_message': 'invalid params or too short'})
+
+    entry = {
+        'resource_id': resource_id,
+        'resource_type': resource_type,
+        'action': 'view',
+        'duration_seconds': duration_seconds,
+        'timestamp': int(time.time()),
+    }
+    existing, _ = load_existing_profile(int(user_id), int(syllabus_id))
+    if not existing:
+        return jsonify({'success': False, 'error_message': 'no profile yet'})
+    usage = existing.setdefault('resource_usage', [])
+    if isinstance(usage, list):
+        usage.append(entry)
+    saved = save_personal_profile(int(user_id), int(syllabus_id), existing)
+    return jsonify({'success': bool(saved)})
+
+
 def _guess_level(user_name: str) -> str:
     name = (user_name or "").lower()
     if "medium_high" in name or "medium-high" in name:

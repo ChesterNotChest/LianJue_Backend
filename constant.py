@@ -56,5 +56,5 @@ class ProfilePersonalSyllabusSuggestionSource(Enum):
 
 class ProfilePersonalSyllabusSuggestionThreshold(Enum):
         CONFIDENCE_MIN = 0.65
-        WEEK_REVIEW_THRESHOLD = 5
+        WEEK_REVIEW_THRESHOLD = 2
         SUGGESTION_HISTORY_MAX = 50
