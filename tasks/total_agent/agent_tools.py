@@ -118,10 +118,10 @@ from tasks.total_agent.agent_contracts import (
     TOOL_LOAD_TOTAL_CONTEXT,
     TOOL_LIST_MY_RESOURCES,
     TOOL_NORMALIZE_LEARNING_GOAL,
-    TOOL_NOTE_PROFILE_OBSERVATION,
+    TOOL_CALL_PROFILE_AGENT,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_RETRIEVE_LEARNING_EVIDENCE,
-    TOOL_RUN_LEARNING_RECOMMENDATION,
+    TOOL_CALL_RECOMMENDATION_AGENT,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_CONTEXT_SCHEMA_VERSION,
     TOTAL_AGENT_LEARNING_EVENT_RECORDED,
@@ -218,6 +218,27 @@ def _list_from_any(value: Any) -> list:
 
 def _safe_text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _map_knowledge_mastery_to_detected_topics(items: list) -> list:
+    """将 knowledge_mastery 条目映射为 Student Agent 期望的 detected_topics 格式。"""
+    signal_map = {"mastered": "mastered", "weak": "struggled", "learning": "learned"}
+    detected = []
+    for item in (items or []):
+        if not isinstance(item, dict):
+            continue
+        title = _safe_text(item.get("knowledge"))
+        if not title:
+            continue
+        try:
+            confidence = float(item.get("score") or 0.5)
+        except (TypeError, ValueError):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, confidence))
+        label = _safe_text(item.get("mastery_label") or "learning")
+        signal = signal_map.get(label, "learned")
+        detected.append({"title": title, "confidence": confidence, "signal": signal})
+    return detected
 
 
 def _notify_buddy_resource_ready_from_tool(state: Dict[str, Any], tool_result: dict) -> None:
@@ -1967,12 +1988,12 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
 
 
 def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
-    _append_trace(state, TOOL_RUN_LEARNING_RECOMMENDATION)
+    _append_trace(state, TOOL_CALL_RECOMMENDATION_AGENT)
     payload = deepcopy(_safe_dict(state.get("payload")))
     user_id = _positive_int(payload.get("user_id"))
     if not user_id:
         return _tool_result(
-            TOOL_RUN_LEARNING_RECOMMENDATION,
+            TOOL_CALL_RECOMMENDATION_AGENT,
             False,
             state=state,
             error_code="missing_user_id",
@@ -1987,13 +2008,22 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
         if not isinstance(goals, list) or not goals:
             goal_text = _safe_text(payload.get("learning_goal") or payload.get("message") or payload.get("question"))
             payload["goals"] = [goal_text] if goal_text else []
-        recommendation = emit_status_pair(
-            state,
-            agent="recommendation_agent",
-            stage="rank_path",
-            fn=lambda: prt.run_recommendation_route_from_payload(payload),
-            payload={"user_id": user_id, "syllabus_id": payload.get("syllabus_id")},
-        )
+        # ── agent-first: try Recommendation Agent, fallback to deterministic ──
+        recommendation = None
+        try:
+            from tasks.personal_recommendation.agent_runtime import run_personal_recommendation_agent
+            agent_result = run_personal_recommendation_agent(payload)
+            recommendation = agent_result.recommendation if agent_result else None
+        except Exception:
+            pass
+        if not recommendation:
+            recommendation = emit_status_pair(
+                state,
+                agent="recommendation_agent",
+                stage="rank_path",
+                fn=lambda: prt.run_recommendation_route_from_payload(payload),
+                payload={"user_id": user_id, "syllabus_id": payload.get("syllabus_id")},
+            )
 
     prt.ensure_recommendation_snapshot(
         user_id,
@@ -2009,7 +2039,7 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
     has_best_path = isinstance(best_path, dict) and bool(best_path.get("path"))
     suggested = ACTION_WAIT_USER_ACCEPTANCE if has_best_path else ACTION_ASK_GOAL_CLARIFICATION
     return _tool_result(
-        TOOL_RUN_LEARNING_RECOMMENDATION,
+        TOOL_CALL_RECOMMENDATION_AGENT,
         bool(_safe_dict(recommendation).get("success", True)),
         state=state,
         recommendation=recommendation,
@@ -2627,41 +2657,21 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
     )
     # ── knowledge_mastery → study_graph 节点更新 ──
     knowledge_mastery = _safe_list(payload.get("knowledge_mastery"))
-    if knowledge_mastery:
+    if knowledge_mastery and syllabus_id:
         try:
-            from tasks import study_graph_task as sgt
-
-            signal_map = {"mastered": "mastered", "weak": "struggled", "learning": "learned"}
-            mastery_changes = []
-            for item in knowledge_mastery:
-                if not isinstance(item, dict):
-                    continue
-                knowledge_title = _safe_text(item.get("knowledge"))
-                if not knowledge_title:
-                    continue
-                label = _safe_text(item.get("mastery_label") or "learning")
-                signal = signal_map.get(label, "learned")
-                try:
-                    score_val = float(item.get("score") or 0.5)
-                except (TypeError, ValueError):
-                    score_val = 0.5
-                mastery_changes.append({
-                    "op": "upsert_knowledge_node",
-                    "client_change_id": f"total_agent:{user_id}:{syllabus_id}:km:{uuid4().hex[:8]}:{knowledge_title}",
-                    "knowledge": {
-                        "title": knowledge_title,
-                        "summary": _safe_text(item.get("evidence") or ""),
-                    },
-                    "mastery": {"signal": signal},
-                    "confidence": max(0.45, min(1.0, score_val)),
+            from tasks.study_graph.student_agent import run_student_agent
+            detected_topics = _map_knowledge_mastery_to_detected_topics(knowledge_mastery)
+            if detected_topics:
+                run_student_agent({
+                    "user_id": int(user_id),
+                    "syllabus_id": int(syllabus_id),
+                    "source_kind": "total_agent",
+                    "detected_topics": detected_topics,
+                    "events": [],
+                    "rag_context": [],
+                    "parent_candidates": [],
+                    "timestamp": _utc_timestamp(),
                 })
-            if mastery_changes and syllabus_id:
-                sgt.submit_learning_tree_changes(
-                    int(user_id),
-                    int(syllabus_id),
-                    mastery_changes,
-                    source={"kind": "total_agent"},
-                )
         except Exception:
             pass  # knowledge_mastery sync 失败不影响主流程
 
@@ -2832,13 +2842,13 @@ def tool_note_profile_observation(
     note: str = "",
 ) -> dict:
     """记录对用户学习特征的观察，合并到用户画像中。"""
-    _append_trace(state, TOOL_NOTE_PROFILE_OBSERVATION)
+    _append_trace(state, TOOL_CALL_PROFILE_AGENT)
     payload = _safe_dict(state.get("payload"))
     user_id = _positive_int(payload.get("user_id"))
     syllabus_id = _positive_int(payload.get("syllabus_id"))
     if not user_id or not syllabus_id:
         return _tool_result(
-            TOOL_NOTE_PROFILE_OBSERVATION,
+            TOOL_CALL_PROFILE_AGENT,
             False,
             state=state,
             error_code="missing_user_or_syllabus",
@@ -2857,7 +2867,7 @@ def tool_note_profile_observation(
         observation["note"] = str(note)
     if not observation:
         return _tool_result(
-            TOOL_NOTE_PROFILE_OBSERVATION,
+            TOOL_CALL_PROFILE_AGENT,
             True,
             state=state,
             updated_fields=[],
@@ -2919,9 +2929,24 @@ def tool_note_profile_observation(
             except Exception:
                 pass  # 周次更新失败不影响主流程
 
+        # ── best-effort 调用 Profile Agent 重算派生字段 ──
+        try:
+            from tasks.learning_profile.service import build_learning_profile
+            existing_reloaded, _ = load_existing_profile(user_id, syllabus_id)
+            if existing_reloaded:
+                build_learning_profile(
+                    user_id=user_id,
+                    syllabus_id=syllabus_id,
+                    learning_records=existing_reloaded.get('learning_records', []),
+                    answer_records=existing_reloaded.get('answer_records', []),
+                    resource_usage=existing_reloaded.get('resource_usage', []),
+                )
+        except Exception:
+            pass  # Agent 失败不影响已落账的确定性写入
+
         updated_fields = [k for k in observation if observation[k]]
         return _tool_result(
-            TOOL_NOTE_PROFILE_OBSERVATION,
+            TOOL_CALL_PROFILE_AGENT,
             bool(saved),
             state=state,
             updated_fields=updated_fields,
@@ -2929,7 +2954,7 @@ def tool_note_profile_observation(
         )
     except Exception as exc:
         return _tool_result(
-            TOOL_NOTE_PROFILE_OBSERVATION,
+            TOOL_CALL_PROFILE_AGENT,
             False,
             state=state,
             error_code="profile_observation_failed",
@@ -3171,4 +3196,10 @@ __all__ = [
     "tool_record_learning_feedback",
     "tool_run_learning_recommendation",
     "tool_skip_current_step",
+    "tool_call_profile_agent",
+    "tool_call_recommendation_agent",
 ]
+
+# ── 别名：agent_runtime.py 期望这些名字 ──
+tool_call_profile_agent = tool_note_profile_observation
+tool_call_recommendation_agent = tool_run_learning_recommendation

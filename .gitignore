@@ -91,3 +91,6 @@ personal_recommendation/learning_plan/*
 !personal_recommendation/learning_plan/.gitkeep
 personal_recommendation/recommendation_snapshot/*
 !personal_recommendation/recommendation_snapshot/.gitkeep
+
+.claude
+.codex
