@@ -41,7 +41,7 @@ ACTION_OFFER_PRACTICE_OR_RESOURCE = "offer_practice_or_resource"
 TOOL_LOAD_TOTAL_CONTEXT = "load_total_context"
 TOOL_INFER_USER_INTENT = "infer_user_intent"  # deprecated — replaced by note_intent
 TOOL_NOTE_INTENT = "note_intent"
-TOOL_RUN_LEARNING_RECOMMENDATION = "run_learning_recommendation"
+TOOL_CALL_RECOMMENDATION_AGENT = "call_recommendation_agent"
 TOOL_NORMALIZE_LEARNING_GOAL = "normalize_learning_goal_for_recommendation"
 TOOL_ACCEPT_LEARNING_PLAN = "accept_learning_plan"
 TOOL_GET_NEXT_LEARNING_TASK = "get_next_learning_task"
@@ -55,7 +55,7 @@ TOOL_FIND_PERSONAL_RESOURCES = "find_personal_resources"
 TOOL_DECIDE_RESOURCE_REUSE = "decide_resource_reuse"
 TOOL_APPLY_LEARNING_EFFECT_SIGNAL = "apply_learning_effect_signal"
 TOOL_GET_COURSE_LEARNING_TREE_SUMMARY = "get_course_learning_tree_summary"
-TOOL_NOTE_PROFILE_OBSERVATION = "note_profile_observation"
+TOOL_CALL_PROFILE_AGENT = "call_profile_agent"
 TOOL_LIST_MY_RESOURCES = "list_my_resources"
 
 GLOBAL_SIGNAL_REINFORCE_SHARED_WEAKNESS = "reinforce_shared_weakness"
@@ -162,7 +162,7 @@ RECOMMENDATION_RECOVERY_ACTIONS = {
 TOTAL_AGENT_TOOL_ORDER = {
     INTENT_RECOMMEND_LEARNING_PATH: [
         TOOL_LOAD_TOTAL_CONTEXT,
-        TOOL_RUN_LEARNING_RECOMMENDATION,
+        TOOL_CALL_RECOMMENDATION_AGENT,
     ],
     INTENT_ACCEPT_RECOMMENDATION: [
         TOOL_LOAD_TOTAL_CONTEXT,

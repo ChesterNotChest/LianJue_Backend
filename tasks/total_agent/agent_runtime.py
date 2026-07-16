@@ -61,10 +61,10 @@ from tasks.total_agent.agent_contracts import (
     TOOL_NORMALIZE_LEARNING_GOAL,
     TOOL_LIST_MY_RESOURCES,
     TOOL_NOTE_INTENT,
-    TOOL_NOTE_PROFILE_OBSERVATION,
+    TOOL_CALL_PROFILE_AGENT,
+    TOOL_CALL_RECOMMENDATION_AGENT,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_RETRIEVE_LEARNING_EVIDENCE,
-    TOOL_RUN_LEARNING_RECOMMENDATION,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_TOOL_ORDER,
     MESSAGE_HISTORY_MAX_TURNS,
@@ -84,9 +84,9 @@ from tasks.total_agent.agent_tools import (
     tool_list_my_resources,
     tool_load_total_context,
     tool_normalize_learning_goal_for_recommendation,
-    tool_note_profile_observation,
+    tool_call_profile_agent,
     tool_record_learning_feedback,
-    tool_run_learning_recommendation,
+    tool_call_recommendation_agent,
     tool_skip_current_step,
     tool_abandon_learning_plan,
 )
@@ -94,7 +94,7 @@ from tasks.total_agent.agent_tools import (
 logger = logging.getLogger(__name__)
 
 CHAT_TERMINAL_TOOLS = {
-    TOOL_RUN_LEARNING_RECOMMENDATION,
+    TOOL_CALL_RECOMMENDATION_AGENT,
     TOOL_ACCEPT_LEARNING_PLAN,
     TOOL_NORMALIZE_LEARNING_GOAL,
     TOOL_GENERATE_CURRENT_STEP_RESOURCE,
@@ -120,12 +120,12 @@ def get_total_agent() -> Agent:
             "Always start by understanding their current learning context (load_total_context). "
             "You may optionally call note_intent to record your understanding of the user's goal — "
             "this helps you stay on track across turns but is not required. "
-            "When they want a learning path: recommend first (run_learning_recommendation), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
+            "When they want a learning path: recommend first (call_recommendation_agent), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
             "When they accept a plan: confirm it (accept_learning_plan). "
             "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
             "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
             "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal and include that topic in record_learning_feedback. "
-            "After EVERY learning interaction, assess the student's weak_points (what they struggled with) and strong_points (what they clearly mastered). When anything changes, call note_profile_observation — the profile agent needs specific, concise observations (not course descriptions) for accurate recommendations. "
+            "After EVERY learning interaction, assess the student's weak_points (what they struggled with) and strong_points (what they clearly mastered). When anything changes, call call_profile_agent — the profile agent needs specific, concise observations (not course descriptions) for accurate recommendations. "
             "When the student wants to see their existing learning resources, use list_my_resources. "
             "When they skip a step: skip it (skip_current_step) then show the next step (get_next_learning_task). "
             "When they want to abandon the current plan: abandon it (abandon_learning_plan). "
@@ -188,8 +188,8 @@ def get_total_agent() -> Agent:
         return result
 
     @agent.tool(sequential=True)
-    def run_learning_recommendation(ctx: RunContext[TotalAgentDeps]) -> dict:
-        return _remember_terminal(ctx, TOOL_RUN_LEARNING_RECOMMENDATION, tool_run_learning_recommendation(ctx.deps.state))
+    def call_recommendation_agent(ctx: RunContext[TotalAgentDeps]) -> dict:
+        return _remember_terminal(ctx, TOOL_CALL_RECOMMENDATION_AGENT, tool_call_recommendation_agent(ctx.deps.state))
 
     @agent.tool(sequential=True)
     def normalize_learning_goal_for_recommendation(ctx: RunContext[TotalAgentDeps]) -> dict:
@@ -283,7 +283,7 @@ def get_total_agent() -> Agent:
         return _remember_terminal(ctx, TOOL_ABANDON_LEARNING_PLAN, tool_abandon_learning_plan(ctx.deps.state))
 
     @agent.tool(sequential=True)
-    def note_profile_observation(
+    def call_profile_agent(
         ctx: RunContext[TotalAgentDeps],
         learning_style: str = "",
         comprehension_level: str = "",
@@ -305,7 +305,7 @@ def get_total_agent() -> Agent:
         learning_style: only if you noticed a pattern change.
 
         画像 Agent 用这些做周次掌握度评估和推荐校准。"""
-        return tool_note_profile_observation(
+        return tool_call_profile_agent(
             ctx.deps.state,
             learning_style=learning_style,
             comprehension_level=comprehension_level,
@@ -372,7 +372,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     error_message = str(terminal.get("error_message") or "")
     recommendation_terminal = (
         terminal
-        if terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION
+        if terminal_tool == TOOL_CALL_RECOMMENDATION_AGENT
         else state.get("recommendation_result")
         if isinstance(state.get("recommendation_result"), dict)
         else {}
@@ -460,7 +460,7 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     if answer_terminal:
         result["answer_learning_question"] = answer_terminal
 
-    if terminal_tool == TOOL_RUN_LEARNING_RECOMMENDATION:
+    if terminal_tool == TOOL_CALL_RECOMMENDATION_AGENT:
         suggested = recommendation_terminal.get("suggested_next_action") or ACTION_WAIT_USER_ACCEPTANCE
     elif terminal_tool == TOOL_NORMALIZE_LEARNING_GOAL:
         suggested = normalization_terminal.get("suggested_next_action") or ACTION_ASK_GOAL_CLARIFICATION

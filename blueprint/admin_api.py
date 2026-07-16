@@ -109,11 +109,33 @@ def students_progress_api(syllabus_id):
         uid = binding.user_id
         tree = get_tree(uid, syllabus_id)
         buddy_tree = load_buddy_tree(uid, syllabus_id)
+        # 脱敏画像摘要
+        profile_summary = None
+        try:
+            from tasks.learning_profile.storage import load_existing_profile
+            profile, _ = load_existing_profile(uid, syllabus_id)
+            if isinstance(profile, dict):
+                sig = profile.get("signals", {}) if isinstance(profile.get("signals"), dict) else {}
+                km = profile.get("knowledge_mastery", {}) if isinstance(profile.get("knowledge_mastery"), dict) else {}
+                tf = profile.get("term_familiarity", {}) if isinstance(profile.get("term_familiarity"), dict) else {}
+                lr = profile.get("learning_records", []) if isinstance(profile.get("learning_records"), list) else []
+                ar = profile.get("answer_records", []) if isinstance(profile.get("answer_records"), list) else []
+                profile_summary = {
+                    "active_days_7d": sig.get("active_days_7d", 0),
+                    "avg_duration_minutes": sig.get("avg_duration_minutes", 0),
+                    "overall_score": round(float(km.get("overall_score", 0)), 2),
+                    "term_familiarity_score": round(float(tf.get("score", 0)), 2),
+                    "learning_record_count": len(lr),
+                    "answer_record_count": len(ar),
+                }
+        except Exception:
+            pass
         students.append(
             {
                 "user_index": idx + 1,
                 "study_graph": tree,
                 "buddy_tree": buddy_tree,
+                "profile_summary": profile_summary,
             }
         )
 
