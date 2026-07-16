@@ -1,5 +1,8 @@
 # Total Agent → 子 Agent 写通路带宽扩容 Contract
 
+> **状态：✅ 已实现**
+> 三个通路均已收口：Profile（call_profile_agent → build_learning_profile）、Study Graph（record_learning_feedback → run_student_agent）、Resource List（list_my_resources 工具注册）。旁路修复使结构化学习信号正确送达子 Agent。
+
 收口 Total Agent 向下游模块写入结构化学习信号的能力增强。核心目标：
 让 Agent 观察到的用户学习行为（掌握度、薄弱点、反馈）以结构化形式送达
 Profile Agent 和 Study Graph Agent，而不是丢失在 LLM 的自然语言生成里。

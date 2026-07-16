@@ -1,5 +1,8 @@
 # 意图层门禁清理 Contract
 
+> **状态：✅ 已实现 (commit 3d79ed6)**
+> 阶段 1（accept_learning_plan 门禁清退）和阶段 3（_message_is_vague_resource_request 语义修正）已落地。
+
 简化和清退 Total Agent 意图推断与工具执行流程中的冗余、误导性硬编码门禁。
 
 ---

@@ -26,6 +26,7 @@ student message
 - `answer_learning_question`
 - `record_learning_feedback`
 - `skip_current_step`
+- `abandon_learning_plan`
 - `ask_goal_clarification`
 
 即时答疑相关枚举定义在 `tasks/total_agent/agent_contracts.py`：
@@ -65,7 +66,10 @@ session window:
 
 - Total Agent 是全局调度中枢，负责 intent、上下文读取、工具路由、异常回退和统一输出。
 - Total Agent 不直接生成教学内容、不直接改写画像、不直接编辑学习树，只通过 task 门户调用子模块。
-- 个性化学习闭环遵循“画像描述状态 -> 推荐决定路径 -> 资源服务当前节点 -> 反馈回流计划与学习树”的顺序。
+  - 画像观察通过 `call_profile_agent` → `build_learning_profile` → `run_learning_profile_agent()` 委托 Profile Agent 全量计算派生字段。
+  - 学习反馈通过 `record_learning_feedback` → `run_student_agent()` 委托 Student Agent 进行 RAG 检索、树上下文化、父节点裁决和掌握度更新。
+  - 路径推荐通过 `call_recommendation_agent` → `run_personal_recommendation_agent()` 优先走 Recommendation Agent，失败时 fallback 到确定性路径。
+- 个性化学习闭环遵循”画像描述状态 -> 推荐决定路径 -> 资源服务当前节点 -> 反馈回流计划与学习树”的顺序。
 - “资源推送”在当前实现中不是独立业务模块，而是当前 active plan step 的资源生成和前端展示动作。
 - 未实现的内容审核 Agent、学习效果评估 Agent、视频/动画脚本生成不作为当前 Total Agent 能力承诺；当前只保留后续扩展边界。
 
@@ -85,8 +89,8 @@ Agent 工具定义在 `tasks/total_agent/agent_tools.py`：
 
 ```text
 load_total_context
-infer_user_intent
-run_learning_recommendation
+note_intent
+call_recommendation_agent
 normalize_learning_goal_for_recommendation
 accept_learning_plan
 get_next_learning_task
@@ -95,17 +99,22 @@ retrieve_learning_evidence
 answer_learning_question
 record_learning_feedback
 skip_current_step
+abandon_learning_plan
+call_profile_agent
+list_my_resources
+get_course_learning_tree_summary
 ```
 
 Total Agent 不直接编造业务产物，只通过 task 门户调用子能力：
 
 ```text
 learning_profile_task
-  -> get_persisted_learning_profile
   -> get_or_build_learning_profile only when explicitly opted in
+  -> 增量观察通过 call_profile_agent → build_learning_profile → run_learning_profile_agent()
+     Profile Agent 执行 normalize_events → compute_features → assemble_profile 完整管线
 
 personal_recommendation_task
-  -> run_recommendation_route_from_payload
+  -> run_personal_recommendation_agent (优先) → fallback run_recommendation_route_from_payload
   -> accept_recommendation_path
   -> get_active_learning_plan
   -> append / update learning_plan manifest
@@ -116,7 +125,8 @@ generative_task
 study_graph_task
   -> get_learning_tree_features
   -> get_course_learning_tree_summary
-  -> submit_learning_tree_changes for feedback sync
+  -> 知识树写入通过 record_learning_feedback → run_student_agent()
+     Student Agent 执行 rag_search → get_tree_context → build_changes → submit_changes
 
 study_buddy_task
   -> notify_study_buddy_event for single high-priority learning event
@@ -262,8 +272,7 @@ stage running
 ```text
 total_agent
   load_total_context
-  infer_user_intent
-  run_learning_recommendation
+  call_recommendation_agent
   normalize_learning_goal_for_recommendation
   accept_learning_plan
   get_next_learning_task
@@ -272,6 +281,9 @@ total_agent
   answer_learning_question
   record_learning_feedback
   skip_current_step
+  abandon_learning_plan
+  call_profile_agent
+  get_course_learning_tree_summary
 
 profile_agent
   load_context / assemble_profile
@@ -408,6 +420,22 @@ tests/fixtures/total_agent/deep_student_state.json
 
 ## 最近收口
 
+**2026-07-16：子 Agent 收口（旁路修复）**
+
+三个旁路已收口为对子 Agent 的正确委托：
+
+| 旁路 | 位置 | 修复 |
+|------|------|------|
+| Profile 直写 | `tool_note_profile_observation` | 确定性 merge 后 best-effort 调 `build_learning_profile` → `run_learning_profile_agent()` 重算派生字段 |
+| Study Graph 直写 | `_record_step_status` | `submit_learning_tree_changes()` → `run_student_agent()`，经 RAG + tree context + parent_candidate 解析 |
+| Recommendation 不走 Agent | `tool_run_learning_recommendation` | `run_personal_recommendation_agent()` 优先，失败 fallback 确定性路径 |
+
+常量重命名：
+- `TOOL_NOTE_PROFILE_OBSERVATION` → `TOOL_CALL_PROFILE_AGENT`
+- `TOOL_RUN_LEARNING_RECOMMENDATION` → `TOOL_CALL_RECOMMENDATION_AGENT`
+
+详细设计见 `docs/subagent_inbox_contract.md`（状态：✅ 已实现）。
+
 默认 E2E 入口已通过：
 
 ```bash
@@ -488,6 +516,8 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 - 深状态 E2E、profile-driven continue、study graph weak/stale、feedback sync、clarification/no-force。
 - 全真实 opt-in 与 aligned graph 稳定成功闭环。
 - Agent 状态事件与 `tool_status_events`。
+- 子 Agent 收口（旁路修复），详见 `docs/subagent_inbox_contract.md`（✅ 已实现）。
+- 意图门禁清退，详见 `docs/intent_gates_cleanup_contract.md`（✅ 已实现）。
 
 旧阶段文档可删除；如果后续发现旧文档仍有有效事实，应先融合进本文或测试，再删除旧文档。
 

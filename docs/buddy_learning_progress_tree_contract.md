@@ -1,5 +1,8 @@
 # 学伴学习进度树 Contract
 
+> **状态：✅ 已实现**
+> 学伴树已升级到 `study_buddy.tree.v2`：节点带 `mastery.label/score`、`parent_node_id`、`edges[]`、`buddy_notes[]`，`tree.py` 实现 trunk/learned/explore 三层分区。
+
 学伴「小觉」当前能接触到的学习状态信息是严重扁平化的 —— `study_graph_features` 把完整树结构压缩成了 `["标题1", "标题2", ...]` 的字符串列表。这份 contract 设计一份学伴专属的持久化学习进度树，修复输入带宽，并为后续的自演化写通路打底。
 
 ---

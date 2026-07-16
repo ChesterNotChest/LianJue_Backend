@@ -1,5 +1,8 @@
 # 总 Agent → 子 Agent 旁路评估
 
+> **状态：✅ 已处理 (2026-07-16)**
+> 评估的 3 个旁路（profile_observation、knowledge_mastery→study_graph、recommendation）已全部收口。详见 `subagent_inbox_contract.md`。
+
 仅评估这 3 个应当调用子 Agent 但实际绕过的 tool。
 
 ---

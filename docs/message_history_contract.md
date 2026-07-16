@@ -1,5 +1,8 @@
 # Total Agent message_history 接入 Contract
 
+> **状态：✅ 已实现（可用状态）**
+> `agent_runtime.py` 已接入 `_save_message_history()` / `_load_message_history()`，`MESSAGE_HISTORY_MAX_TURNS=20`。LLM 从 message_history 获取跨轮对话上下文（含 tool_call + tool_result）。
+
 收口 PydanticAI 原生 `message_history` 能力接入。让 LLM 跨轮感知完整对话历史——
 含 tool_call + tool_result ——消除当前纯文本记忆导致的决策割裂、重复查询和意图确认。
 

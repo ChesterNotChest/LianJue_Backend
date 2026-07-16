@@ -1,5 +1,8 @@
 # 总 Agent → 子 Agent 收口 Contract
 
+> **状态：✅ 已实现 (2026-07-16)**
+> 三个阶段均已落地，详见 `total_agent_dev_doc.md` 最近收口部分。
+
 将总 Agent 中三个旁路收口为对子 Agent 的正确调用。
 
 ---

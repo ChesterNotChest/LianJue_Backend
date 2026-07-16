@@ -1,5 +1,8 @@
 # 权限模型重构 & 管理端/用户端学科预览
 
+> **状态：🔄 部分实现**
+> `blueprint/user_api.py` 已新增 `/demo_students`、`/graph/list`、`/status/version`、`/knowledge-graph/snapshot` 端点。管理端后端 API（`admin_api`）已注册。完整权限模型迁移和前端适配仍在推进中。
+
 > 来源: [docs/better_display_small_plan.md](better_display_small_plan.md)
 > 版本: v2.0
 > 日期: 2026-06-27
