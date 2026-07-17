@@ -1,3 +1,7 @@
+import re
+import logging
+
+import requests
 from flask import Blueprint, jsonify, request
 
 from repositories.user_syllabus_repo import get_user_syllabus
@@ -10,6 +14,12 @@ from tasks.personal_recommendation_task import (
     list_recommendation_snapshots,
     run_recommendation_route_from_payload,
 )
+
+logger = logging.getLogger(__name__)
+
+BILIBILI_SEARCH_URL = "https://api.bilibili.com/x/web-interface/search/type"
+BILIBILI_TIMEOUT = 8  # seconds
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
 
 
 bp = Blueprint('learning_api', __name__, url_prefix='/api')
@@ -367,3 +377,71 @@ def knowledge_search():
 
     result["matched_sources"] = matched_sources[:15]
     return jsonify(result)
+
+
+def _search_bilibili_videos(query: str, max_results: int = 3) -> list[dict]:
+    """Search B站 for learning videos, returning normalized results."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/125.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.bilibili.com",
+    }
+    try:
+        resp = requests.get(
+            BILIBILI_SEARCH_URL,
+            params={"search_type": "video", "keyword": query, "page": 1},
+            headers=headers,
+            timeout=BILIBILI_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("B站 video search failed for query=%r: %s", query, exc)
+        return []
+
+    results = []
+    for item in (data.get("data", {}).get("result") or [])[:max_results]:
+        title = _HTML_TAG_RE.sub("", item.get("title", "")).strip()
+        bvid = item.get("bvid", "")
+        results.append({
+            "title": title,
+            "thumbnail_url": item.get("pic", ""),
+            "video_url": f"https://www.bilibili.com/video/{bvid}" if bvid else "",
+            "duration": item.get("duration", ""),
+            "source": "bilibili",
+            "author": item.get("author", ""),
+            "play_count": item.get("play", 0),
+            "description": item.get("description", ""),
+        })
+    return results
+
+
+@bp.route("/knowledge/video_search", methods=["POST"])
+def video_search_api():
+    """检索 B站教学视频。
+
+    入参 (JSON):
+      - query: str (required)
+      - max_results: int (optional, default 3)
+      - topic: str (optional, combined with query)
+
+    返回:
+      {success: true, videos: [{title, thumbnail_url, video_url, duration, source, author}]}
+    """
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query") or "").strip()
+    if not query:
+        return jsonify({"success": False, "videos": [], "error": "missing query"}), 400
+
+    topic = str(data.get("topic") or "").strip()
+    if topic:
+        query = f"{topic} {query}"
+
+    max_results = int(data.get("max_results") or 3)
+    max_results = max(1, min(max_results, 20))
+
+    videos = _search_bilibili_videos(query, max_results=max_results)
+    return jsonify({"success": True, "videos": videos})

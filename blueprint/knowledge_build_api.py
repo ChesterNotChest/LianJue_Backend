@@ -1,6 +1,14 @@
+import logging
+
+import requests
 from flask import Blueprint, request, jsonify
 from tasks import graph_task, jobs_task
 from utils.auth import require_operator
+
+logger = logging.getLogger(__name__)
+
+GITHUB_SEARCH_URL = "https://api.github.com/search/repositories"
+GITHUB_TIMEOUT = 8  # seconds
 
 
 def _parse_job_id(value):
@@ -352,3 +360,65 @@ def list_jobs_api():
         return jsonify({'success': True, 'jobs': out, 'error_message': '', 'error_code': ''}), 200
     except Exception as e:
         return jsonify({'success': False, 'jobs': [], 'error_message': str(e), 'error_code': 'exception'}), 500
+
+
+@bp.route("/knowledge/github_search", methods=["POST"])
+def github_search_api():
+    """检索 GitHub 仓库。
+
+    入参 (JSON):
+      - query: str (required)
+      - topic: str (optional, appended to query)
+      - max_results: int (optional, default 6)
+      - min_stars: int (optional, default 50)
+
+    返回:
+      {success: true, repos: [{full_name, description, html_url, stars, language, license}]}
+    """
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query") or "").strip()
+    if not query:
+        return jsonify({"success": False, "repos": [], "error": "missing query"}), 400
+
+    topic = str(data.get("topic") or "").strip()
+    max_results = int(data.get("max_results") or 6)
+    max_results = max(1, min(max_results, 30))
+    min_stars = int(data.get("min_stars") or 50)
+
+    # Build GitHub search qualifier
+    q_parts = [query]
+    if topic:
+        q_parts.append(f"topic:{topic}")
+    q_parts.append(f"stars:>={min_stars}")
+    q = " ".join(q_parts)
+
+    headers = {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "Lianjue-Learning-Platform/1.0",
+    }
+    try:
+        resp = requests.get(
+            GITHUB_SEARCH_URL,
+            params={"q": q, "sort": "stars", "order": "desc", "per_page": max_results},
+            headers=headers,
+            timeout=GITHUB_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data_resp = resp.json()
+    except Exception as exc:
+        logger.warning("GitHub search failed for query=%r: %s", q, exc)
+        return jsonify({"success": True, "repos": []})
+
+    repos = []
+    for item in (data_resp.get("items") or [])[:max_results]:
+        lic = item.get("license")
+        repos.append({
+            "full_name": item.get("full_name", ""),
+            "description": item.get("description", ""),
+            "html_url": item.get("html_url", ""),
+            "stars": item.get("stargazers_count", 0),
+            "language": item.get("language", ""),
+            "license": lic.get("spdx_id", "") if lic else "",
+        })
+
+    return jsonify({"success": True, "repos": repos})

@@ -535,3 +535,148 @@ def proactive_buddy_message(
         reply[:120],
     )
     return reply[:500] if reply else None
+
+
+def synthesis_proactive_message(
+    user_id: int,
+    syllabus_id: int,
+    plan: dict | None = None,
+    study_graph_features: dict | None = None,
+) -> str | None:
+    """生成学伴综合学习建议（2-3 句）。
+
+    从 explore 节点 + weak_topics + buddy_notes 上下文，
+    让学伴自然地说出下一步可以关注的方向。
+
+    Returns:
+        2-3 句自然语言建议，或 None（无足够上下文时）。
+    """
+    import time
+
+    # 1. Build buddy tree
+    tree = build_buddy_tree(user_id, syllabus_id, plan, study_graph_features)
+    try:
+        from . import tree_store
+        tree_store.save_buddy_tree(user_id, syllabus_id, tree)
+    except Exception:
+        pass
+
+    # 2. Load memory tags
+    tags = memory.load_memory_tags(user_id, syllabus_id)
+
+    # 3. Collect context
+    regions = tree.get("regions", {})
+    all_nodes = tree.get("nodes", {})
+    explore_ids = regions.get(BUDDY_REGION_EXPLORE, [])
+    learned_ids = regions.get(BUDDY_REGION_LEARNED, [])
+
+    # If nothing to explore, no synthesis needed
+    if not explore_ids:
+        logger.info(
+            "[study_buddy.agent] synthesis_skip_no_explore user_id=%s syllabus_id=%s",
+            user_id,
+            syllabus_id,
+        )
+        return None
+
+    # Build explore/weak summary
+    explore_lines: list[str] = []
+    for nid in explore_ids[:8]:
+        node = all_nodes.get(nid, {}) if isinstance(all_nodes.get(nid), dict) else {}
+        title = node.get("title", nid)
+        summary = node.get("summary", "")
+        mastery = node.get("mastery", {})
+        label = mastery.get("label", "?") if isinstance(mastery, dict) else "?"
+        line = f"  - {title} ({label})"
+        if summary:
+            line += f": {summary[:80]}"
+        notes = node.get("buddy_notes", [])
+        if notes:
+            line += f" [观察: {notes[-1]['note'][:60]}]"
+        explore_lines.append(line)
+
+    learned_lines: list[str] = []
+    for nid in learned_ids[:5]:
+        node = all_nodes.get(nid, {}) if isinstance(all_nodes.get(nid), dict) else {}
+        title = node.get("title", nid)
+        learned_lines.append(f"  - {title}")
+
+    # Weak topics from study graph features
+    weak_topics = []
+    if isinstance(study_graph_features, dict):
+        weak_topics = study_graph_features.get("weak_topics") or []
+
+    # 4. Build prompt
+    context_parts = [
+        f"学生探索区的知识点 ({len(explore_ids)} 个):",
+        *explore_lines,
+    ]
+    if learned_lines:
+        context_parts.append(f"\n已掌握 ({len(learned_ids)} 个):")
+        context_parts.extend(learned_lines)
+    if weak_topics:
+        parts = [f"  - {str(w)}" for w in weak_topics[:6]]
+        context_parts.append(f"\n学习图谱标记的薄弱点:\n" + "\n".join(parts))
+    if tags:
+        tag_parts = [f"  - {t['tag']}" for t in tags[:12]]
+        context_parts.append(f"\n学生的记忆标签:\n" + "\n".join(tag_parts))
+
+    context = "\n".join(context_parts)
+
+    prompt = (
+        f"你是学伴「小觉」，你观察学生的学习进度后，需要给出 2-3 句自然、",
+        f"有温度的综合建议。\n\n"
+        f"{context}\n\n"
+        f"请根据以上信息，以学伴小觉的身份，给出 2-3 句综合学习建议。\n"
+        f"要求：\n"
+        f"- 自然口语化，像朋友聊天，不要汇报\n"
+        f"- 指出 1-2 个值得关注的薄弱方向\n"
+        f"- 如果学生已经掌握了一些内容，可以鼓励一下\n"
+        f"- 不要列出数据、不要提具体分数\n"
+        f"- 总字数控制在 80 字以内"
+    )
+
+    agent = _get_buddy_agent()
+    deps = BuddyDeps(
+        user_id=user_id,
+        syllabus_id=syllabus_id,
+        plan=plan or {},
+        study_graph_features=study_graph_features or {},
+    )
+    logger.info(
+        "[study_buddy.agent] synthesis_llm_start user_id=%s syllabus_id=%s explore_count=%s prompt_chars=%s",
+        user_id,
+        syllabus_id,
+        len(explore_ids),
+        len(prompt),
+    )
+    try:
+        result = agent.run_sync(prompt, deps=deps)
+    except Exception:
+        logger.exception(
+            "[study_buddy.agent] synthesis_llm_failed user_id=%s syllabus_id=%s",
+            user_id,
+            syllabus_id,
+        )
+        return None
+
+    reply = ""
+    if hasattr(result, "output"):
+        output = result.output
+        if isinstance(output, str):
+            reply = output.strip()
+        elif isinstance(output, dict):
+            reply = str(output.get("reply") or output.get("text") or output.get("content") or "").strip()
+            if not reply:
+                reply = str(output).strip()
+        elif output is not None:
+            reply = str(output).strip()
+
+    logger.info(
+        "[study_buddy.agent] synthesis_llm_done user_id=%s syllabus_id=%s reply_chars=%s reply_preview=%s",
+        user_id,
+        syllabus_id,
+        len(reply),
+        reply[:120],
+    )
+    return reply[:500] if reply else None

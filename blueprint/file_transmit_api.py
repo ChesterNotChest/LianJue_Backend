@@ -149,7 +149,8 @@ def upload_calendar():
         "file_name": "calendar.pdf",   # 必须
         "file_bytes": "base64_encoded_content",  # 必须
         "upload_time": "2023-10-01T12:00:00Z",  # 可选
-        "user_id": 7  # 可选，传入后会为该用户创建 syllabus owner 关联
+        "user_id": 7,  # 可选，传入后会为该用户创建 syllabus owner 关联
+        "title": "学科名称"  # 可选，设置 syllabus.title；未传入时由 build_draft 从文件名提取
     }
 
     输出：
@@ -166,6 +167,7 @@ def upload_calendar():
         file_name = request.form.get('file_name') or (uploaded_file.filename if uploaded_file else None)
         upload_time = request.form.get('upload_time')
         user_id = request.form.get('user_id')
+        title = request.form.get('title')
         file_bytes = uploaded_file.read() if uploaded_file else None
     else:
         data = request.get_json(silent=True) or {}
@@ -173,6 +175,7 @@ def upload_calendar():
         file_bytes_b64 = data.get('file_bytes')
         upload_time = data.get('upload_time')
         user_id = data.get('user_id')
+        title = data.get('title')
         if file_bytes_b64:
             try:
                 file_bytes = base64.b64decode(file_bytes_b64)
@@ -209,6 +212,7 @@ def upload_calendar():
             file_bytes=file_bytes,
             upload_time=upload_time,
             user_id=user_id,
+            title=title,
         )
         if syllabus is None:
             return jsonify({

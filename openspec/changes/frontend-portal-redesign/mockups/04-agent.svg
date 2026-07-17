@@ -1,0 +1,222 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1200" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <filter id="ss"><feDropShadow dx="0" dy="1" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.05"/></filter>
+    <filter id="fabS"><feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.12"/></filter>
+    <linearGradient id="msgU"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#818cf8"/></linearGradient>
+  </defs>
+  <rect width="1440" height="1200" fill="#f8fafc"/>
+
+  <!-- Top bar -->
+  <rect x="0" y="0" width="1440" height="56" fill="#fff" stroke="#f1f5f9"/>
+  <text x="32" y="36" font-size="16" font-weight="800" fill="#6366f1" letter-spacing="1">联觉 LianJue</text>
+  <text x="148" y="36" font-size="13" fill="#cbd5e1">/</text><text x="162" y="36" font-size="13" font-weight="600" fill="#0f172a">大数据概论</text>
+  <text x="260" y="36" fill="#cbd5e1">/</text><text x="274" y="36" font-weight="600" fill="#6366f1">智能体</text>
+  <text x="342" y="36" font-size="11" fill="#6366f1">← 返回学科首页</text>
+  <rect x="660" y="16" width="96" height="24" rx="12" fill="#dcfce7"/><circle cx="678" cy="28" r="4" fill="#22c55e"/><text x="690" y="32" font-size="9" fill="#22c55e">在线 · SSE</text>
+
+  <!-- Sidebar -->
+  <rect x="0" y="56" width="232" height="1144" fill="#fff" stroke="#f1f5f9"/>
+  <text x="20" y="88" font-size="15" font-weight="700" fill="#0f172a">大数据概论</text>
+  <rect x="20" y="98" width="52" height="20" rx="5" fill="#ede9fe"/><text x="46" y="112" font-size="9" font-weight="600" fill="#6366f1" text-anchor="middle">已发布</text>
+  <text x="40" y="150" font-size="13" fill="#475569">学科首页</text><text x="40" y="188" fill="#475569">教学大纲</text>
+  <rect x="12" y="206" width="208" height="38" rx="8" fill="#6366f1" opacity="0.1"/><rect x="12" y="206" width="3" height="38" rx="1.5" fill="#6366f1"/>
+  <text x="40" y="230" font-size="13" font-weight="700" fill="#6366f1">智能体</text>
+  <text x="40" y="272" font-size="13" fill="#475569">学习成长图谱</text>
+  <text x="40" y="310" fill="#475569">知识图谱</text>
+  <line x1="20" y1="342" x2="212" y2="342" stroke="#f1f5f9"/>
+  <text x="20" y="368" font-size="11" fill="#94a3b8" font-weight="600">快捷入口</text>
+  <text x="40" y="396" font-size="12" fill="#475569">课程进度</text><text x="40" y="424" fill="#475569">我的测验</text>
+
+  <!-- Stats bar -->
+  <g transform="translate(264,72)"><rect x="0" y="0" width="820" height="44" rx="10" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+    <g transform="translate(20,8)"><text x="0" y="9" font-size="9" fill="#94a3b8">综合掌握度</text><text x="0" y="27" font-size="15" font-weight="800" fill="#22c55e">68%</text></g>
+    <line x1="120" y1="8" x2="120" y2="36" stroke="#f1f5f9"/>
+    <g transform="translate(140,8)"><text x="0" y="9" font-size="9" fill="#94a3b8">7天活跃</text><text x="0" y="27" font-size="15" font-weight="800" fill="#0f172a">5 天</text></g>
+    <line x1="220" y1="8" x2="220" y2="36" stroke="#f1f5f9"/>
+    <g transform="translate(240,8)"><text x="0" y="9" font-size="9" fill="#94a3b8">薄弱点</text><text x="0" y="27" font-size="15" font-weight="800" fill="#ef4444">4</text></g>
+    <line x1="340" y1="8" x2="340" y2="36" stroke="#f1f5f9"/>
+    <g transform="translate(360,8)"><text x="0" y="9" font-size="9" fill="#94a3b8">当前步骤</text><text x="0" y="27" font-size="13" font-weight="700" fill="#6366f1">HBase RowKey 设计</text></g>
+  </g>
+
+  <!-- ═══════ CHAT with Inline Recommendation Card ═══════ -->
+  <g transform="translate(264,140)">
+    <!-- Agent welcome -->
+    <circle cx="14" cy="14" r="13" fill="#6366f1" opacity="0.12"/><text x="14" y="18" font-size="12" fill="#6366f1" text-anchor="middle">AI</text>
+    <g transform="translate(36,4)"><rect x="0" y="0" width="780" height="52" rx="12" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+    <text x="16" y="22" font-size="13" fill="#0f172a" font-weight="600">同学你好，今天我们学习 HBase RowKey 设计。</text>
+    <text x="16" y="42" font-size="12" fill="#64748b">你已掌握 HDFS 基础，可以深入 HBase 核心。</text></g>
+
+    <!-- User msg -->
+    <g transform="translate(0,76)"><rect x="610" y="0" width="206" height="36" rx="12" fill="url(#msgU)"/>
+    <text x="626" y="18" font-size="12" fill="rgba(255,255,255,0.95)">RowKey 如何避免热点问题？</text>
+    <text x="626" y="30" font-size="9" fill="rgba(255,255,255,0.5)">刚刚</text></g>
+
+    <!-- Agent reply -->
+    <g transform="translate(0,134)"><circle cx="14" cy="14" r="13" fill="#6366f1" opacity="0.12"/><text x="14" y="18" font-size="12" fill="#6366f1" text-anchor="middle">AI</text>
+    <g transform="translate(36,4)"><rect x="0" y="0" width="780" height="86" rx="12" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+    <rect x="10" y="10" width="760" height="18" rx="4" fill="#f8fafc"/><text x="18" y="23" font-size="8" fill="#64748b">retrieve_learning_evidence · answer_learning_question</text>
+    <text x="16" y="52" font-size="13" fill="#0f172a" font-weight="600">三大策略：加盐前缀、散列前缀、反转时间戳。</text>
+    <text x="16" y="70" font-size="12" fill="#64748b">加盐前缀最常用，通过添加随机字符均匀分布。</text></g></g>
+
+    <!-- ═══ INLINE RECOMMENDATION CARD (appears in chat flow) ═══ -->
+    <g transform="translate(0,244)"><circle cx="14" cy="14" r="13" fill="#6366f1" opacity="0.12"/><text x="14" y="18" font-size="12" fill="#6366f1" text-anchor="middle">AI</text>
+    <g transform="translate(36,4)"><rect x="0" y="0" width="780" height="198" rx="12" fill="#fff" stroke="#6366f1" stroke-width="1.5" filter="url(#ss)"/>
+      <!-- Card header -->
+      <rect x="0" y="0" width="780" height="40" rx="12" fill="#ede9fe"/><rect x="0" y="20" width="780" height="20" fill="#ede9fe"/>
+      <text x="16" y="26" font-size="13" font-weight="700" fill="#6366f1">推荐路径</text>
+      <rect x="104" y="14" width="52" height="16" rx="4" fill="#6366f1" opacity="0.15"/><text x="130" y="26" font-size="8" font-weight="600" fill="#6366f1" text-anchor="middle">3 条候选</text>
+      <!-- Mini D3 inline -->
+      <g transform="translate(16,54)"><rect x="0" y="0" width="460" height="74" rx="8" fill="#fafafa" stroke="#f1f5f9"/>
+        <circle cx="40" cy="37" r="12" fill="#22c55e" opacity="0.12" stroke="#22c55e"/><text x="40" y="34" font-size="7" fill="#22c55e" text-anchor="middle">HDFS ✓</text>
+        <line x1="52" y1="37" x2="98" y2="37" stroke="#22c55e" stroke-width="2"/>
+        <circle cx="110" cy="37" r="12" fill="#22c55e" opacity="0.12" stroke="#22c55e"/><text x="110" y="34" font-size="7" fill="#22c55e" text-anchor="middle">MR ✓</text>
+        <line x1="122" y1="37" x2="168" y2="37" stroke="#6366f1" stroke-width="2"/>
+        <circle cx="180" cy="37" r="14" fill="#6366f1" opacity="0.15" stroke="#6366f1" stroke-width="2.5"/><text x="180" y="34" font-size="7" font-weight="700" fill="#6366f1" text-anchor="middle">RowKey</text>
+        <line x1="194" y1="37" x2="240" y2="37" stroke="#e2e8f0" stroke-width="1.5"/>
+        <circle cx="252" cy="37" r="12" fill="#f1f5f9" stroke="#cbd5e1"/><text x="252" y="34" font-size="7" fill="#94a3b8" text-anchor="middle">Spark</text>
+        <line x1="264" y1="37" x2="310" y2="37" stroke="#e2e8f0"/>
+        <circle cx="322" cy="37" r="12" fill="#f1f5f9" stroke="#cbd5e1"/><text x="322" y="34" font-size="7" fill="#94a3b8" text-anchor="middle">ML</text>
+      </g>
+      <!-- Candidates -->
+      <g transform="translate(492,54)">
+        <rect x="0" y="0" width="140" height="26" rx="6" fill="#ede9fe" stroke="#c4b5fd"/><text x="70" y="18" font-size="8" font-weight="600" fill="#6366f1" text-anchor="middle">路径 A · 推荐</text>
+        <rect x="0" y="30" width="140" height="22" rx="6" fill="#f8fafc"/><text x="70" y="45" font-size="8" fill="#94a3b8" text-anchor="middle">路径 B · NoSQL →</text>
+        <rect x="0" y="54" width="140" height="22" rx="6" fill="#f8fafc"/><text x="70" y="69" font-size="8" fill="#94a3b8" text-anchor="middle">路径 C · 列族 →</text>
+      </g>
+      <!-- Actions -->
+      <g transform="translate(648,54)">
+        <rect x="0" y="0" width="116" height="34" rx="8" fill="#6366f1"/><text x="58" y="22" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">确认路径 A</text>
+        <rect x="0" y="42" width="116" height="26" rx="6" fill="#ede9fe" stroke="#c4b5fd"/><text x="58" y="59" font-size="9" font-weight="600" fill="#7c3aed" text-anchor="middle">查看全屏图谱</text>
+      </g>
+      <text x="16" y="160" font-size="11" fill="#64748b">HDFS 和 MapReduce 已完成。走 RowKey → Spark → ML 实战路线最连贯。</text>
+      <text x="16" y="178" font-size="10" fill="#94a3b8">预计 6 步 · 基于你的掌握度和薄弱点优化</text>
+    </g></g>
+
+    <!-- Input bar -->
+    <g transform="translate(0,568)"><rect x="0" y="0" width="816" height="46" rx="14" fill="#fff" stroke="#e2e8f0"/>
+    <text x="20" y="28" font-size="13" fill="#94a3b8">输入你的问题...</text>
+    <rect x="758" y="9" width="44" height="28" rx="8" fill="#6366f1"/><text x="780" y="28" font-size="11" fill="#fff" text-anchor="middle">发送</text></g>
+  </g>
+
+  <!-- ═══════ RIGHT PANEL ═══════ -->
+  <g transform="translate(1120,140)">
+    <!-- Learning plan -->
+    <rect x="0" y="0" width="296" height="210" rx="10" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+    <text x="16" y="26" font-size="13" font-weight="700" fill="#0f172a">学习计划</text>
+    <text x="16" y="42" font-size="9" fill="#94a3b8">第 3 步 · 共 18 步</text>
+    <line x1="26" y1="62" x2="26" y2="190" stroke="#e2e8f0" stroke-width="2"/>
+    <circle cx="26" cy="70" r="7" fill="#22c55e"/><text x="42" y="74" font-size="11" fill="#0f172a">Step 1: HDFS 基础架构</text>
+    <circle cx="26" cy="108" r="7" fill="#22c55e"/><text x="42" y="112" font-size="11" fill="#0f172a">Step 2: MapReduce 模型</text>
+    <circle cx="26" cy="146" r="10" fill="#6366f1"/><circle cx="26" cy="146" r="4" fill="#fff" opacity="0.6"/><text x="44" y="150" font-size="11" font-weight="600" fill="#6366f1">Step 3: HBase RowKey</text>
+    <circle cx="26" cy="184" r="7" fill="#f1f5f9" stroke="#cbd5e1"/><text x="42" y="188" font-size="11" fill="#94a3b8">Step 4: Spark 核心</text>
+  </g>
+
+  <!-- Profile (expanded, right panel) -->
+  <g transform="translate(1120,366)">
+    <rect x="0" y="0" width="296" height="172" rx="10" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+    <text x="16" y="26" font-size="13" font-weight="700" fill="#0f172a">学习画像</text><text x="260" y="26" font-size="11" fill="#94a3b8">收起</text>
+    <g transform="translate(30,42)">
+      <line x1="0" y1="30" x2="60" y2="30" stroke="#f1f5f9"/><line x1="30" y1="0" x2="30" y2="60" stroke="#f1f5f9"/>
+      <line x1="30" y1="30" x2="15" y2="8" stroke="#f1f5f9"/><line x1="30" y1="30" x2="50" y2="15" stroke="#f1f5f9"/>
+      <polygon points="42,30 30,18 22,42" fill="#6366f1" opacity="0.12" stroke="#6366f1" stroke-width="1.5"/>
+      <circle cx="42" cy="30" r="2" fill="#6366f1"/><circle cx="30" cy="18" r="2" fill="#6366f1"/><circle cx="22" cy="42" r="2" fill="#6366f1"/>
+    </g>
+    <g transform="translate(130,42)">
+      <text x="0" y="0" font-size="9" fill="#64748b">实践能力</text><rect x="0" y="4" width="150" height="4" rx="2" fill="#f1f5f9"/><rect x="0" y="4" width="105" height="4" rx="2" fill="#22c55e"/><text x="110" y="9" font-size="8" fill="#22c55e">70%</text>
+      <text x="0" y="22" font-size="9" fill="#64748b">理论理解</text><rect x="0" y="26" width="150" height="4" rx="2" fill="#f1f5f9"/><rect x="0" y="26" width="120" height="4" rx="2" fill="#22c55e"/><text x="125" y="31" font-size="8" fill="#22c55e">80%</text>
+      <text x="0" y="44" font-size="9" fill="#64748b">解题速度</text><rect x="0" y="48" width="150" height="4" rx="2" fill="#f1f5f9"/><rect x="0" y="48" width="75" height="4" rx="2" fill="#f59e0b"/><text x="80" y="53" font-size="8" fill="#f59e0b">50%</text>
+    </g>
+    <text x="16" y="138" font-size="9" fill="#ef4444">薄弱: RowKey 热点 · 预分区 · MapReduce</text>
+    <text x="16" y="154" font-size="9" fill="#94a3b8">学习风格: example-driven · 辍学风险: 中等</text>
+  </g>
+
+  <!-- Knowledge base search (collapsed) -->
+  <g transform="translate(1120,554)">
+    <rect x="0" y="0" width="296" height="42" rx="10" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+    <text x="16" y="27" font-size="13" font-weight="700" fill="#0f172a">知识库搜索</text><text x="260" y="27" font-size="11" fill="#94a3b8">展开</text>
+  </g>
+
+  <!-- ═══════ FLOATING BUDDY CHAT WINDOW ═══════ -->
+  <!-- positioned above FAB, below recommendation card -->
+  <g transform="translate(820,610)">
+    <rect x="0" y="0" width="340" height="420" rx="14" fill="#fff" stroke="#c4b5fd" stroke-width="1.5" filter="url(#fabS)"/>
+    <!-- Drag handle + header -->
+    <rect x="0" y="0" width="340" height="46" rx="14" fill="#ede9fe"/><rect x="0" y="23" width="340" height="23" fill="#ede9fe"/>
+    <circle cx="20" cy="23" r="9" fill="#6366f1"/><circle cx="16" cy="20" r="2" fill="#fff" opacity="0.8"/><circle cx="24" cy="20" r="2" fill="#fff" opacity="0.8"/><path d="M14,27 Q20,32 26,27" stroke="#fff" fill="none" stroke-width="1.5" opacity="0.5"/>
+    <text x="36" y="27" font-size="13" font-weight="700" fill="#0f172a">学伴小觉</text>
+    <rect x="130" y="16" width="48" height="14" rx="4" fill="#dbeafe"/><text x="154" y="26" font-size="8" font-weight="600" fill="#6366f1" text-anchor="middle">客服悬浮窗</text>
+    <!-- Minimize + close controls -->
+    <rect x="270" y="16" width="26" height="14" rx="4" fill="rgba(0,0,0,0.06)"/><text x="283" y="26" font-size="9" fill="#64748b" text-anchor="middle">─</text>
+    <rect x="300" y="16" width="26" height="14" rx="4" fill="rgba(0,0,0,0.06)"/><text x="313" y="26" font-size="9" fill="#64748b" text-anchor="middle">✕</text>
+
+    <!-- Messages -->
+    <!-- Auto-popup bubble replicated inside as first message -->
+    <g transform="translate(12,58)">
+      <rect x="0" y="0" width="316" height="14" rx="4" fill="#fef3c7"/><text x="8" y="11" font-size="8" font-weight="600" fill="#d97706">主动提醒 · resource_ready — 自动弹出</text>
+      <rect x="0" y="18" width="290" height="34" rx="8" fill="#fef3c7"/>
+      <circle cx="14" cy="32" r="6" fill="#6366f1"/><circle cx="12" cy="29" r="1.2" fill="#fff" opacity="0.8"/><circle cx="16" cy="29" r="1.2" fill="#fff" opacity="0.8"/>
+      <text x="26" y="30" font-size="10" fill="#92400e">资料好了！先看这个「RowKey</text>
+      <text x="26" y="44" font-size="10" fill="#92400e">设计精讲」，挺短的~</text>
+    </g>
+
+    <!-- User message -->
+    <g transform="translate(12,120)">
+      <rect x="180" y="0" width="136" height="32" rx="8" fill="#6366f1" opacity="0.1"/>
+      <text x="192" y="14" font-size="10" fill="#0f172a">能帮我看看 RowKey</text>
+      <text x="192" y="28" font-size="10" fill="#0f172a">热点那部分吗？</text>
+    </g>
+
+    <!-- Buddy reply -->
+    <g transform="translate(12,164)">
+      <rect x="0" y="0" width="290" height="56" rx="8" fill="#f8fafc" stroke="#f1f5f9"/>
+      <circle cx="14" cy="16" r="6" fill="#6366f1"/><circle cx="12" cy="13" r="1.2" fill="#fff" opacity="0.8"/><circle cx="16" cy="13" r="1.2" fill="#fff" opacity="0.8"/>
+      <text x="26" y="18" font-size="10" fill="#0f172a">这篇挺短的，先扫一眼就行~</text>
+      <text x="26" y="34" font-size="10" fill="#0f172a">上次 HBase 基础你其实还不错，</text>
+      <text x="26" y="50" font-size="10" fill="#0f172a">RowKey 只是换个角度而已</text>
+    </g>
+
+    <!-- Memory tag indicator -->
+    <g transform="translate(12,232)">
+      <rect x="0" y="0" width="316" height="22" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.5"/>
+      <text x="10" y="15" font-size="8" fill="#7c3aed">小觉记了一条笔记: "RowKey 需要换个角度讲"</text>
+      <text x="256" y="15" font-size="7" fill="#a78bfa">create_memory_tag</text>
+    </g>
+
+    <!-- Older messages hint -->
+    <g transform="translate(12,264)">
+      <text x="158" y="0" font-size="8" fill="#94a3b8" text-anchor="middle">↑ 上滑查看更早消息</text>
+      <line x1="70" y1="8" x2="246" y2="8" stroke="#f1f5f9"/>
+    </g>
+
+    <!-- Input bar -->
+    <g transform="translate(12,360)">
+      <rect x="0" y="0" width="316" height="38" rx="10" fill="#fff" stroke="#e2e8f0"/>
+      <text x="14" y="24" font-size="11" fill="#94a3b8">输入消息...</text>
+      <rect x="268" y="7" width="38" height="24" rx="7" fill="#6366f1"/><text x="287" y="24" font-size="9" fill="#fff" text-anchor="middle">发送</text>
+    </g>
+  </g>
+
+  <!-- ═══════ Buddy FAB + Auto-popup Bubble ═══════ -->
+  <!-- Auto-popup bubble (appears automatically, not on hover) -->
+  <g transform="translate(1064,1020)">
+    <rect x="0" y="0" width="280" height="72" rx="12" fill="#fff" stroke="#6366f1" stroke-width="1.5" filter="url(#fabS)"/>
+    <!-- Dismiss X -->
+    <rect x="258" y="6" width="16" height="16" rx="4" fill="#f1f5f9"/><text x="266" y="17" font-size="9" fill="#94a3b8" text-anchor="middle">✕</text>
+    <circle cx="16" cy="18" r="8" fill="#6366f1"/><circle cx="13" cy="16" r="1.8" fill="#fff" opacity="0.8"/><circle cx="19" cy="16" r="1.8" fill="#fff" opacity="0.8"/><path d="M12,21 Q16,26 20,21" stroke="#fff" fill="none" stroke-width="1" opacity="0.5"/>
+    <text x="30" y="20" font-size="11" font-weight="700" fill="#0f172a">小觉</text>
+    <text x="64" y="20" font-size="9" fill="#94a3b8">现在 · 自动弹出</text>
+    <text x="16" y="40" font-size="11" fill="#64748b">"RowKey 资料刚生成好，这个话题</text>
+    <text x="16" y="56" font-size="11" fill="#64748b">其实跟你之前学的 HBase 很相关"</text>
+    <!-- Pointer to FAB -->
+    <polygon points="264,72 272,72 268,84" fill="#fff" stroke="#c4b5fd" stroke-width="0.5"/>
+  </g>
+
+  <!-- FAB — entry point, opens floating window -->
+  <g transform="translate(1370,1110)">
+    <circle cx="0" cy="0" r="30" fill="#fff" filter="url(#fabS)"/><circle cx="0" cy="0" r="28" fill="#6366f1"/>
+    <circle cx="-6" cy="-3" r="3.5" fill="#fff" opacity="0.9"/><circle cx="6" cy="-3" r="3.5" fill="#fff" opacity="0.9"/>
+    <path d="M-8,8 Q0,18 8,8" stroke="#fff" fill="none" stroke-width="2" opacity="0.6" stroke-linecap="round"/>
+    <!-- Unread badge -->
+    <circle cx="20" cy="-20" r="10" fill="#ef4444"/><text x="20" y="-16" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+  </g>
+</svg>

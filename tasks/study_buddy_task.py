@@ -5,7 +5,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from tasks.study_buddy.buddy_agent import chat_with_buddy, proactive_buddy_event_message, proactive_buddy_message
+from tasks.study_buddy.buddy_agent import (
+    chat_with_buddy,
+    proactive_buddy_event_message,
+    proactive_buddy_message,
+    synthesis_proactive_message,
+)
+from tasks.study_buddy.contracts import BUDDY_MESSAGE_SOURCE_SYNTHESIS, BUDDY_SYNTHESIS_CACHE_SECONDS
 from tasks.study_buddy.memory import create_memory_tag, delete_memory_tag, load_memory_tags
 from tasks.study_buddy.messages import append_buddy_message, load_buddy_messages
 from tasks.study_buddy.tree import build_buddy_tree
@@ -182,3 +188,88 @@ def list_buddy_messages(user_id: int, syllabus_id: int, limit: int = 30) -> list
         len(messages),
     )
     return messages
+
+
+# ── synthesis cache ──────────────────────────────────────────────
+_synthesis_cache: dict[str, tuple[float, str | None]] = {}
+
+
+def generate_buddy_synthesis(
+    user_id: int,
+    syllabus_id: int,
+    plan: dict | None = None,
+    study_graph_features: dict | None = None,
+    force: bool = False,
+) -> dict:
+    """生成学伴综合建议，带缓存。
+
+    Returns:
+        {"synthesis": str | None, "cached": bool}
+    """
+    import time
+
+    cache_key = f"{user_id}_{syllabus_id}"
+    now = time.time()
+
+    if not force:
+        cached = _synthesis_cache.get(cache_key)
+        if cached and (now - cached[0]) < BUDDY_SYNTHESIS_CACHE_SECONDS:
+            _service_log(
+                logging.INFO,
+                "[study_buddy] synthesis_cache_hit user_id=%s syllabus_id=%s age_secs=%s",
+                user_id,
+                syllabus_id,
+                int(now - cached[0]),
+            )
+            return {"synthesis": cached[1], "cached": True}
+
+    # Check if there's a recent synthesis message in history
+    if not force:
+        recent = load_buddy_messages(user_id, syllabus_id, limit=10)
+        for msg in reversed(recent):
+            if msg.get("source") == BUDDY_MESSAGE_SOURCE_SYNTHESIS:
+                created = msg.get("created_at", 0)
+                if isinstance(created, (int, float)) and (now - created) < BUDDY_SYNTHESIS_CACHE_SECONDS:
+                    _synthesis_cache[cache_key] = (now, msg.get("text", ""))
+                    return {"synthesis": msg.get("text", ""), "cached": True}
+
+    _service_log(
+        logging.INFO,
+        "[study_buddy] synthesis_generate_start user_id=%s syllabus_id=%s",
+        user_id,
+        syllabus_id,
+    )
+    text = synthesis_proactive_message(
+        user_id=user_id,
+        syllabus_id=syllabus_id,
+        plan=plan,
+        study_graph_features=study_graph_features,
+    )
+
+    # Persist as a buddy message
+    if text:
+        saved = append_buddy_message(
+            user_id,
+            syllabus_id,
+            role="buddy",
+            text=text,
+            source=BUDDY_MESSAGE_SOURCE_SYNTHESIS,
+        )
+        _service_log(
+            logging.INFO,
+            "[study_buddy] synthesis_saved user_id=%s syllabus_id=%s message_id=%s text_preview=%s",
+            user_id,
+            syllabus_id,
+            (saved or {}).get("message_id"),
+            text[:120],
+        )
+    else:
+        _service_log(
+            logging.INFO,
+            "[study_buddy] synthesis_empty user_id=%s syllabus_id=%s",
+            user_id,
+            syllabus_id,
+        )
+
+    _synthesis_cache[cache_key] = (now, text)
+    return {"synthesis": text, "cached": False}

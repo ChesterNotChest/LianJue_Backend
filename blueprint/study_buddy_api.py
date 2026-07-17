@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, jsonify, request
 from tasks import learning_profile_task as lpt
 from tasks import personal_recommendation_task as prt
 from tasks import study_graph_task as sgt
-from tasks.study_buddy_task import buddy_chat, list_buddy_messages, trigger_study_buddy
+from tasks.study_buddy_task import buddy_chat, generate_buddy_synthesis, list_buddy_messages, trigger_study_buddy
 
 bp = Blueprint("study_buddy_api", __name__, url_prefix="/api")
 
@@ -124,6 +124,48 @@ def study_buddy_messages():
     return jsonify({
         "success": True,
         "messages": messages,
+        "error_code": "",
+        "error_message": "",
+    })
+
+
+@bp.route("/study_buddy/synthesis", methods=["GET"])
+def study_buddy_synthesis():
+    """获取学伴综合学习建议（带缓存）。
+
+    Query params:
+      - user_id: int (required)
+      - syllabus_id: int
+      - force: bool (optional, default false — 跳过缓存重新生成)
+    """
+    user_id = _parse_int(request.args.get("user_id"))
+    syllabus_id = _parse_int(request.args.get("syllabus_id")) or 0
+    force = str(request.args.get("force") or "").lower() in ("1", "true", "yes")
+
+    if not user_id:
+        return jsonify({
+            "success": False,
+            "synthesis": None,
+            "cached": False,
+            "error_code": "missing_fields",
+            "error_message": "user_id is required",
+        }), 400
+
+    plan = prt.get_active_learning_plan(user_id, syllabus_id)
+    plan_dict = plan if isinstance(plan, dict) else None
+    features = sgt.get_learning_tree_features(user_id, syllabus_id)
+
+    result = generate_buddy_synthesis(
+        user_id=user_id,
+        syllabus_id=syllabus_id,
+        plan=plan_dict,
+        study_graph_features=features if isinstance(features, dict) else None,
+        force=force,
+    )
+    return jsonify({
+        "success": True,
+        "synthesis": result["synthesis"],
+        "cached": result["cached"],
         "error_code": "",
         "error_message": "",
     })

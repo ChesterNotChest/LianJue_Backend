@@ -166,7 +166,7 @@ def _delete_calendar_file_if_created(uploaded_file: dict) -> None:
         os.remove(file_path_to_remove)
 
 
-def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None, user_id: int = None) -> Syllabus:
+def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None, user_id: int = None, title: str = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
@@ -178,6 +178,7 @@ def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time:
         syllabus = create_syllabus(
             edu_calendar_path=uploaded_file['path'],
             file_id=uploaded_file['file_id'],
+            title=title,
         )
         if syllabus is not None and user_id is not None:
             create_user_syllabus(
