@@ -1,6 +1,6 @@
 ## Why
 
-当前 `frontend-portal-redesign` 的 SVG mockup 中，学伴（小觉）仅被表达为右下角 FAB 按钮，其完整六层能力体系（知识树、标签记忆、节点观察、主动消息、独立对话、学霸人设）在视觉稿中几乎不可见。05 学习成长图谱过度依赖 D3 图表达"差了什么"，缺乏文字描述和学伴观察笔记，信息密度不足以支撑比赛评审。
+当前 `frontend-portal-redesign` 的 SVG 设计稿 中，学伴（小觉）仅被表达为右下角 FAB 按钮，其完整六层能力体系（知识树、标签记忆、节点观察、主动消息、独立对话、学霸人设）在视觉稿中几乎不可见。05 学习成长图谱过度依赖 D3 图表达"差了什么"，缺乏文字描述和学伴观察笔记，信息密度不足以支撑比赛评审。
 
 ## What Changes
 
@@ -13,7 +13,7 @@
 
 ### New Capabilities
 
-无需新增后端能力——所有数据源（BuddyTree.regions.explore、BuddyTreeNode.buddy_notes、buddy_memory tags、buddy_messages）已在后端实现，本变更仅涉及 SVG mockup 层面的视觉表达。
+无需新增后端能力——所有数据源（BuddyTree.regions.explore、BuddyTreeNode.buddy_notes、buddy_memory tags、buddy_messages）已在后端实现，本变更仅涉及 SVG 设计稿 层面的视觉表达。
 
 ### Modified Capabilities
 
@@ -21,6 +21,6 @@
 
 ## Impact
 
-- 影响文件：`openspec/changes/frontend-portal-redesign/mockups/05-learning-tree.svg`（重绘）、`04-agent.svg`（扩展）
+- 影响文件：`openspec/changes/frontend-portal-redesign/设计稿s/05-learning-tree.svg`（重绘）、`04-agent.svg`（扩展）
 - 不涉及后端代码、API、前端组件
-- 仅为 mockup 视觉表达增强，属于 `frontend-portal-redesign` 变更的细化补充
+- 仅为 设计稿 视觉表达增强，属于 `frontend-portal-redesign` 变更的细化补充

@@ -82,7 +82,7 @@ Dashboard SHALL 展示"推荐探索"区块，调用 knowledge/search API 基于�
 
 ## 图谱渲染引擎对照
 
-本变更涉及的所有图谱 mockup 与前端渲染引擎的对应关系。实施时必须确保引擎能力覆盖以下每一项。
+本变更涉及的所有图谱 设计稿 与前端渲染引擎的对应关系。实施时必须确保引擎能力覆盖以下每一项。
 
 ### 引擎清单
 
@@ -97,7 +97,7 @@ Dashboard SHALL 展示"推荐探索"区块，调用 knowledge/search API 基于�
 LayoutMode: `"force" | "tree" | "dagre"`
 GROUP_COLORS: mastered(#22c55e) / learning(#3b82f6) / weak(#f59e0b) / unknown(#94a3b8) / prerequisite(#6366f1) / active(#6366f1) / chapter(#2563eb) / knowledge(#93c5fd) / resource(#34d399)
 
-| SVG mockup 元素 | 引擎实现路径 | 状态 |
+| SVG 设计稿 元素 | 引擎实现路径 | 状态 |
 |----------------|-------------|------|
 | **05 力导向图**: 绿/蓝/红节点 + 标签 + score 副标题 | `group` → GROUP_COLORS, `meta.mastery_score` → subtitle | ✅ 原生支持 |
 | **05 边**: parent_of 箭头 | `type="parent_of"` → 箭头标记 | ✅ |

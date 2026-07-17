@@ -387,7 +387,7 @@ test_graph_modal_candidate_selector
 
 | 检查项 | 状态 |
 |--------|------|
-| 所有 SVG mockup 已完成 (14 个文件) | ✅ |
+| 所有 SVG 设计稿 已完成 (14 个文件) | ✅ |
 | 所有 API 口岸已确认 (4 新 + 全部复用) | ✅ |
 | D3GraphViewer 能力映射已写入 spec | ✅ |
 | GraphModal + CandidatePathSelector 模式已确认 | ✅ |
@@ -398,6 +398,6 @@ test_graph_modal_candidate_selector
 | 缩略图配色已最终确定 (5 种类型) | ✅ |
 | Tasks.md 共 82 项, 覆盖 15 个章节 | ✅ |
 | 移动端适配延后 (不在本轮) | ✅ |
-| enhance-buddy-tree-mockups 已归档合并 | ✅ |
+| enhance-buddy-tree-设计稿s 已归档合并 | ✅ |
 
 **结论: 已达到 apply 条件。** 所有缺口已填补, 数据口岸一一对应, 无阻塞项。

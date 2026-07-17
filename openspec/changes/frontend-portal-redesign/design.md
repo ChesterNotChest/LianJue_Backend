@@ -266,30 +266,30 @@ Galaxy 不再全屏独立页面，而是嵌入课程布局的子窗口：页面�
 ## Open Questions
 
 - Galaxy 预览在 Dashboard 用纯 SVG 星空还是轻量 Canvas？（建议先用 SVG，后续可替换为 lottie/particles.js）
-- 学伴悬浮窗移动端适配：桌面端为固定右下悬浮窗（~340×420），移动端（<768px）可考虑底部 sheet 或全屏覆盖。待移动端 mockup 阶段决策
+- 学伴悬浮窗移动端适配：桌面端为固定右下悬浮窗（~340×420），移动端（<768px）可考虑底部 sheet 或全屏覆盖。待移动端 设计稿 阶段决策
 - 气泡自动消失时长：当前设定 5 秒，后续可根据用户反馈调整
 
-## Mockup Reference
+## 设计稿 Reference
 
 按导航拓扑顺序排列：
 
 | 文件 | 页面 | 说明 |
 |------|------|------|
-| `mockups/00-login.svg` | 登录页 (Agent 浅色主题) | `/login` |
-| `mockups/01-dashboard.svg` | Dashboard — 课程卡片 + 最近资源 + 推荐探索 + GitHub实训 + 终身学习图谱 + 知识全景揭示 | `/` |
-| `mockups/02-course-home.svg` | 学科首页 (课程资料 + AI资源 + 视频) | `/learn/:id/home` |
-| `mockups/03-syllabus.svg` | 教学大纲 (时间线 + 活跃度) | `/learn/:id/syllabus` |
-| `mockups/04-agent.svg` | 智能体 (精简对话 + 学习计划 + 悬浮学伴窗 + 自动弹出气泡) | `/learn/:id/agent` |
-| `mockups/05-learning-tree.svg` | 学习成长图谱 — D3 + 薄弱点分析 + 待探索列表 + 学伴观察/记忆/建议 | `/learn/:id/tree` |
-| `mockups/06-galaxy.svg` | 知识图谱 — 保留侧栏, 银河嵌入子窗口 3D 深色区 | `/learn/:id/galaxy` |
-| `mockups/08-quiz-attempts.svg` | 我的测验 — 该课程所有测验提交记录 | `/learn/:id/quizzes` |
-| `mockups/09-admin-dashboard.svg` | 管理 — 学科总览 (知识填充 + 大纲编辑 + 文件管理) | `/admin/:id` |
-| `mockups/10-admin-create-subject.svg` | 管理 — 创建新学科向导 (弹窗, 3 步: 基本信息→选择图谱→确认) | 从 Dashboard "+" 触发 |
-| `mockups/11-admin-students.svg` | 管理 — 学生进度 (D3 + 学伴树并列) | `/admin/:id/students` |
-| `mockups/12-admin-graph.svg` | 管理 — 知识图谱 (管理员视角) | `/admin/:id/graph` |
-| `mockups/ref-doc-thumbnails.svg` | 文档类型缩略图 (5种模板, 优化配色) | — |
-| `mockups/ref-course-thumbnails.svg` | 课程封面横幅算法 | — |
-| `mockups/ref-graph-modal.svg` | GraphModal 全屏图谱弹窗参考 (玻璃遮罩 + D3 图 + 候选分支 + 快捷键) | 从 04 "查看全屏图谱" 触发 |
+| `设计稿s/00-login.svg` | 登录页 (Agent 浅色主题) | `/login` |
+| `设计稿s/01-dashboard.svg` | Dashboard — 课程卡片 + 最近资源 + 推荐探索 + GitHub实训 + 终身学习图谱 + 知识全景揭示 | `/` |
+| `设计稿s/02-course-home.svg` | 学科首页 (课程资料 + AI资源 + 视频) | `/learn/:id/home` |
+| `设计稿s/03-syllabus.svg` | 教学大纲 (时间线 + 活跃度) | `/learn/:id/syllabus` |
+| `设计稿s/04-agent.svg` | 智能体 (精简对话 + 学习计划 + 悬浮学伴窗 + 自动弹出气泡) | `/learn/:id/agent` |
+| `设计稿s/05-learning-tree.svg` | 学习成长图谱 — D3 + 薄弱点分析 + 待探索列表 + 学伴观察/记忆/建议 | `/learn/:id/tree` |
+| `设计稿s/06-galaxy.svg` | 知识图谱 — 保留侧栏, 银河嵌入子窗口 3D 深色区 | `/learn/:id/galaxy` |
+| `设计稿s/08-quiz-attempts.svg` | 我的测验 — 该课程所有测验提交记录 | `/learn/:id/quizzes` |
+| `设计稿s/09-admin-dashboard.svg` | 管理 — 学科总览 (知识填充 + 大纲编辑 + 文件管理) | `/admin/:id` |
+| `设计稿s/10-admin-create-subject.svg` | 管理 — 创建新学科向导 (弹窗, 3 步: 基本信息→选择图谱→确认) | 从 Dashboard "+" 触发 |
+| `设计稿s/11-admin-students.svg` | 管理 — 学生进度 (D3 + 学伴树并列) | `/admin/:id/students` |
+| `设计稿s/12-admin-graph.svg` | 管理 — 知识图谱 (管理员视角) | `/admin/:id/graph` |
+| `设计稿s/ref-doc-thumbnails.svg` | 文档类型缩略图 (5种模板, 优化配色) | — |
+| `设计稿s/ref-course-thumbnails.svg` | 课程封面横幅算法 | — |
+| `设计稿s/ref-graph-modal.svg` | GraphModal 全屏图谱弹窗参考 (玻璃遮罩 + D3 图 + 候选分支 + 快捷键) | 从 04 "查看全屏图谱" 触发 |
 
 **关键区分**: 
 - 01-dashboard 嵌入终身学习图谱 (D3, study_graph/detail) 在滚动流中

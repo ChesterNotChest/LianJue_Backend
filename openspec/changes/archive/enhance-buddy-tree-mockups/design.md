@@ -1,8 +1,8 @@
 ## Context
 
-当前 `frontend-portal-redesign` 的 SVG mockup 中，学伴仅被表达为右下角 FAB 按钮 + 简单标签。后端 `study_buddy` 模块的完整六层能力在视觉稿中不可见。`05-learning-tree.svg` 过度依赖 D3 力导向图表达知识差距，后端 `BuddyTree` 的 `explore` regions、`buddy_notes`、`summary` 等丰富文本字段未被利用。
+当前 `frontend-portal-redesign` 的 SVG 设计稿 中，学伴仅被表达为右下角 FAB 按钮 + 简单标签。后端 `study_buddy` 模块的完整六层能力在视觉稿中不可见。`05-learning-tree.svg` 过度依赖 D3 力导向图表达知识差距，后端 `BuddyTree` 的 `explore` regions、`buddy_notes`、`summary` 等丰富文本字段未被利用。
 
-本设计聚焦于"在不新增后端能力的前提下，将已有数据字段在 SVG mockup 中以文字信息区形式充分表达"。
+本设计聚焦于"在不新增后端能力的前提下，将已有数据字段在 SVG 设计稿 中以文字信息区形式充分表达"。
 
 ## Goals / Non-Goals
 
@@ -65,7 +65,7 @@
 | 学伴感受 | `nodes[nid].buddy_notes[last].note` (最新一条) |
 | 掌握度 | `nodes[nid].mastery.label` + `score` |
 
-Mockup 中使用 Chester 算法设计与分析课程的示例数据（与现有 SVG 一致）：
+设计稿 中使用 Chester 算法设计与分析课程的示例数据（与现有 SVG 一致）：
 - 减治法、BFS、贪心策略、后缀树、网络流、分支限界 → explore region
 
 ### Decision 3: BuddyDrawer 展示位置
@@ -133,8 +133,8 @@ buddy_notes 是学伴对特定知识节点的观察，存储在 tree.json 中。
 
 ## Risks / Trade-offs
 
-- **SVG 高度增长**: 05 从 1100px → ~1300px，04 从 1200px → ~1300px。风险低——mockup 不限制实际页面高度，SVG viewBox 支持任意高度。
-- **文字内容需手写**: 后端有真实数据但 mockup 是静态 SVG。需根据 Chester/算法设计与分析 的示例数据手写合理的 buddy_notes 和 memory tags。不追求与真实 LLM 输出一致，追求"看起来真实"。
+- **SVG 高度增长**: 05 从 1100px → ~1300px，04 从 1200px → ~1300px。风险低——设计稿 不限制实际页面高度，SVG viewBox 支持任意高度。
+- **文字内容需手写**: 后端有真实数据但 设计稿 是静态 SVG。需根据 Chester/算法设计与分析 的示例数据手写合理的 buddy_notes 和 memory tags。不追求与真实 LLM 输出一致，追求"看起来真实"。
 
 ## Open Questions
 

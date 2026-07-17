@@ -1,8 +1,8 @@
 ## ADDED Requirements
 
-本变更为纯 mockup 视觉表达增强，不涉及后端能力新增或修改。所有数据源（BuddyTree、buddy_notes、buddy_memory tags、buddy_messages）已在 `study-buddy` spec 中定义。
+本变更为纯 设计稿 视觉表达增强，不涉及后端能力新增或修改。所有数据源（BuddyTree、buddy_notes、buddy_memory tags、buddy_messages）已在 `study-buddy` spec 中定义。
 
-mockup 需满足以下视觉表达要求：
+设计稿 需满足以下视觉表达要求：
 
 ### Requirement: 学习成长图谱展示待探索知识列表
 
