@@ -17,6 +17,36 @@ from tasks.total_agent import agent_tools as tagt
 ARTIFACT_ROOT = Path(__file__).resolve().parent / "artifacts" / "total_agent"
 
 
+def test_total_agent_prompt_uses_visible_conversation_history():
+    prompt = tar.build_total_agent_user_prompt(
+        {
+            "payload": {
+                "user_id": 1,
+                "syllabus_id": 8,
+                "message": "第三条吧",
+                "context": {
+                    "conversation_history": [
+                        {"role": "user", "content": "重新推荐吧"},
+                        {"role": "agent", "content": "方案一、方案二、方案三"},
+                    ]
+                },
+            }
+        }
+    )
+
+    data = json.loads(prompt)
+
+    assert data["message"] == "第三条吧"
+    assert data["context"]["visible_conversation_history"] == [
+        {"role": "user", "content": "重新推荐吧"},
+        {"role": "agent", "content": "方案一、方案二、方案三"},
+    ]
+
+
+def test_total_agent_persisted_pydantic_history_is_not_loaded():
+    assert tar._load_message_history(1, 8, "any-session") == []
+
+
 def _recommendation_fixture() -> dict:
     return {
         "success": True,

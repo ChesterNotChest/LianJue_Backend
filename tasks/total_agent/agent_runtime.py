@@ -67,7 +67,6 @@ from tasks.total_agent.agent_contracts import (
     TOOL_RETRIEVE_LEARNING_EVIDENCE,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_TOOL_ORDER,
-    MESSAGE_HISTORY_MAX_TURNS,
     TotalAgentDeps,
     TotalAgentResult,
 )
@@ -116,13 +115,13 @@ def get_total_agent() -> Agent:
         deps_type=TotalAgentDeps,
         system_prompt=(
             "You are a dedicated teacher helping a student learn. "
-            "Before taking any action, briefly tell the student what you're about to do and why - be clear and encouraging. "
+            "Before calling tools, only say that you will check the current learning context; do not make business judgments about plans, candidates, or resource choices before load_total_context returns. "
             "Always start by understanding their current learning context (load_total_context). "
             "You may optionally call note_intent to record your understanding of the user's goal — "
             "this helps you stay on track across turns but is not required. "
             "When they want a learning path: recommend first (call_recommendation_agent), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
             "When they accept a plan: confirm it (accept_learning_plan). "
-            "Current plan state must come from the current turn's load_total_context result, especially plan_state_kind; do not infer current active plans from older message_history tool results. "
+            "Current plan state must come from the current turn's load_total_context result, especially plan_state_kind; use visible conversation history only to understand references and intent. "
             "plan_state_kind meanings: selected_path means an accepted learning plan exists; candidate_path means proposed recommendation candidates exist but no selected plan exists; no_path means neither exists. "
             "If plan_state_kind is candidate_path and the student selects a concrete candidate such as option 1, 2, or 3, call accept_learning_plan with display_candidate_number set to the visible option number. "
             "Do not call call_recommendation_agent for candidate selection unless the student explicitly asks to discard the current candidates and generate a fresh recommendation. "
@@ -344,14 +343,38 @@ def get_total_agent() -> Agent:
     return agent
 
 
+def _slim_visible_conversation_history(raw_history: Any, *, limit: int = 10) -> list[dict[str, str]]:
+    if isinstance(raw_history, dict):
+        raw_history = raw_history.get("items") or raw_history.get("conversation_history") or []
+    if not isinstance(raw_history, list):
+        return []
+    turns: list[dict[str, str]] = []
+    for item in raw_history[-max(1, int(limit)):]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or item.get("from") or "").strip().lower()
+        if role in {"assistant", "ai", "bot"}:
+            role = "agent"
+        if role not in {"user", "agent"}:
+            continue
+        content = str(item.get("content") or item.get("text") or "").strip()
+        if not content:
+            continue
+        turns.append({"role": role, "content": content[:300]})
+    return turns
+
+
 def build_total_agent_user_prompt(state: Dict[str, Any]) -> str:
-    """构建用户提示。不再注入 conversation_history——LLM 从 message_history 获取对话。"""
+    """Build the user prompt from current input and visible conversation only."""
     payload = state.get("payload") if isinstance(state.get("payload"), dict) else {}
     raw_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
-    # 仅保留前端交互所需字段，不传 conversation_history（LLM 从 message_history 获取）
+    visible_history = _slim_visible_conversation_history(
+        raw_context.get("conversation_history") or payload.get("conversation_history") or []
+    )
     slim_context = {
         "current_resource_id": raw_context.get("current_resource_id", "") or "",
         "recent_resource_ids": raw_context.get("recent_resource_ids") or [],
+        "visible_conversation_history": visible_history,
     }
     summary = {
         "user_id": payload.get("user_id"),
@@ -815,49 +838,11 @@ def _save_message_history(user_id, syllabus_id, session_id, messages):
 
 
 def _load_message_history(user_id, syllabus_id, session_id):
-    """加载 message_history。失败或空返回 []。"""
+    """Persisted PydanticAI message_history is deprecated for Total Agent context."""
     if not session_id:
         return []
-    data = None
-    # DB 优先
-    try:
-        from schemas.agent_runtime_state import ChatSession
-        session = ChatSession.query.filter_by(session_id=session_id).first()
-        if session is not None and session.message_history_json:
-            data = session.message_history_json
-    except Exception:
-        try:
-            from extensions import db
-            db.session.rollback()
-        except Exception:
-            pass
-    # file fallback
-    if not data:
-        try:
-            path = os.path.join(os.getcwd(), 'history', f'{syllabus_id}_{user_id}_{session_id}_messages.json')
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = f.read()
-        except Exception:
-            pass
-    if not data:
-        return []
-    try:
-        if _ModelMessagesTypeAdapter is not None:
-            messages = _ModelMessagesTypeAdapter.validate_json(data)
-        else:
-            raw = json.loads(data)
-            from pydantic_ai.messages import ModelMessage
-            messages = [ModelMessage.model_validate(m) for m in raw]
-        # 截断
-        max_len = MESSAGE_HISTORY_MAX_TURNS * 2 + 1
-        if len(messages) > max_len:
-            messages = messages[-max_len:]
-        _chat_log(f"load_message_history ses={session_id} len={len(messages)}")
-        return messages
-    except Exception:
-        _chat_log(f"load_message_history ses={session_id} FAIL (degraded to empty)")
-        return []
+    _chat_log(f"load_message_history ses={session_id} disabled")
+    return []
 
 
 def _resolve_session_id(payload):
@@ -1341,7 +1326,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
     except (TypeError, ValueError):
         sid = 0
     session_id = _resolve_session_id(payload)
-    message_history = _load_message_history(uid, sid, session_id) if uid and sid else []
+    message_history = []
 
     state: Dict[str, Any] = {
         "payload": payload,
@@ -1365,7 +1350,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         f"run={state.get('run_id')} uid={uid} sid={sid} ses={session_id} "
         f"history_len={len(message_history)} stream=true"
     )
-    async with agent.iter(user_prompt, message_history=message_history, deps=deps) as run:
+    async with agent.iter(user_prompt, deps=deps) as run:
         async for node in run:
             while not status_queue.empty():
                 try:
@@ -1458,9 +1443,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
     if run is not None and hasattr(run, 'result'):
         try:
             new_msgs = run.result.new_messages()
-            message_history.extend(new_msgs)
-            _save_message_history(uid, sid, session_id, message_history)
-            _chat_log(f"capture_new_messages ses={session_id} new={len(new_msgs)} total={len(message_history)}")
+            _chat_log(f"capture_new_messages ses={session_id} new={len(new_msgs)} total_agent_persisted_history=disabled")
         except Exception:
             _chat_log("capture_new_messages FAIL (non-blocking)")
 
@@ -1506,7 +1489,7 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
     except (TypeError, ValueError):
         sid = 0
     session_id = _resolve_session_id(payload)
-    message_history = _load_message_history(uid, sid, session_id) if uid and sid else []
+    message_history = []
     _chat_log(
         "GEN_START "
         f"run={state.get('run_id')} uid={uid} sid={sid} ses={session_id} "
@@ -1515,13 +1498,12 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
 
     deps = TotalAgentDeps(state=state)
     agent = get_total_agent()
-    result = agent.run_sync(build_total_agent_user_prompt(state), message_history=message_history, deps=deps)
+    result = agent.run_sync(build_total_agent_user_prompt(state), deps=deps)
 
     # ── 捕获本轮新消息 ──
     try:
         new_msgs = result.new_messages()
-        message_history.extend(new_msgs)
-        _save_message_history(uid, sid, session_id, message_history)
+        _chat_log(f"capture_new_messages ses={session_id} new={len(new_msgs)} total_agent_persisted_history=disabled")
     except Exception:
         pass
     output = result.output if isinstance(result.output, TotalAgentResult) else None
