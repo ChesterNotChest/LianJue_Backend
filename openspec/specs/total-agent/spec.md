@@ -110,7 +110,126 @@ chat_session                        chat_turn
 └── updated_at
 ```
 
-message_history 最大保留 20 轮（`MESSAGE_HISTORY_MAX_TURNS = 20`）。
+`message_history_json` is retained only for schema compatibility. Total Agent MUST NOT use persisted PydanticAI raw `message_history` as cross-turn context. The authoritative conversation history for Total Agent is `chat_turn` plus the frontend-provided recent visible `conversation_history`; current learning state MUST come from `load_total_context`.
+
+## Requirements
+
+### Requirement: Current Plan State Classification
+
+Total Agent SHALL classify the current learning-path state from the current turn's authoritative context as exactly one of `selected_path`, `candidate_path`, or `no_path`.
+
+#### Scenario: Active plan exists
+- **WHEN** `load_total_context` finds an active learning plan for the current user and syllabus
+- **THEN** the returned tool result MUST include `plan_state_kind: "selected_path"`
+- **AND** the returned tool result MUST include the active plan summary and next task.
+
+#### Scenario: Proposed recommendation exists without active plan
+- **WHEN** `load_total_context` finds no active learning plan but finds a latest non-expired recommendation snapshot with `status: "proposed"`
+- **THEN** the returned tool result MUST include `plan_state_kind: "candidate_path"`
+- **AND** the returned tool result MUST include `pending_recommendation` with at least `recommendation_id`, `candidate_count`, `best_path_titles`, and `status`.
+- **AND** the returned tool result MUST NOT describe the pending recommendation as an active plan.
+
+#### Scenario: No plan and no proposal exists
+- **WHEN** `load_total_context` finds neither an active learning plan nor a proposed recommendation snapshot
+- **THEN** the returned tool result MUST include `plan_state_kind: "no_path"`
+- **AND** `active_plan`, `next_task`, and `pending_recommendation` MUST be empty objects.
+
+### Requirement: Candidate Acceptance Without Regeneration
+
+Total Agent SHALL accept an existing proposed recommendation candidate directly when the user confirms a candidate option and the current plan state is `candidate_path`.
+
+#### Scenario: User selects a numbered candidate
+- **WHEN** the current `load_total_context` result has `plan_state_kind: "candidate_path"`
+- **AND** the user asks to confirm or select candidate N
+- **THEN** the LLM-driven Total Agent MUST call `accept_learning_plan` with the zero-based candidate index for N
+- **AND** it MUST NOT call `call_recommendation_agent` unless the user explicitly asks for a fresh recommendation.
+
+#### Scenario: Recommendation result is absent from transient state
+- **WHEN** `accept_learning_plan` is called and `state["recommendation_result"]` is absent
+- **AND** a latest proposed recommendation snapshot exists for the current user and syllabus
+- **THEN** `accept_learning_plan` MUST load the snapshot detail and accept the selected candidate.
+
+#### Scenario: No proposed snapshot exists
+- **WHEN** the user asks to select a candidate
+- **AND** `load_total_context` returns `plan_state_kind: "no_path"`
+- **THEN** Total Agent MAY ask to regenerate recommendations or call `call_recommendation_agent`
+- **AND** it MUST NOT claim that a selected path exists.
+
+#### Scenario: User asks for a fresh recommendation
+- **WHEN** the current `load_total_context` result has `plan_state_kind: "candidate_path"`
+- **AND** the user explicitly asks to regenerate, replace, refresh, or produce a new recommendation set
+- **THEN** Total Agent MAY call `call_recommendation_agent`
+- **AND** the new recommendation MUST become the current pending candidate set.
+
+### Requirement: User-Facing Candidate Ordinals Are Normalized
+
+Total Agent SHALL treat natural-language candidate numbers as one-based display ordinals and normalize them to the zero-based candidate index used by recommendation storage.
+
+#### Scenario: User selects the third candidate
+- **WHEN** the current pending recommendation has at least three candidates
+- **AND** the user says "third path", "third option", "plan three", or an equivalent selection phrase
+- **THEN** Total Agent MUST accept the candidate at zero-based index `2`
+- **AND** it MUST NOT accept the candidate at zero-based index `3`.
+
+#### Scenario: Candidate ordinal is out of range
+- **WHEN** the user selects candidate N
+- **AND** the current pending recommendation contains fewer than N candidates
+- **THEN** Total Agent MUST reject the acceptance attempt with an out-of-range error or ask the user to choose a valid candidate
+- **AND** it MUST NOT silently accept a different candidate.
+
+### Requirement: Accepted Candidate State Is Current Within The Same Run
+
+After Total Agent successfully accepts a recommendation candidate, subsequent tools in the same run SHALL observe a selected active plan, not stale candidate-path state.
+
+#### Scenario: Accept then load next task
+- **WHEN** `accept_learning_plan` succeeds
+- **AND** a later tool in the same run needs the current learning task
+- **THEN** Total Agent state MUST contain `plan_state_kind: "selected_path"`
+- **AND** `get_next_learning_task` MUST be allowed to read the newly active plan instead of returning `no_active_plan` due to stale `candidate_path` context.
+
+### Requirement: Historical Tool Results Are Not Current State
+
+Total Agent SHALL treat historical tool results as historical context and SHALL use the current turn's `load_total_context` result as the authority for current plan state.
+
+#### Scenario: Historical accepted plan was later abandoned
+- **WHEN** historical context contains an older `accept_learning_plan` or `get_next_learning_task` result
+- **AND** the current `load_total_context` result has `plan_state_kind: "candidate_path"` or `plan_state_kind: "no_path"`
+- **THEN** Total Agent MUST NOT answer that an active selected path exists based only on historical tool results.
+
+#### Scenario: User asks whether candidates or selected path are visible
+- **WHEN** the user asks whether Total Agent sees candidate paths or a selected path
+- **THEN** Total Agent MUST answer from current `load_total_context.plan_state_kind`, `active_plan`, and `pending_recommendation`
+- **AND** it MUST identify stale historical tool outputs as non-authoritative if they conflict.
+
+### Requirement: Streaming Chat Persistence Uses Final Assistant State
+
+The streaming Total Agent runtime SHALL persist the assistant chat turn from the final run result, not from the first terminal tool result in the run.
+
+#### Scenario: Recommendation then accept in one streaming run
+- **WHEN** a single streaming run calls `call_recommendation_agent` and later calls `accept_learning_plan`
+- **THEN** the durable assistant ChatTurn MUST reflect the final accepted-plan outcome
+- **AND** it MUST NOT persist only the intermediate recommendation response as the assistant's final answer.
+
+#### Scenario: Terminal tool sequence is recorded for debugging
+- **WHEN** a streaming run executes one or more terminal tools
+- **THEN** debug logs MUST record the terminal tool sequence in execution order.
+
+### Requirement: Bounded Total Agent Debug Diagnostics
+
+Total Agent SHALL emit bounded debug summaries that make plan-state and tool-routing issues diagnosable without logging large payloads or secrets.
+
+#### Scenario: Context load debug summary
+- **WHEN** `load_total_context` completes
+- **THEN** debug logs MUST include user id, syllabus id, session id when available, `plan_state_kind`, active plan id if present, pending recommendation id if present, candidate count if present, next task title if present, and warning count.
+
+#### Scenario: Tool result debug summary
+- **WHEN** any Total Agent tool returns
+- **THEN** debug logs MUST include tool name, success, error code, status, and key ids relevant to the tool.
+- **AND** debug logs MUST NOT include full recommendation graphs, full generated resource contents, API keys, or full unredacted prompts by default.
+
+#### Scenario: Message history debug summary
+- **WHEN** an LLM-driven Total Agent run starts
+- **THEN** debug logs MUST include loaded message history length and current user/syllabus/session identifiers.
 
 ## Known Issues
 

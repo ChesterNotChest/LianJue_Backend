@@ -362,7 +362,7 @@ def download_file_api():
 
         return send_file(
             download_info['path'],
-            as_attachment=True,
+            as_attachment=request.args.get('inline') != '1',
             download_name=download_info['filename'],
             mimetype=download_info['mimetype'],
             conditional=True,
