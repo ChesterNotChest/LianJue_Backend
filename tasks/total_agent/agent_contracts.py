@@ -42,6 +42,7 @@ TOOL_LOAD_TOTAL_CONTEXT = "load_total_context"
 TOOL_INFER_USER_INTENT = "infer_user_intent"  # deprecated — replaced by note_intent
 TOOL_NOTE_INTENT = "note_intent"
 TOOL_CALL_RECOMMENDATION_AGENT = "call_recommendation_agent"
+TOOL_RUN_LEARNING_RECOMMENDATION = TOOL_CALL_RECOMMENDATION_AGENT
 TOOL_NORMALIZE_LEARNING_GOAL = "normalize_learning_goal_for_recommendation"
 TOOL_ACCEPT_LEARNING_PLAN = "accept_learning_plan"
 TOOL_GET_NEXT_LEARNING_TASK = "get_next_learning_task"

@@ -122,6 +122,10 @@ def get_total_agent() -> Agent:
             "this helps you stay on track across turns but is not required. "
             "When they want a learning path: recommend first (call_recommendation_agent), clarify their goal if needed (normalize_learning_goal_for_recommendation). "
             "When they accept a plan: confirm it (accept_learning_plan). "
+            "Current plan state must come from the current turn's load_total_context result, especially plan_state_kind; do not infer current active plans from older message_history tool results. "
+            "plan_state_kind meanings: selected_path means an accepted learning plan exists; candidate_path means proposed recommendation candidates exist but no selected plan exists; no_path means neither exists. "
+            "If plan_state_kind is candidate_path and the student selects a concrete candidate such as option 1, 2, or 3, call accept_learning_plan with display_candidate_number set to the visible option number. "
+            "Do not call call_recommendation_agent for candidate selection unless the student explicitly asks to discard the current candidates and generate a fresh recommendation. "
             "When they want to continue learning: check what's next (get_next_learning_task) then prepare materials (generate_current_step_resource). "
             "When they give feedback: record it (record_learning_feedback) then show the next step (get_next_learning_task). "
             "When a student's question or reasoning demonstrates knowledge of a topic, note it as an implicit learning signal and include that topic in record_learning_feedback. "
@@ -196,11 +200,19 @@ def get_total_agent() -> Agent:
         return _remember_terminal(ctx, TOOL_NORMALIZE_LEARNING_GOAL, tool_normalize_learning_goal_for_recommendation(ctx.deps.state))
 
     @agent.tool(sequential=True)
-    def accept_learning_plan(ctx: RunContext[TotalAgentDeps], candidate_index: int | None = None) -> dict:
-        if candidate_index is not None:
-            payload = ctx.deps.state.get("payload")
-            if isinstance(payload, dict):
+    def accept_learning_plan(
+        ctx: RunContext[TotalAgentDeps],
+        display_candidate_number: int | None = None,
+        candidate_index: int | None = None,
+    ) -> dict:
+        payload = ctx.deps.state.get("payload")
+        if isinstance(payload, dict):
+            if display_candidate_number is not None:
+                payload["display_candidate_number"] = int(display_candidate_number)
+                payload["candidate_index_source"] = "display_number"
+            elif candidate_index is not None:
                 payload["candidate_index"] = int(candidate_index)
+                payload["_llm_candidate_selection"] = True
         return _remember_terminal(ctx, TOOL_ACCEPT_LEARNING_PLAN, tool_accept_learning_plan(ctx.deps.state))
 
     @agent.tool(sequential=True)
@@ -475,6 +487,22 @@ def _build_agent_final_result(state: Dict[str, Any], model_output: TotalAgentRes
     elif terminal_tool == TOOL_ABANDON_LEARNING_PLAN:
         suggested = abandon_terminal.get("suggested_next_action") or ACTION_GET_NEXT_LEARNING_TASK
     elif terminal_tool == TOOL_ANSWER_LEARNING_QUESTION:
+        suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
+    elif recommendation_terminal:
+        suggested = recommendation_terminal.get("suggested_next_action") or ACTION_WAIT_USER_ACCEPTANCE
+    elif normalization_terminal:
+        suggested = normalization_terminal.get("suggested_next_action") or ACTION_ASK_GOAL_CLARIFICATION
+    elif accept_terminal:
+        suggested = accept_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif resource_terminal:
+        suggested = resource_terminal.get("suggested_next_action") or ACTION_RECORD_LEARNING_FEEDBACK
+    elif feedback_terminal:
+        suggested = feedback_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif skip_terminal:
+        suggested = skip_terminal.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
+    elif abandon_terminal:
+        suggested = abandon_terminal.get("suggested_next_action") or ACTION_GET_NEXT_LEARNING_TASK
+    elif answer_terminal:
         suggested = answer_terminal.get("suggested_next_action") or ACTION_OFFER_PRACTICE_OR_RESOURCE
     # ── fallback: 从 noted_intent 推断 ──
     elif noted:
@@ -1156,6 +1184,21 @@ def _persist_final_agent_turn(payload, state, final):
     _persist_agent_chat_turn(payload, state)
 
 
+def _remember_stream_terminal_tool(state: Dict[str, Any], tool_name: str, tool_result: dict) -> None:
+    if tool_name not in CHAT_TERMINAL_TOOLS or not isinstance(tool_result, dict):
+        return
+    state["terminal_tool_result"] = tool_result
+    sequence = state.setdefault("terminal_tool_sequence", [])
+    if isinstance(sequence, list):
+        sequence.append(tool_name)
+    else:
+        state["terminal_tool_sequence"] = [tool_name]
+    _chat_log(
+        "STREAM_TERMINAL_TOOL_SEQUENCE "
+        f"run={state.get('run_id')} seq={json.dumps(state.get('terminal_tool_sequence'), ensure_ascii=False)}"
+    )
+
+
 def persist_streamed_agent_reply(payload, content, metadata=None):
     state = {
         'payload': payload or {},
@@ -1309,6 +1352,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
         "total_context": {},
         "intent": "",
         "terminal_tool_result": None,
+        "terminal_tool_sequence": [],
     }
 
     deps = TotalAgentDeps(state=state)
@@ -1316,7 +1360,11 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
     user_prompt = build_total_agent_user_prompt(state)
     run = None
 
-    _chat_log(f"GEN_START ses={session_id} history_len={len(message_history)}")
+    _chat_log(
+        "GEN_START "
+        f"run={state.get('run_id')} uid={uid} sid={sid} ses={session_id} "
+        f"history_len={len(message_history)} stream=true"
+    )
     async with agent.iter(user_prompt, message_history=message_history, deps=deps) as run:
         async for node in run:
             while not status_queue.empty():
@@ -1385,10 +1433,7 @@ async def _stream_total_agent_agent(payload: Dict[str, Any]) -> AsyncGenerator[D
                             }
                         elif evt_type == "FunctionToolResultEvent":
                             tool_name, tool_call_id, tool_result = _safe_tool_result_event_data(event)
-                            if tool_name in CHAT_TERMINAL_TOOLS and isinstance(tool_result, dict):
-                                state["terminal_tool_result"] = tool_result
-                                _chat_log(f"STREAM_TERMINAL_TOOL_SAVE tool={tool_name}")
-                                _persist_agent_chat_turn(payload, state)
+                            _remember_stream_terminal_tool(state, tool_name, tool_result)
                             yield {
                                 "type": STREAM_EVENT_TOOL_END,
                                 "data": {
@@ -1448,6 +1493,7 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
         "total_context": {},
         "intent": "",
         "terminal_tool_result": None,
+        "terminal_tool_sequence": [],
     }
 
     # ── message_history（非流式路径） ──
@@ -1461,6 +1507,11 @@ def run_total_agent_agent(payload: Dict[str, Any], *, stream: bool = False):
         sid = 0
     session_id = _resolve_session_id(payload)
     message_history = _load_message_history(uid, sid, session_id) if uid and sid else []
+    _chat_log(
+        "GEN_START "
+        f"run={state.get('run_id')} uid={uid} sid={sid} ses={session_id} "
+        f"history_len={len(message_history)} stream=false"
+    )
 
     deps = TotalAgentDeps(state=state)
     agent = get_total_agent()

@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1420" height="820" viewBox="0 0 1420 820" role="img" aria-labelledby="title desc">
+  <title id="title">三层架构图</title>
+  <desc id="desc">表现层、逻辑层、持久层三层结构</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#202124"/>
+    </marker>
+    <filter id="softShadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <rect width="1420" height="820" fill="#ffffff"/>
+  <text x="30" y="70" font-family="Microsoft YaHei, SimSun, Arial, sans-serif" font-size="46" font-weight="800" fill="#000000">（2） 层次结构风格（Layered / 分层架构）</text>
+
+  <g font-family="Microsoft YaHei, SimSun, Arial, sans-serif">
+    <rect x="68" y="130" width="70" height="118" rx="8" fill="#dff1d8" stroke="#86bd75" stroke-width="1.4"/>
+    <text x="103" y="174" text-anchor="middle" font-size="20" font-weight="700" fill="#25332a">
+      <tspan x="103" dy="0">表</tspan>
+      <tspan x="103" dy="26">现</tspan>
+      <tspan x="103" dy="26">层</tspan>
+    </text>
+
+    <rect x="68" y="286" width="70" height="310" rx="8" fill="#aee3e8" stroke="#219aa5" stroke-width="1.4"/>
+    <text x="103" y="425" text-anchor="middle" font-size="20" font-weight="700" fill="#25332a">
+      <tspan x="103" dy="0">逻</tspan>
+      <tspan x="103" dy="26">辑</tspan>
+      <tspan x="103" dy="26">层</tspan>
+    </text>
+
+    <rect x="68" y="635" width="70" height="118" rx="8" fill="#647789" stroke="#405263" stroke-width="1.4"/>
+    <text x="103" y="680" text-anchor="middle" font-size="20" font-weight="700" fill="#ffffff">
+      <tspan x="103" dy="0">持</tspan>
+      <tspan x="103" dy="26">久</tspan>
+      <tspan x="103" dy="26">层</tspan>
+    </text>
+
+    <rect x="170" y="130" width="1190" height="118" rx="14" fill="#dff1d8" stroke="#86bd75" stroke-width="1.4"/>
+    <g font-size="17" font-weight="700" fill="#102027">
+      <rect x="205" y="154" width="180" height="58" rx="7" fill="#a7d8ee" stroke="#1680b0" stroke-width="1.2"/>
+      <text x="295" y="189" text-anchor="middle">学习成长树页面</text>
+      <rect x="430" y="154" width="190" height="58" rx="7" fill="#a7d8ee" stroke="#1680b0" stroke-width="1.2"/>
+      <text x="525" y="189" text-anchor="middle">个人学习大纲页面</text>
+      <rect x="665" y="154" width="190" height="58" rx="7" fill="#a7d8ee" stroke="#1680b0" stroke-width="1.2"/>
+      <text x="760" y="189" text-anchor="middle">学习路径推荐页面</text>
+      <rect x="900" y="154" width="180" height="58" rx="7" fill="#a7d8ee" stroke="#1680b0" stroke-width="1.2"/>
+      <text x="990" y="189" text-anchor="middle">学习资源页面</text>
+      <rect x="1125" y="154" width="190" height="58" rx="7" fill="#a7d8ee" stroke="#1680b0" stroke-width="1.2"/>
+      <text x="1220" y="189" text-anchor="middle">Total Agent管理页面</text>
+    </g>
+
+    <g filter="url(#softShadow)">
+      <rect x="170" y="286" width="170" height="310" rx="28" fill="#aee3e8" stroke="#219aa5" stroke-width="1.4"/>
+      <text x="255" y="313" text-anchor="middle" font-size="18" font-weight="700" fill="#1d373a">学习状态</text>
+      <rect x="184" y="322" width="142" height="258" fill="#ffffff" stroke="#1f2937" stroke-width="1.1" stroke-dasharray="4 4"/>
+      <g font-size="13" font-weight="700" fill="#111827">
+        <rect x="197" y="338" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="255" y="363" text-anchor="middle">用户与权限模块</text>
+        <rect x="197" y="395" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="255" y="420" text-anchor="middle">学习成长树模块</text>
+        <rect x="197" y="452" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="255" y="477" text-anchor="middle">个人学习大纲模块</text>
+        <rect x="197" y="509" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="255" y="534" text-anchor="middle">运行状态模块</text>
+      </g>
+
+      <rect x="375" y="286" width="374" height="310" rx="48" fill="#aee3e8" stroke="#219aa5" stroke-width="1.4"/>
+      <text x="562" y="313" text-anchor="middle" font-size="18" font-weight="700" fill="#1d373a">学习闭环</text>
+      <rect x="425" y="322" width="274" height="258" fill="#ffffff" stroke="#1f2937" stroke-width="1.1" stroke-dasharray="4 4"/>
+      <g font-size="13" font-weight="700" fill="#111827">
+        <rect x="440" y="338" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="498" y="363" text-anchor="middle">学习路径推荐模块</text>
+        <rect x="568" y="338" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="626" y="363" text-anchor="middle">学习计划模块</text>
+        <rect x="440" y="395" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="498" y="420" text-anchor="middle">学习资源模块</text>
+        <rect x="568" y="395" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="626" y="420" text-anchor="middle">学生学伴模块</text>
+        <rect x="440" y="452" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="498" y="477" text-anchor="middle">教学材料模块</text>
+        <rect x="568" y="452" width="116" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="626" y="477" text-anchor="middle">Total Agent模块</text>
+      </g>
+
+      <rect x="775" y="286" width="180" height="310" rx="28" fill="#aee3e8" stroke="#219aa5" stroke-width="1.4"/>
+      <text x="865" y="313" text-anchor="middle" font-size="18" font-weight="700" fill="#1d373a">教学内容</text>
+      <rect x="802" y="322" width="126" height="258" fill="#ffffff" stroke="#1f2937" stroke-width="1.1" stroke-dasharray="4 4"/>
+      <g font-size="13" font-weight="700" fill="#111827">
+        <rect x="815" y="338" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="865" y="363" text-anchor="middle">文件管理模块</text>
+        <rect x="815" y="395" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="865" y="420" text-anchor="middle">知识图谱模块</text>
+        <rect x="815" y="452" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="865" y="477" text-anchor="middle">教学大纲模块</text>
+        <rect x="815" y="509" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="865" y="534" text-anchor="middle">教学材料模块</text>
+      </g>
+
+      <rect x="990" y="286" width="180" height="310" rx="28" fill="#aee3e8" stroke="#219aa5" stroke-width="1.4"/>
+      <text x="1080" y="313" text-anchor="middle" font-size="18" font-weight="700" fill="#1d373a">运行维护</text>
+      <rect x="1017" y="322" width="126" height="258" fill="#ffffff" stroke="#1f2937" stroke-width="1.1" stroke-dasharray="4 4"/>
+      <g font-size="13" font-weight="700" fill="#111827">
+        <rect x="1030" y="366" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="1080" y="391" text-anchor="middle">Job管理模块</text>
+        <rect x="1030" y="443" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="1080" y="468" text-anchor="middle">Total Agent模块</text>
+        <rect x="1030" y="520" width="100" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="1080" y="545" text-anchor="middle">运行状态模块</text>
+      </g>
+
+      <rect x="1205" y="286" width="155" height="310" rx="28" fill="#aee3e8" stroke="#219aa5" stroke-width="1.4"/>
+      <text x="1282" y="313" text-anchor="middle" font-size="18" font-weight="700" fill="#1d373a">通用支撑</text>
+      <rect x="1218" y="322" width="130" height="258" fill="#ffffff" stroke="#1f2937" stroke-width="1.1" stroke-dasharray="4 4"/>
+      <g font-size="13" font-weight="700" fill="#111827">
+        <rect x="1224" y="366" width="118" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="1283" y="391" text-anchor="middle">用户与权限模块</text>
+        <rect x="1224" y="443" width="118" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="1283" y="468" text-anchor="middle">运行状态模块</text>
+        <rect x="1224" y="520" width="118" height="38" rx="5" fill="#f9d6a8" stroke="#d9822b"/>
+        <text x="1283" y="545" text-anchor="middle">接口适配模块</text>
+      </g>
+    </g>
+
+    <rect x="170" y="635" width="1190" height="118" rx="12" fill="#647789" stroke="#405263" stroke-width="1.4"/>
+    <g font-size="17" font-weight="700" fill="#111827">
+      <ellipse cx="365" cy="685" rx="92" ry="20" fill="#dceafe" stroke="#7da2d6"/>
+      <rect x="273" y="685" width="184" height="42" fill="#dceafe" stroke="#7da2d6"/>
+      <ellipse cx="365" cy="727" rx="92" ry="20" fill="#dceafe" stroke="#7da2d6"/>
+      <text x="365" y="719" text-anchor="middle">MySQL</text>
+
+      <ellipse cx="705" cy="685" rx="132" ry="20" fill="#dceafe" stroke="#7da2d6"/>
+      <rect x="573" y="685" width="264" height="42" fill="#dceafe" stroke="#7da2d6"/>
+      <ellipse cx="705" cy="727" rx="132" ry="20" fill="#dceafe" stroke="#7da2d6"/>
+      <text x="705" y="719" text-anchor="middle">国产时序动态图数据库</text>
+
+      <ellipse cx="1065" cy="685" rx="92" ry="20" fill="#dceafe" stroke="#7da2d6"/>
+      <rect x="973" y="685" width="184" height="42" fill="#dceafe" stroke="#7da2d6"/>
+      <ellipse cx="1065" cy="727" rx="92" ry="20" fill="#dceafe" stroke="#7da2d6"/>
+      <text x="1065" y="719" text-anchor="middle">文件管理</text>
+    </g>
+
+    <path d="M295 212 L295 286" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M760 212 L760 286" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M1220 212 L1220 286" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M255 596 L365 635" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M562 596 L705 635" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M865 596 L705 635" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M1080 596 L1065 635" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M1282 596 L1065 635" stroke="#202124" stroke-width="2" marker-end="url(#arrow)"/>
+  </g>
+</svg>

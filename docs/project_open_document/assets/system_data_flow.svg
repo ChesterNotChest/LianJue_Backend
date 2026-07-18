@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">系统数据流转总图</title>
+  <desc id="desc">学生用户、管理员、逻辑模块、持久层与页面回显之间的数据流转关系</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,8 L10,4 z" fill="#1f2937"/>
+    </marker>
+    <marker id="blueArrow" markerWidth="12" markerHeight="12" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,8 L10,4 z" fill="#3f7fb2"/>
+    </marker>
+    <filter id="shadow" x="-8%" y="-10%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1f2937" flood-opacity="0.14"/>
+    </filter>
+    <linearGradient id="blueNode" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c6e7fb"/>
+      <stop offset="1" stop-color="#a6d2ef"/>
+    </linearGradient>
+    <linearGradient id="store" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eff6ff"/>
+      <stop offset="1" stop-color="#dceafe"/>
+    </linearGradient>
+    <style>
+      .font { font-family: "Microsoft YaHei", "SimSun", Arial, sans-serif; }
+      .title { font-size: 34px; font-weight: 800; fill: #111827; }
+      .hint { font-size: 18px; fill: #374151; }
+      .nodeText { font-size: 22px; font-weight: 700; fill: #172033; }
+      .smallText { font-size: 17px; font-weight: 700; fill: #172033; }
+      .whiteText { font-size: 21px; font-weight: 800; fill: #ffffff; }
+      .label { font-size: 17px; font-weight: 700; fill: #374151; }
+      .node { fill: url(#blueNode); stroke: #1f2937; stroke-width: 2; filter: url(#shadow); }
+      .yes { fill: #d8f8df; stroke: #1f2937; stroke-width: 2; filter: url(#shadow); }
+      .no { fill: #ffd1d9; stroke: #1f2937; stroke-width: 2; filter: url(#shadow); }
+      .store { fill: url(#store); stroke: #1f2937; stroke-width: 2; filter: url(#shadow); }
+      .hub { fill: #e9ddff; stroke: #1f2937; stroke-width: 2; filter: url(#shadow); }
+      .line { fill: none; stroke: #1f2937; stroke-width: 2.2; marker-end: url(#arrow); }
+      .blueLine { fill: none; stroke: #3f7fb2; stroke-width: 3; marker-end: url(#blueArrow); }
+      .dashLine { fill: none; stroke: #6b7280; stroke-width: 2; stroke-dasharray: 8 8; marker-end: url(#arrow); }
+      .softDash { fill: none; stroke: #8a94a6; stroke-width: 1.6; stroke-dasharray: 7 7; }
+      .bus { fill: none; stroke: #1f2937; stroke-width: 2.2; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+  <text class="font title" x="800" y="58" text-anchor="middle">系统数据流转总图</text>
+  <text class="font hint" x="800" y="92" text-anchor="middle">从标有序号的节点开始阅读：入口请求、权限分流、业务处理、持久化沉淀、页面回显。</text>
+
+  <g class="font">
+    <circle cx="210" cy="172" r="22" fill="#202124"/>
+    <text class="whiteText" x="210" y="180" text-anchor="middle">1</text>
+    <rect class="node" x="250" y="135" width="280" height="74" rx="24"/>
+    <text class="nodeText" x="390" y="180" text-anchor="middle">学生用户请求</text>
+
+    <circle cx="210" cy="354" r="22" fill="#202124"/>
+    <text class="whiteText" x="210" y="362" text-anchor="middle">2</text>
+    <rect class="node" x="250" y="317" width="280" height="74" rx="24"/>
+    <text class="nodeText" x="390" y="362" text-anchor="middle">管理员请求</text>
+
+    <rect class="yes" x="610" y="150" width="150" height="50" rx="25"/>
+    <text class="smallText" x="685" y="182" text-anchor="middle">学生侧</text>
+    <rect class="no" x="610" y="330" width="150" height="50" rx="25"/>
+    <text class="smallText" x="685" y="362" text-anchor="middle">管理侧</text>
+
+    <circle cx="560" cy="254" r="22" fill="#202124"/>
+    <text class="whiteText" x="560" y="262" text-anchor="middle">3</text>
+    <rect class="node" x="620" y="230" width="250" height="64" rx="22"/>
+    <text class="nodeText" x="745" y="270" text-anchor="middle">用户与权限模块</text>
+
+    <rect class="hub" x="940" y="214" width="286" height="96" rx="26"/>
+    <text class="nodeText" x="1083" y="254" text-anchor="middle">Total Agent模块</text>
+    <text class="smallText" x="1083" y="283" text-anchor="middle">上下文组织 / 状态事件</text>
+  </g>
+
+  <g class="font">
+    <rect class="node" x="206" y="504" width="230" height="58" rx="20"/>
+    <text class="smallText" x="321" y="540" text-anchor="middle">个人学习大纲模块</text>
+    <rect class="node" x="464" y="504" width="230" height="58" rx="20"/>
+    <text class="smallText" x="579" y="540" text-anchor="middle">学习成长树模块</text>
+    <rect class="node" x="722" y="504" width="230" height="58" rx="20"/>
+    <text class="smallText" x="837" y="540" text-anchor="middle">学习路径推荐模块</text>
+    <rect class="node" x="980" y="504" width="230" height="58" rx="20"/>
+    <text class="smallText" x="1095" y="540" text-anchor="middle">学习资源模块</text>
+    <rect class="node" x="1238" y="504" width="230" height="58" rx="20"/>
+    <text class="smallText" x="1353" y="540" text-anchor="middle">学生学伴模块</text>
+
+    <rect class="node" x="206" y="632" width="230" height="58" rx="20"/>
+    <text class="smallText" x="321" y="668" text-anchor="middle">文件管理模块</text>
+    <rect class="node" x="464" y="632" width="230" height="58" rx="20"/>
+    <text class="smallText" x="579" y="668" text-anchor="middle">知识图谱模块</text>
+    <rect class="node" x="722" y="632" width="230" height="58" rx="20"/>
+    <text class="smallText" x="837" y="668" text-anchor="middle">教学大纲模块</text>
+    <rect class="node" x="980" y="632" width="230" height="58" rx="20"/>
+    <text class="smallText" x="1095" y="668" text-anchor="middle">教学材料模块</text>
+    <rect class="node" x="1238" y="632" width="230" height="58" rx="20"/>
+    <text class="smallText" x="1353" y="668" text-anchor="middle">Job管理模块</text>
+  </g>
+
+  <g class="font">
+    <circle cx="140" cy="754" r="22" fill="#202124"/>
+    <text class="whiteText" x="140" y="762" text-anchor="middle">4</text>
+    <ellipse class="store" cx="420" cy="790" rx="132" ry="42"/>
+    <text class="nodeText" x="420" y="798" text-anchor="middle">MySQL</text>
+    <ellipse class="store" cx="800" cy="790" rx="178" ry="42"/>
+    <text class="nodeText" x="800" y="798" text-anchor="middle">国产时序动态图数据库</text>
+    <ellipse class="store" cx="1180" cy="790" rx="132" ry="42"/>
+    <text class="nodeText" x="1180" y="798" text-anchor="middle">文件管理</text>
+
+    <circle cx="1148" cy="354" r="22" fill="#202124"/>
+    <text class="whiteText" x="1148" y="362" text-anchor="middle">5</text>
+    <rect class="yes" x="1180" y="330" width="164" height="50" rx="25"/>
+    <text class="smallText" x="1262" y="362" text-anchor="middle">结构化结果</text>
+    <rect class="node" x="1380" y="230" width="180" height="64" rx="22"/>
+    <text class="smallText" x="1470" y="270" text-anchor="middle">学生用户页面</text>
+    <rect class="node" x="1380" y="410" width="180" height="64" rx="22"/>
+    <text class="smallText" x="1470" y="450" text-anchor="middle">管理员页面</text>
+  </g>
+
+  <g class="font">
+    <path class="line" d="M530 172 H610"/>
+    <path class="line" d="M530 354 H610"/>
+    <path class="line" d="M685 200 V230"/>
+    <path class="line" d="M685 330 V294"/>
+    <path class="line" d="M870 262 H940"/>
+
+    <path class="blueLine" d="M1083 310 V455 H321 V504"/>
+    <path class="blueLine" d="M1083 455 H579 V504"/>
+    <path class="blueLine" d="M1083 455 H837 V504"/>
+    <path class="blueLine" d="M1083 455 H1095 V504"/>
+    <path class="blueLine" d="M1083 455 H1353 V504"/>
+
+    <path class="dashLine" d="M745 294 V604 H321 V632"/>
+    <path class="dashLine" d="M745 604 H579 V632"/>
+    <path class="dashLine" d="M745 604 H837 V632"/>
+    <path class="dashLine" d="M745 604 H1095 V632"/>
+    <path class="dashLine" d="M745 604 H1353 V632"/>
+
+    <path class="bus" d="M321 562 V742"/>
+    <path class="bus" d="M579 562 V742"/>
+    <path class="bus" d="M837 562 V742"/>
+    <path class="bus" d="M1095 562 V742"/>
+    <path class="bus" d="M1353 562 V742"/>
+    <path class="bus" d="M321 690 V742"/>
+    <path class="bus" d="M579 690 V742"/>
+    <path class="bus" d="M837 690 V742"/>
+    <path class="bus" d="M1095 690 V742"/>
+    <path class="bus" d="M1353 690 V742"/>
+    <path class="bus" d="M220 742 H1380"/>
+    <path class="line" d="M420 742 V748"/>
+    <path class="line" d="M800 742 V748"/>
+    <path class="line" d="M1180 742 V748"/>
+
+    <path class="line" d="M1226 262 H1280 V330"/>
+    <path class="line" d="M1344 355 H1380"/>
+    <path class="line" d="M1262 330 V294 H1380"/>
+    <path class="line" d="M1262 380 V442 H1380"/>
+    <path class="softDash" d="M420 748 C520 690 660 690 800 748"/>
+    <path class="softDash" d="M800 748 C920 690 1050 690 1180 748"/>
+  </g>
+
+  <g class="font">
+    <text class="label" x="575" y="145" text-anchor="middle">学习闭环入口</text>
+    <text class="label" x="566" y="410" text-anchor="middle">教学内容与运维入口</text>
+    <text class="label" x="1018" y="430" text-anchor="middle">学生侧能力链</text>
+    <text class="label" x="618" y="586" text-anchor="middle">管理侧能力链</text>
+    <text class="label" x="800" y="858" text-anchor="middle">数据沉淀后继续支撑推荐、资源生成、成长树更新和页面展示</text>
+  </g>
+</svg>
