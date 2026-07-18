@@ -22,7 +22,7 @@ AgentLayout 是智能体页面的三栏布局（LeftSidebar + Chat + RightSideba
 - **对照**: SVG lines 115-131
 
 ### BuddyFloatWindow
-- `340×420 rx=14`，紫色头部 (rx=14 fill=#ede9fe) + 表情 + "学伴小觉" + 客服悬浮窗 badge + 最小化/关闭按钮
+- `340×420 rx=14`，紫色头部 (rx=14 fill=#ede9fe) + 表情 + "学伴小觉" + 悬浮窗 badge + 最小化/关闭按钮
 - 消息区: 主动提醒(amber) + 用户消息(indigo op=0.1) + 小觉回复(gray) + memory tag(purple border)
 - 输入栏: `316×38 rx=10` + 发送按钮
 - **对照**: SVG lines 141-197
