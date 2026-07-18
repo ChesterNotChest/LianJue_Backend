@@ -169,3 +169,63 @@ def study_buddy_synthesis():
         "error_code": "",
         "error_message": "",
     })
+
+
+@bp.route("/study_buddy/tree", methods=["GET"])
+def study_buddy_tree():
+    """获取学伴学习进度树（持久化快照）。
+
+    Query params:
+      - user_id: int (required)
+      - syllabus_id: int (required)
+    """
+    from tasks.study_buddy.tree_store import load_buddy_tree
+
+    user_id = _parse_int(request.args.get("user_id"))
+    syllabus_id = _parse_int(request.args.get("syllabus_id")) or 0
+
+    if not user_id:
+        return jsonify({
+            "success": False,
+            "tree": None,
+            "error_code": "missing_fields",
+            "error_message": "user_id is required",
+        }), 400
+
+    tree = load_buddy_tree(user_id, syllabus_id)
+    return jsonify({
+        "success": True,
+        "tree": tree,
+        "error_code": "",
+        "error_message": "",
+    })
+
+
+@bp.route("/study_buddy/memory", methods=["GET"])
+def study_buddy_memory():
+    """获取学伴记忆标签列表。
+
+    Query params:
+      - user_id: int (required)
+      - syllabus_id: int (required)
+    """
+    from tasks.study_buddy.memory import load_memory_tags
+
+    user_id = _parse_int(request.args.get("user_id"))
+    syllabus_id = _parse_int(request.args.get("syllabus_id")) or 0
+
+    if not user_id:
+        return jsonify({
+            "success": False,
+            "tags": [],
+            "error_code": "missing_fields",
+            "error_message": "user_id is required",
+        }), 400
+
+    tags = load_memory_tags(user_id, syllabus_id)
+    return jsonify({
+        "success": True,
+        "tags": tags,
+        "error_code": "",
+        "error_message": "",
+    })
