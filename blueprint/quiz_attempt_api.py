@@ -19,15 +19,16 @@ def _parse_int(value) -> int | None:
 def quiz_attempts_list_api():
     user_id = _parse_int(request.args.get("user_id"))
     resource_id = str(request.args.get("resource_id") or "").strip()
-    limit = _parse_int(request.args.get("limit")) or 20
-    if not user_id or not resource_id:
+    syllabus_id = _parse_int(request.args.get("syllabus_id"))
+    limit = _parse_int(request.args.get("limit")) or 50
+    if not user_id or (not resource_id and not syllabus_id):
         return jsonify({
             "success": False,
             "attempts": [],
             "error_code": "missing_fields",
-            "error_message": "user_id and resource_id are required",
+            "error_message": "user_id and (resource_id or syllabus_id) are required",
         }), 400
-    attempts = list_quiz_attempts(user_id, resource_id, limit=limit)
+    attempts = list_quiz_attempts(user_id, resource_id, syllabus_id=syllabus_id, limit=limit)
     current_app.logger.info(
         "[quiz_attempts] list user_id=%s resource_id=%s count=%s",
         user_id,

@@ -58,12 +58,24 @@ def _write_attempts(path: Path, attempts: list[dict]) -> None:
             os.unlink(tmp_path)
 
 
-def list_quiz_attempts(user_id: int, resource_id: str, limit: int = 20) -> list[dict]:
-    attempts = _read_attempts(_attempt_path(user_id, resource_id))
+def list_quiz_attempts(user_id: int, resource_id: str = "", limit: int = 20, syllabus_id: int | None = None) -> list[dict]:
+    if resource_id:
+        attempts = _read_attempts(_attempt_path(user_id, resource_id))
+    elif syllabus_id is not None:
+        # 按 syllabus 聚合：扫描该用户下所有 resource_id 的 attempt 文件
+        user_dir = _root() / f"user_{int(user_id)}"
+        attempts = []
+        if user_dir.exists():
+            for f in sorted(user_dir.glob("*.jsonl")):
+                attempts.extend(_read_attempts(f))
+        # 按 submitted_at 倒序
+        attempts.sort(key=lambda a: a.get("submitted_at") or a.get("created_at") or 0, reverse=True)
+    else:
+        return []
     try:
         normalized_limit = max(1, int(limit))
     except Exception:
-        normalized_limit = 20
+        normalized_limit = 50
     return attempts[-normalized_limit:]
 
 
