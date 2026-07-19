@@ -17,6 +17,36 @@ from tasks.total_agent import agent_tools as tagt
 ARTIFACT_ROOT = Path(__file__).resolve().parent / "artifacts" / "total_agent"
 
 
+def test_total_agent_prompt_uses_visible_conversation_history():
+    prompt = tar.build_total_agent_user_prompt(
+        {
+            "payload": {
+                "user_id": 1,
+                "syllabus_id": 8,
+                "message": "第三条吧",
+                "context": {
+                    "conversation_history": [
+                        {"role": "user", "content": "重新推荐吧"},
+                        {"role": "agent", "content": "方案一、方案二、方案三"},
+                    ]
+                },
+            }
+        }
+    )
+
+    data = json.loads(prompt)
+
+    assert data["message"] == "第三条吧"
+    assert data["context"]["visible_conversation_history"] == [
+        {"role": "user", "content": "重新推荐吧"},
+        {"role": "agent", "content": "方案一、方案二、方案三"},
+    ]
+
+
+def test_total_agent_persisted_pydantic_history_is_not_loaded():
+    assert tar._load_message_history(1, 8, "any-session") == []
+
+
 def _recommendation_fixture() -> dict:
     return {
         "success": True,
@@ -48,6 +78,45 @@ def _recommendation_fixture() -> dict:
         "error_code": "",
         "error_message": "",
     }
+
+
+def _recommendation_fixture_three_candidates() -> dict:
+    fixture = _recommendation_fixture()
+    fixture["candidates"] = [
+        {
+            "path": ["hbase_intro", "rowkey_design"],
+            "skills": ["hbase", "rowkey", "hotspot"],
+        },
+        {
+            "path": ["hbase_intro", "rowkey_hotspot"],
+            "skills": ["hbase", "hotspot"],
+        },
+        {
+            "path": ["secondary_index", "rowkey_hotspot"],
+            "skills": ["index", "hotspot"],
+        },
+    ]
+    fixture["graph"]["nodes"].extend(
+        [
+            {
+                "id": "rowkey_hotspot",
+                "title": "RowKey Hotspot Avoidance",
+                "outcomes": ["rowkey_hotspot"],
+            },
+            {
+                "id": "secondary_index",
+                "title": "Secondary Index",
+                "outcomes": ["secondary_index"],
+            },
+        ]
+    )
+    fixture["graph"]["edges"].extend(
+        [
+            {"source": "hbase_intro", "target": "rowkey_hotspot"},
+            {"source": "secondary_index", "target": "rowkey_hotspot"},
+        ]
+    )
+    return fixture
 
 
 def _reset_learning_plan_root(monkeypatch, tmp_path):
@@ -141,7 +210,6 @@ def test_total_agent_next_closure_constants_are_registered_and_unique():
     assert tac.INTENT_ANSWER_LEARNING_QUESTION in tac.TOTAL_AGENT_INTENTS
     assert tac.TOTAL_AGENT_TOOL_ORDER[tac.INTENT_ANSWER_LEARNING_QUESTION] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
         tac.TOOL_ANSWER_LEARNING_QUESTION,
     ]
@@ -183,7 +251,7 @@ def test_total_agent_agent_final_result_includes_loaded_context():
         "study_graph_state": {"weak_node_ids": ["hbase_intro"]},
     }
     state = {
-        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_INFER_USER_INTENT, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
+        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
         "intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE,
         "intent_result": {"intent": tac.INTENT_GENERATE_CURRENT_STEP_RESOURCE},
         "total_context": context,
@@ -203,7 +271,7 @@ def test_total_agent_agent_final_result_includes_loaded_context():
 
 def test_total_agent_agent_final_result_uses_record_feedback_state_fallback():
     state = {
-        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_INFER_USER_INTENT, tac.TOOL_RECORD_LEARNING_FEEDBACK],
+        "tool_trace": [tac.TOOL_LOAD_TOTAL_CONTEXT, tac.TOOL_RECORD_LEARNING_FEEDBACK],
         "intent": tac.INTENT_RECORD_LEARNING_FEEDBACK,
         "intent_result": {"intent": tac.INTENT_RECORD_LEARNING_FEEDBACK},
         "total_context": {"profile_summary": {"profile_source": tac.PROFILE_SOURCE_PERSISTED}},
@@ -223,13 +291,14 @@ def test_total_agent_agent_final_result_uses_record_feedback_state_fallback():
     assert result["intent"] == tac.INTENT_RECORD_LEARNING_FEEDBACK
     assert result["suggested_next_action"] == tac.ACTION_GENERATE_CURRENT_STEP_RESOURCE
     assert result["result"]["record_learning_feedback"]["updated_step"]["status"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
+    assert "learning_guidance" in result["result"]
+    assert result["result"]["reply"] == result["result"]["learning_guidance"]["reply"]
 
 
 def test_total_agent_agent_final_result_uses_answer_state_fallback():
     state = {
         "tool_trace": [
             tac.TOOL_LOAD_TOTAL_CONTEXT,
-            tac.TOOL_INFER_USER_INTENT,
             tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
             tac.TOOL_ANSWER_LEARNING_QUESTION,
         ],
@@ -258,7 +327,6 @@ def test_total_agent_agent_final_result_includes_course_summary_tool_result():
     state = {
         "tool_trace": [
             tac.TOOL_LOAD_TOTAL_CONTEXT,
-            tac.TOOL_INFER_USER_INTENT,
             tac.TOOL_GET_COURSE_LEARNING_TREE_SUMMARY,
             tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE,
         ],
@@ -282,6 +350,113 @@ def test_total_agent_agent_final_result_includes_course_summary_tool_result():
     assert result["result"]["context"]["course_learning_tree_summary"]["summary"]["weak_nodes"][0]["title"] == "HBase Basics"
 
 
+def test_total_agent_buddy_event_selector_prefers_single_highest_priority_event():
+    event = tar._select_buddy_event(
+        terminal_tool=tac.TOOL_ACCEPT_LEARNING_PLAN,
+        recommendation_terminal={
+            "success": True,
+            "has_best_path": True,
+            "recommendation": {"best_path": {"path": ["a", "b"]}},
+        },
+        accept_terminal={
+            "success": True,
+            "accepted": True,
+            "plan": {"plan_id": "p1", "steps": []},
+            "next_task": {"title": "Step A"},
+            "metrics": {"total_steps": 3},
+        },
+        resource_terminal={
+            "success": True,
+            "resources": [{"resource_id": "r1", "resource_type": "quiz", "title": "Quiz"}],
+        },
+        feedback_terminal={
+            "success": True,
+            "updated_step": {"title": "Old", "status": "completed"},
+        },
+        skip_terminal={},
+        abandon_terminal={},
+        answer_terminal={},
+    )
+
+    assert event["event_type"] == "plan_accepted"
+    assert event["payload"]["next_task_title"] == "Step A"
+    assert event["plan"]["plan_id"] == "p1"
+
+
+def test_total_agent_final_result_notifies_only_one_buddy_event(monkeypatch):
+    calls = []
+
+    def fake_notify(**kwargs):
+        calls.append(("event", kwargs))
+        return "buddy once"
+
+    def fake_trigger(**kwargs):
+        calls.append(("trigger", kwargs))
+        return "legacy"
+
+    import tasks.study_buddy_task as buddy_task
+
+    monkeypatch.setattr(buddy_task, "notify_study_buddy_event", fake_notify)
+    monkeypatch.setattr(buddy_task, "trigger_study_buddy", fake_trigger)
+
+    state = {
+        "payload": {"user_id": 7, "syllabus_id": 29},
+        "tool_trace": [tac.TOOL_ACCEPT_LEARNING_PLAN, tac.TOOL_GENERATE_CURRENT_STEP_RESOURCE],
+        "intent": tac.INTENT_ACCEPT_RECOMMENDATION,
+        "terminal_tool_result": {
+            "tool": tac.TOOL_ACCEPT_LEARNING_PLAN,
+            "success": True,
+            "accepted": True,
+            "plan": {"plan_id": "p1", "steps": []},
+            "next_task": {"title": "Step A"},
+            "metrics": {"total_steps": 3},
+        },
+        "resource_generation_result": {
+            "success": True,
+            "resources": [{"resource_id": "r1", "resource_type": "quiz", "title": "Quiz"}],
+        },
+    }
+
+    result = tar._build_agent_final_result(state)
+
+    assert result["buddy_message"] == "buddy once"
+    assert result["buddy_event"]["event_type"] == "plan_accepted"
+    assert [kind for kind, _ in calls] == ["event"]
+
+
+def test_total_agent_resource_tool_notifies_buddy_immediately(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    _accept_plan()
+    monkeypatch.setattr(tagt, "generate_resources_from_request", _fake_generation)
+
+    calls = []
+
+    def fake_notify(**kwargs):
+        calls.append(kwargs)
+        return "resource buddy"
+
+    import tasks.study_buddy_task as buddy_task
+
+    monkeypatch.setattr(buddy_task, "notify_study_buddy_event", fake_notify)
+
+    state = {
+        "payload": {"user_id": 8, "syllabus_id": 20, "message": "generate ppt", "resource_types": ["ppt"]},
+        "tool_trace": [],
+        "run_id": "test-run",
+    }
+
+    result = tagt.tool_generate_current_step_resource(state)
+
+    assert result["success"] is True
+    assert result["resources"][0]["resource_type"] == "ppt"
+    assert state["_study_buddy_event_sent"] is True
+    assert state["_study_buddy_event_type"] == "resource_ready"
+    assert state["_study_buddy_message"] == "resource buddy"
+    assert len(calls) == 1
+    assert calls[0]["event_type"] == "resource_ready"
+    assert calls[0]["payload"]["resource"]["resource_type"] == "ppt"
+
+
 def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
     payload = {
@@ -300,9 +475,48 @@ def test_total_agent_recommendation_waits_for_user_acceptance(monkeypatch, tmp_p
     assert active_plan is None
     assert result["tool_trace"] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RUN_LEARNING_RECOMMENDATION,
     ]
+
+
+def test_total_agent_recommendation_persists_snapshot_for_frontend(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+
+    result = tagt.tool_run_learning_recommendation({
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "recommend a RowKey learning path",
+            "recommendation_result": _recommendation_fixture(),
+        },
+        "tool_trace": [],
+    })
+
+    recommendation = result["recommendation"]
+    assert result["recommendation_id"]
+    assert result["snapshot_status"] == prt.RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
+    assert recommendation["recommendation_id"] == result["recommendation_id"]
+    assert prt.get_recommendation_snapshot(result["recommendation_id"])["success"] is True
+
+
+def test_total_agent_recommendation_resaves_proposed_snapshot(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    recommendation = _recommendation_fixture()
+    prt.ensure_recommendation_snapshot(8, 20, recommendation)
+    first_id = recommendation["recommendation_id"]
+
+    result = tagt.tool_run_learning_recommendation({
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "recommend again",
+            "recommendation_result": recommendation,
+        },
+        "tool_trace": [],
+    })
+
+    assert result["recommendation_id"] != first_id
+    assert len(prt.list_recommendation_snapshots(8, 20)["snapshots"]) == 2
 
 
 def test_total_agent_accepts_learning_plan_only_with_confirmation(monkeypatch, tmp_path):
@@ -389,6 +603,42 @@ def test_total_agent_feedback_advances_to_next_step(monkeypatch, tmp_path):
     assert statuses["hbase_intro"] == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED
     assert statuses["rowkey_design"] == prt.LEARNING_PLAN_STEP_STATUS_ACTIVE
     assert result["result"]["next_task"]["next_task"]["node_id"] == "rowkey_design"
+
+
+def test_total_agent_quiz_feedback_keeps_structured_payload(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    plan = _accept_plan()
+    first_step = plan["steps"][0]
+
+    result = tat.run_total_agent(
+        {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "message": "我完成了测验，得分 40%",
+            "event_type": "quiz_completed",
+            "step_id": first_step["step_id"],
+            "resource_id": "quiz-test-001",
+            "resource_type": "quiz",
+            "score": 0.4,
+            "wrong_knowledge_items": ["RowKey 热点"],
+            "answer_records": [{"question": "q1", "correct": False, "knowledge_points": ["RowKey 热点"]}],
+            "status": "partial",
+            "student_feedback": {"quiz_completed": True, "correct_count": 0, "total_count": 1},
+        }
+    )
+
+    payload = result["result"]["record_learning_feedback"]["event_entry"]["payload"]
+    assert payload["event_type"] == "quiz_completed"
+    assert payload["resource_type"] == "quiz"
+    assert payload["resource_id"] == "quiz-test-001"
+    assert payload["score"] == 0.4
+    assert payload["wrong_knowledge_items"] == ["RowKey 热点"]
+    assert payload["answer_record_count"] == 1
+    assert payload["student_feedback"]["quiz_completed"] is True
+    guidance = result["result"]["learning_guidance"]
+    assert guidance["score"] == 0.4
+    assert guidance["wrong_knowledge_items"] == payload["wrong_knowledge_items"]
+    assert result["result"]["reply"] == guidance["reply"]
 
 
 def test_total_agent_skip_advances_to_next_step(monkeypatch, tmp_path):
@@ -899,6 +1149,326 @@ def test_total_agent_context_read_failures_are_warnings(monkeypatch, tmp_path):
     assert any("study_graph_read_failed" in item for item in context["study_graph_state"]["warnings"])
 
 
+def test_total_agent_load_context_reports_candidate_path_with_pending_snapshot(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    saved = prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="ctx-candidate",
+    )
+    assert saved["success"] is True
+    monkeypatch.setattr(lpt, "get_persisted_learning_profile", lambda user_id, syllabus_id: None)
+    monkeypatch.setattr(tagt, "get_study_graph_features", lambda user_id, syllabus_id: {})
+
+    state = {"payload": {"user_id": 8, "syllabus_id": 20, "session_id": "ctx-candidate"}, "tool_trace": []}
+    context = tagt.tool_load_total_context(state)
+
+    assert context["success"] is True
+    assert context["plan_state_kind"] == "candidate_path"
+    assert context["active_plan"] == {}
+    assert context["next_task"] == {}
+    assert context["pending_recommendation"]["recommendation_id"] == saved["recommendation_id"]
+    assert context["pending_recommendation"]["candidate_count"] == 3
+    assert "graph" not in context["pending_recommendation"]
+    assert state["total_context"]["plan_state_kind"] == "candidate_path"
+
+
+def test_total_agent_load_context_reports_no_path_without_plan_or_snapshot(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    monkeypatch.setattr(lpt, "get_persisted_learning_profile", lambda user_id, syllabus_id: None)
+    monkeypatch.setattr(tagt, "get_study_graph_features", lambda user_id, syllabus_id: {})
+
+    state = {"payload": {"user_id": 8, "syllabus_id": 20, "session_id": "ctx-empty"}, "tool_trace": []}
+    context = tagt.tool_load_total_context(state)
+
+    assert context["success"] is True
+    assert context["plan_state_kind"] == "no_path"
+    assert context["active_plan"] == {}
+    assert context["next_task"] == {}
+    assert context["pending_recommendation"] == {}
+
+
+def test_total_agent_load_context_reports_selected_path_with_next_task(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    plan = _accept_plan()
+    monkeypatch.setattr(lpt, "get_persisted_learning_profile", lambda user_id, syllabus_id: None)
+    monkeypatch.setattr(tagt, "get_study_graph_features", lambda user_id, syllabus_id: {})
+
+    state = {"payload": {"user_id": 8, "syllabus_id": 20, "session_id": "ctx-active"}, "tool_trace": []}
+    context = tagt.tool_load_total_context(state)
+
+    assert context["success"] is True
+    assert context["plan_state_kind"] == "selected_path"
+    assert context["active_plan"]["plan_id"] == plan["plan_id"]
+    assert context["next_task"]["node_id"] == "hbase_intro"
+
+
+def test_total_agent_accepts_candidate_index_from_snapshot_fallback(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    saved = prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="accept-candidate",
+    )
+    assert saved["success"] is True
+
+    state = {
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "session_id": "accept-candidate",
+            "candidate_index": "2",
+        },
+        "tool_trace": [],
+    }
+    result = tagt.tool_accept_learning_plan(state)
+    active_plan = prt.get_active_learning_plan(8, 20)
+
+    assert result["success"] is True
+    assert result["accepted_candidate_index"] == 2
+    assert result["recommendation_id"] == saved["recommendation_id"]
+    assert active_plan["candidate_index"] == 2
+    assert [step["node_id"] for step in active_plan["steps"]] == ["secondary_index", "rowkey_hotspot"]
+
+
+def test_total_agent_accepts_display_candidate_number_from_llm_selection(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    saved = prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="accept-display-number",
+    )
+    assert saved["success"] is True
+
+    state = {
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "session_id": "accept-display-number",
+            "display_candidate_number": 3,
+            "candidate_index_source": "display_number",
+        },
+        "tool_trace": [],
+    }
+    result = tagt.tool_accept_learning_plan(state)
+    active_plan = prt.get_active_learning_plan(8, 20)
+
+    assert result["success"] is True
+    assert result["accepted_candidate_index"] == 2
+    assert result["display_candidate_number"] == 3
+    assert result["candidate_index_source"] == "display_number"
+    assert active_plan["candidate_index"] == 2
+    assert [step["node_id"] for step in active_plan["steps"]] == ["secondary_index", "rowkey_hotspot"]
+
+
+def test_total_agent_llm_candidate_index_is_treated_as_display_number(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="accept-llm-index",
+    )
+
+    state = {
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "session_id": "accept-llm-index",
+            "candidate_index": 3,
+            "_llm_candidate_selection": True,
+        },
+        "tool_trace": [],
+    }
+    result = tagt.tool_accept_learning_plan(state)
+    active_plan = prt.get_active_learning_plan(8, 20)
+
+    assert result["success"] is True
+    assert result["accepted_candidate_index"] == 2
+    assert result["raw_candidate_index"] == 3
+    assert result["candidate_index_source"] == "llm_display_number"
+    assert active_plan["candidate_index"] == 2
+
+
+def test_total_agent_rejects_out_of_range_display_candidate_number(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="accept-display-out-of-range",
+    )
+
+    state = {
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "session_id": "accept-display-out-of-range",
+            "display_candidate_number": 4,
+        },
+        "tool_trace": [],
+    }
+    result = tagt.tool_accept_learning_plan(state)
+
+    assert result["success"] is False
+    assert result["error_code"] == "invalid_candidate_index"
+    assert result["candidate_index"] == 3
+    assert prt.get_active_learning_plan(8, 20) is None
+
+
+def test_total_agent_accept_refreshes_context_before_next_task(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="accept-refresh-context",
+    )
+    monkeypatch.setattr(lpt, "get_persisted_learning_profile", lambda user_id, syllabus_id: None)
+    monkeypatch.setattr(tagt, "get_study_graph_features", lambda user_id, syllabus_id: {})
+
+    state = {
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "session_id": "accept-refresh-context",
+            "display_candidate_number": 3,
+        },
+        "tool_trace": [],
+    }
+    context = tagt.tool_load_total_context(state)
+    accept = tagt.tool_accept_learning_plan(state)
+    next_result = tagt.tool_get_next_learning_task(state)
+
+    assert context["plan_state_kind"] == "candidate_path"
+    assert accept["success"] is True
+    assert state["total_context"]["plan_state_kind"] == "selected_path"
+    assert next_result["success"] is True
+    assert next_result["next_task"]["node_id"] == "secondary_index"
+
+
+def test_total_agent_blocks_recommendation_regeneration_for_candidate_selection(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    saved = prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend"},
+        session_id="block-regenerate-on-select",
+    )
+    assert saved["success"] is True
+    monkeypatch.setattr(lpt, "get_persisted_learning_profile", lambda user_id, syllabus_id: None)
+    monkeypatch.setattr(tagt, "get_study_graph_features", lambda user_id, syllabus_id: {})
+
+    called = {"recommend": False}
+
+    def fail_if_called(payload):
+        called["recommend"] = True
+        raise AssertionError("recommendation generation should not be called for candidate selection")
+
+    monkeypatch.setattr(prt, "run_recommendation_route_from_payload", fail_if_called)
+    state = {
+        "payload": {
+            "user_id": 8,
+            "syllabus_id": 20,
+            "session_id": "block-regenerate-on-select",
+            "message": "我感觉第三个路径很不错，帮我选一下。",
+        },
+        "tool_trace": [],
+    }
+    tagt.tool_load_total_context(state)
+    result = tagt.tool_run_learning_recommendation(state)
+
+    assert result["success"] is False
+    assert result["_status"] == "skipped"
+    assert result["error_code"] == "candidate_selection_requires_accept"
+    assert called["recommend"] is False
+
+
+def test_total_agent_current_context_overrides_stale_active_plan_state(monkeypatch, tmp_path):
+    _reset_learning_plan_root(monkeypatch, tmp_path)
+    stale_plan = _accept_plan()
+    prt.abandon_learning_plan(8, stale_plan["plan_id"], syllabus_id=20, reason="test")
+    prt.save_recommendation_snapshot(
+        8,
+        20,
+        _recommendation_fixture_three_candidates(),
+        request_payload={"message": "recommend again"},
+        session_id="stale-state",
+    )
+    monkeypatch.setattr(lpt, "get_persisted_learning_profile", lambda user_id, syllabus_id: None)
+    monkeypatch.setattr(tagt, "get_study_graph_features", lambda user_id, syllabus_id: {})
+
+    state = {
+        "payload": {"user_id": 8, "syllabus_id": 20, "session_id": "stale-state"},
+        "tool_trace": [],
+        "active_plan": stale_plan,
+    }
+    context = tagt.tool_load_total_context(state)
+    next_result = tagt.tool_get_next_learning_task(state)
+
+    assert context["plan_state_kind"] == "candidate_path"
+    assert context["active_plan"] == {}
+    assert next_result["success"] is False
+    assert next_result["error_code"] == "no_active_plan"
+    assert next_result["plan_state_kind"] == "candidate_path"
+
+
+def test_stream_terminal_tool_tracking_defers_persistence_until_final(monkeypatch):
+    captured = []
+    monkeypatch.setattr(tar, "_append_chat_message", lambda *args, **kwargs: captured.append(args))
+    monkeypatch.setattr(tar, "_resolve_session_id", lambda payload: payload.get("session_id"))
+
+    payload = {"user_id": 8, "syllabus_id": 20, "session_id": "stream-final"}
+    state = {
+        "payload": payload,
+        "run_id": "run-stream-final",
+        "terminal_tool_sequence": [],
+        "terminal_tool_result": {},
+        "total_context": {},
+    }
+    tar._remember_stream_terminal_tool(
+        state,
+        tac.TOOL_CALL_RECOMMENDATION_AGENT,
+        {"reply": "intermediate recommendation"},
+    )
+    assert captured == []
+
+    final = {
+        "success": True,
+        "result": {
+            "accept_learning_plan": {
+                "reply": "final accepted plan",
+                "accepted": True,
+                "accepted_plan_id": "plan-final",
+            }
+        },
+    }
+    tar._remember_stream_terminal_tool(
+        state,
+        tac.TOOL_ACCEPT_LEARNING_PLAN,
+        {"reply": "final accepted plan", "accepted_plan_id": "plan-final"},
+    )
+    tar._persist_final_agent_turn(payload, state, final)
+
+    assert state["terminal_tool_sequence"] == [
+        tac.TOOL_CALL_RECOMMENDATION_AGENT,
+        tac.TOOL_ACCEPT_LEARNING_PLAN,
+    ]
+    assert len(captured) == 1
+    assert captured[0][3] == "agent"
+    assert captured[0][4] == "final accepted plan"
+
+
 def test_total_agent_resource_strategy_uses_profile_and_study_graph(monkeypatch, tmp_path):
     _reset_learning_plan_root(monkeypatch, tmp_path)
     _accept_plan()
@@ -1025,7 +1595,6 @@ def test_total_agent_answer_learning_question_uses_mock_evidence_without_mutatin
     assert plan_after["current_step_index"] == plan_before["current_step_index"]
     assert result["tool_trace"] == [
         tac.TOOL_LOAD_TOTAL_CONTEXT,
-        tac.TOOL_INFER_USER_INTENT,
         tac.TOOL_RETRIEVE_LEARNING_EVIDENCE,
         tac.TOOL_ANSWER_LEARNING_QUESTION,
     ]

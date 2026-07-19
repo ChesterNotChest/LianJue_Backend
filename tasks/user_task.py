@@ -2,6 +2,7 @@ import secrets
 from typing import Optional
 from werkzeug.security import generate_password_hash, check_password_hash
 
+from constant import SyllabusStatus
 from repositories.user_repo import (
     get_user_by_id,
     get_user_by_username,
@@ -13,7 +14,19 @@ from repositories.user_repo import (
 )
 from repositories.syllabus_repo import list_all_syllabuses
 from repositories.user_syllabus_repo import create_user_syllabus
-from constant import SyllabusPermission
+
+
+def sync_user_to_active_syllabuses(user_id: int) -> int:
+    """Ensure a user has UserSyllabus rows for all non-draft syllabuses."""
+    synced_count = 0
+    for syllabus in list_all_syllabuses():
+        syllabus_id = getattr(syllabus, 'syllabus_id', None)
+        status = getattr(syllabus, 'status', None) or SyllabusStatus.DRAFT.value
+        if syllabus_id is None or status == SyllabusStatus.DRAFT.value:
+            continue
+        create_user_syllabus(user_id=user_id, syllabus_id=syllabus_id)
+        synced_count += 1
+    return synced_count
 
 
 def register(user_name: str, password: str, email: str) -> Optional[dict]:
@@ -27,15 +40,7 @@ def register(user_name: str, password: str, email: str) -> Optional[dict]:
         return None
 
     try:
-        for syllabus in list_all_syllabuses():
-            syllabus_id = getattr(syllabus, 'syllabus_id', None)
-            if syllabus_id is None:
-                continue
-            create_user_syllabus(
-                user_id=u.user_id,
-                syllabus_id=syllabus_id,
-                syllabus_permission=SyllabusPermission.USER.value,
-            )
+        sync_user_to_active_syllabuses(u.user_id)
     except Exception:
         # registering the user itself has succeeded; relation backfill failure should not mask it
         pass
@@ -50,7 +55,13 @@ def login(user_name: str, password: str) -> Optional[dict]:
         return None
     if not check_password_hash(u.password_hash, password):
         return None
-    return {'user_id': u.user_id, 'user_name': u.user_name, 'email': u.email}
+    try:
+        if getattr(u, 'permission', None) != 'operator':
+            sync_user_to_active_syllabuses(u.user_id)
+    except Exception:
+        # Login itself has succeeded; relation backfill failure should not mask it.
+        pass
+    return {'user_id': u.user_id, 'user_name': u.user_name, 'email': u.email, 'permission': u.permission}
 
 
 def change_password(user_id: int, old_password: str, new_password: str) -> bool:

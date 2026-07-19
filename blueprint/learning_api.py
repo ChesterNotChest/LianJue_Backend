@@ -1,18 +1,87 @@
+import re
+import logging
+import hashlib
+import time
+import threading
+from urllib.parse import urlencode
+
+import requests
 from flask import Blueprint, jsonify, request
 
 from repositories.user_syllabus_repo import get_user_syllabus
 from tasks import learning_profile_task
 from tasks.common.search_tool import search_tool
 from tasks.personal_recommendation_task import (
-    RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
-    RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED,
     accept_recommendation_snapshot_path,
     get_active_learning_plan,
     get_recommendation_snapshot,
     list_recommendation_snapshots,
     run_recommendation_route_from_payload,
-    save_recommendation_snapshot,
 )
+
+logger = logging.getLogger(__name__)
+
+BILIBILI_SEARCH_URL = "https://api.bilibili.com/x/web-interface/wbi/search/type"
+BILIBILI_NAV_URL = "https://api.bilibili.com/x/web-interface/wbi/index/nav"
+BILIBILI_TIMEOUT = 8  # seconds
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+
+# WBI 签名缓存（定期刷新）
+_WBI_MIXIN_KEY: str = ""
+_WBI_KEY_TS: float = 0
+_WBI_KEY_LOCK = threading.Lock()
+_WBI_KEY_TTL = 3600  # 1小时
+
+_COMMON_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Referer": "https://www.bilibili.com",
+    "Origin": "https://www.bilibili.com",
+}
+
+
+def _get_wbi_mixin_key() -> str:
+    """获取 WBI 签名密钥（缓存 1 小时）"""
+    global _WBI_MIXIN_KEY, _WBI_KEY_TS
+    now = time.time()
+    if _WBI_MIXIN_KEY and (now - _WBI_KEY_TS) < _WBI_KEY_TTL:
+        return _WBI_MIXIN_KEY
+
+    with _WBI_KEY_LOCK:
+        if _WBI_MIXIN_KEY and (now - _WBI_KEY_TS) < _WBI_KEY_TTL:
+            return _WBI_MIXIN_KEY
+        try:
+            resp = requests.get(BILIBILI_NAV_URL, headers=_COMMON_HEADERS, timeout=5)
+            resp.raise_for_status()
+            nav = resp.json()
+            wbi_img = nav.get("data", {}).get("wbi_img", {})
+            img_url = wbi_img.get("img_url", "")
+            sub_url = wbi_img.get("sub_url", "")
+            # 从 URL 路径提取 key（/bfs/wbi/xxx.png → xxx）
+            img_key = img_url.rsplit("/", 1)[-1].split(".")[0] if img_url else ""
+            sub_key = sub_url.rsplit("/", 1)[-1].split(".")[0] if sub_url else ""
+            _WBI_MIXIN_KEY = (img_key + sub_key)[:32]
+            _WBI_KEY_TS = now
+            logger.info("WBI mixin key refreshed")
+        except Exception as exc:
+            logger.warning("Failed to refresh WBI key: %s", exc)
+    return _WBI_MIXIN_KEY
+
+
+def _wbi_sign_params(params: dict) -> dict:
+    """为请求参数添加 WBI 签名 (w_rid, wts)"""
+    mixin = _get_wbi_mixin_key()
+    signed = dict(params)
+    signed["wts"] = int(time.time())
+    # 按 key 排序拼接
+    ordered = sorted(signed.items(), key=lambda x: x[0])
+    query_str = urlencode(ordered)
+    w_rid = hashlib.md5((query_str + mixin).encode()).hexdigest()
+    signed["w_rid"] = w_rid
+    return signed
 
 
 bp = Blueprint('learning_api', __name__, url_prefix='/api')
@@ -214,32 +283,6 @@ def personal_recommendation_api():
     """
     data = request.get_json(silent=True) or {}
     result = run_recommendation_route_from_payload(data)
-    if (
-        result.get('success')
-        and data.get('persist_snapshot') is not False
-        and isinstance(result.get('graph'), dict)
-        and isinstance(result.get('graph', {}).get('nodes'), list)
-    ):
-        try:
-            snapshot = save_recommendation_snapshot(
-                int(data.get('user_id')),
-                int(data['syllabus_id']) if data.get('syllabus_id') else None,
-                result,
-                request_payload=data,
-                session_id=data.get('session_id'),
-                status=RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED,
-            )
-            if snapshot.get('success'):
-                result['recommendation_id'] = snapshot.get('recommendation_id')
-                result['snapshot_status'] = snapshot.get('status')
-            else:
-                warnings = result.setdefault('warnings', [])
-                if isinstance(warnings, list):
-                    warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
-        except Exception:
-            warnings = result.setdefault('warnings', [])
-            if isinstance(warnings, list):
-                warnings.append(RECOMMENDATION_SNAPSHOT_WARNING_SAVE_FAILED)
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
 
@@ -396,3 +439,67 @@ def knowledge_search():
 
     result["matched_sources"] = matched_sources[:15]
     return jsonify(result)
+
+
+def _search_bilibili_videos(query: str, max_results: int = 3) -> list[dict]:
+    """Search B站 for learning videos (with WBI signing)."""
+    signed = _wbi_sign_params({"search_type": "video", "keyword": query, "page": "1"})
+    try:
+        resp = requests.get(
+            BILIBILI_SEARCH_URL,
+            params=signed,
+            headers=_COMMON_HEADERS,
+            timeout=BILIBILI_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 0:
+            logger.warning("B站 API returned code=%s message=%s", data.get("code"), data.get("message"))
+            return []
+    except Exception as exc:
+        logger.warning("B站 video search failed for query=%r: %s", query, exc)
+        return []
+
+    results = []
+    for item in (data.get("data", {}).get("result") or [])[:max_results]:
+        title = _HTML_TAG_RE.sub("", item.get("title", "")).strip()
+        bvid = item.get("bvid", "")
+        results.append({
+            "title": title,
+            "thumbnail_url": item.get("pic", ""),
+            "video_url": f"https://www.bilibili.com/video/{bvid}" if bvid else "",
+            "duration": item.get("duration", ""),
+            "source": "bilibili",
+            "author": item.get("author", ""),
+            "play_count": item.get("play", 0),
+            "description": item.get("description", ""),
+        })
+    return results
+
+
+@bp.route("/knowledge/video_search", methods=["POST"])
+def video_search_api():
+    """检索 B站教学视频。
+
+    入参 (JSON):
+      - query: str (required)
+      - max_results: int (optional, default 3)
+      - topic: str (optional, combined with query)
+
+    返回:
+      {success: true, videos: [{title, thumbnail_url, video_url, duration, source, author}]}
+    """
+    data = request.get_json(silent=True) or {}
+    query = str(data.get("query") or "").strip()
+    if not query:
+        return jsonify({"success": False, "videos": [], "error": "missing query"}), 400
+
+    topic = str(data.get("topic") or "").strip()
+    if topic:
+        query = f"{topic} {query}"
+
+    max_results = int(data.get("max_results") or 3)
+    max_results = max(1, min(max_results, 20))
+
+    videos = _search_bilibili_videos(query, max_results=max_results)
+    return jsonify({"success": True, "videos": videos})

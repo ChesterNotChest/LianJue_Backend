@@ -29,6 +29,8 @@ LEARNING_PLAN_SOURCE_AUTO_AGENT = "auto_agent"
 
 EVENT_PLAN_CREATED = "plan_created"
 EVENT_PLAN_SUPERSEDED = "plan_superseded"
+EVENT_PLAN_COMPLETED = "plan_completed"
+EVENT_PLAN_ABANDONED = "plan_abandoned"
 EVENT_STEPS_CREATED = "steps_created"
 EVENT_STEP_STATUS_CHANGED = "step_status_changed"
 
@@ -45,6 +47,13 @@ def _learning_plan_root() -> Path:
 
 
 def _use_file_backend() -> bool:
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context() and bool(getattr(current_app, "testing", False)):
+            return True
+    except Exception:
+        pass
     return bool(os.getenv("PERSONAL_RECOMMENDATION_ROOT") or os.getenv("LEARNING_PLAN_FILE_BACKEND") == "1")
 
 
@@ -220,10 +229,14 @@ def _append_learning_plan_event_db(payload: dict) -> None:
     event.payload_json = _json_dumps(event_payload)
     event.schema_version = payload.get("schema_version") or LEARNING_PLAN_MANIFEST_VERSION
     event.created_at = now_ts
-    if event_type == EVENT_PLAN_SUPERSEDED:
+    if event_type in (EVENT_PLAN_SUPERSEDED, EVENT_PLAN_COMPLETED, EVENT_PLAN_ABANDONED):
         plan = db.session.get(LearningPlan, plan_id)
         if plan is not None:
-            plan.status = LEARNING_PLAN_STATUS_SUPERSEDED
+            plan.status = payload.get("status") or event_payload.get("status") or (
+                LEARNING_PLAN_STATUS_SUPERSEDED if event_type == EVENT_PLAN_SUPERSEDED else
+                LEARNING_PLAN_STATUS_COMPLETED if event_type == EVENT_PLAN_COMPLETED else
+                LEARNING_PLAN_STATUS_ABANDONED
+            )
             plan.updated_at = now_ts
     elif event_type == EVENT_STEPS_CREATED:
         plan = db.session.get(LearningPlan, plan_id)
@@ -323,8 +336,12 @@ def _replay_entries(entries: List[dict]) -> Dict[str, dict]:
                 "candidate_index": payload.get("candidate_index"),
                 "steps": [],
             }
-        elif event_type == EVENT_PLAN_SUPERSEDED and plan_id in plans:
-            plans[plan_id]["status"] = LEARNING_PLAN_STATUS_SUPERSEDED
+        elif event_type in (EVENT_PLAN_SUPERSEDED, EVENT_PLAN_COMPLETED, EVENT_PLAN_ABANDONED) and plan_id in plans:
+            plans[plan_id]["status"] = entry.get("status") or (
+                LEARNING_PLAN_STATUS_SUPERSEDED if event_type == EVENT_PLAN_SUPERSEDED else
+                LEARNING_PLAN_STATUS_COMPLETED if event_type == EVENT_PLAN_COMPLETED else
+                LEARNING_PLAN_STATUS_ABANDONED
+            )
         elif event_type == EVENT_STEPS_CREATED and plan_id in plans:
             steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
             plans[plan_id]["steps"] = [dict(step) for step in steps if isinstance(step, dict)]
@@ -415,6 +432,23 @@ def accept_recommendation_path(
         normalized_syllabus_id,
     )
     plan = get_active_learning_plan(user_id, normalized_syllabus_id) or {}
+    # ── 通知学伴：计划已确认 ──
+    try:
+        from tasks.study_buddy_task import notify_study_buddy_event
+        next_step = (plan.get("steps") or steps or [{}])[0] if (plan.get("steps") or steps) else {}
+        notify_study_buddy_event(
+            user_id=user_id,
+            syllabus_id=normalized_syllabus_id or 0,
+            event_type="plan_accepted",
+            payload={
+                "plan_id": plan_id,
+                "next_task_title": next_step.get("title") or next_step.get("node_id") or "",
+                "total_steps": len(plan.get("steps") or steps or []),
+            },
+            plan=plan if isinstance(plan, dict) else None,
+        )
+    except Exception:
+        pass
     return {
         "success": True,
         "plan_id": plan_id,
@@ -423,6 +457,66 @@ def accept_recommendation_path(
         "steps": plan.get("steps") or steps,
         "plan": plan,
     }
+
+
+def complete_learning_plan(
+    user_id: int,
+    plan_id: str,
+    syllabus_id: Optional[int] = None,
+) -> dict:
+    """Mark a plan as completed (all steps finished). Also expire the latest snapshot."""
+    append_learning_plan_manifest_entry(
+        user_id,
+        {
+            "event_type": EVENT_PLAN_COMPLETED,
+            "plan_id": str(plan_id),
+            "status": LEARNING_PLAN_STATUS_COMPLETED,
+            "payload": {"reason": "all_steps_completed"},
+        },
+        syllabus_id,
+    )
+    from tasks.personal_recommendation.snapshot import expire_latest_snapshot
+    try:
+        expire_latest_snapshot(user_id, syllabus_id)
+    except Exception:
+        pass  # best-effort: plan completion should not fail on snapshot expiry
+    return {"success": True, "plan_id": str(plan_id), "status": LEARNING_PLAN_STATUS_COMPLETED}
+
+
+def abandon_learning_plan(
+    user_id: int,
+    plan_id: str,
+    syllabus_id: Optional[int] = None,
+    reason: str = "",
+) -> dict:
+    """Abandon a plan mid-way (student request or external signal). Also expire the latest snapshot."""
+    append_learning_plan_manifest_entry(
+        user_id,
+        {
+            "event_type": EVENT_PLAN_ABANDONED,
+            "plan_id": str(plan_id),
+            "status": LEARNING_PLAN_STATUS_ABANDONED,
+            "payload": {"reason": str(reason or "student_request")},
+        },
+        syllabus_id,
+    )
+    from tasks.personal_recommendation.snapshot import expire_latest_snapshot
+    try:
+        expire_latest_snapshot(user_id, syllabus_id)
+    except Exception:
+        pass  # best-effort
+    # ── 通知学伴：计划已放弃 ──
+    try:
+        from tasks.study_buddy_task import notify_study_buddy_event
+        notify_study_buddy_event(
+            user_id=user_id,
+            syllabus_id=syllabus_id or 0,
+            event_type="plan_abandoned",
+            payload={"plan_id": str(plan_id), "reason": str(reason or "student_request")},
+        )
+    except Exception:
+        pass
+    return {"success": True, "plan_id": str(plan_id), "status": LEARNING_PLAN_STATUS_ABANDONED}
 
 
 def update_learning_plan_step_status(

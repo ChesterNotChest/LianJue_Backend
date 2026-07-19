@@ -1,4 +1,5 @@
 from extensions import db
+from sqlalchemy.dialects.mysql import LONGTEXT
 
 
 class LearningPlan(db.Model):
@@ -61,13 +62,13 @@ class RecommendationSnapshot(db.Model):
     schema_version = db.Column(db.String(60), nullable=False, default="recommendation_snapshot.v1")
     goal_json = db.Column(db.Text, nullable=True)
     query_text = db.Column(db.Text, nullable=True)
-    graph_json = db.Column(db.Text, nullable=True)
-    candidates_json = db.Column(db.Text, nullable=True)
-    selected_json = db.Column(db.Text, nullable=True)
-    best_path_json = db.Column(db.Text, nullable=True)
-    rag_overlay_json = db.Column(db.Text, nullable=True)
-    planning_hints_json = db.Column(db.Text, nullable=True)
-    result_summary_json = db.Column(db.Text, nullable=True)
+    graph_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    candidates_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    selected_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    best_path_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    rag_overlay_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    planning_hints_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
+    result_summary_json = db.Column(db.Text().with_variant(LONGTEXT, "mysql"), nullable=True)
     accepted_plan_id = db.Column(db.String(80), nullable=True, index=True)
     accepted_candidate_index = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.Integer, nullable=False, default=0)
@@ -182,5 +183,37 @@ class StudyGraphChangeLog(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint("tree_id", "client_change_id", name="uq_study_graph_change_client"),
+    )
+
+
+class ChatSession(db.Model):
+    __tablename__ = "chat_session"
+
+    session_id = db.Column(db.String(120), primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.user_id", ondelete="CASCADE"), nullable=False, index=True)
+    syllabus_id = db.Column(db.Integer, db.ForeignKey("syllabus.syllabus_id", ondelete="SET NULL"), nullable=True, index=True)
+    title = db.Column(db.String(255), nullable=True)
+    turn_count = db.Column(db.Integer, nullable=False, default=0)
+    message_history_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.Integer, nullable=False, default=0)
+    updated_at = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.Index("ix_chat_session_user_updated", "user_id", "updated_at"),
+    )
+
+
+class ChatTurn(db.Model):
+    __tablename__ = "chat_turn"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    session_id = db.Column(db.String(120), db.ForeignKey("chat_session.session_id", ondelete="CASCADE"), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    metadata_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        db.Index("ix_chat_turn_session_order", "session_id", "id"),
     )
 

@@ -521,9 +521,21 @@ class LLMResourceGenerationAgent:
         for index, question in enumerate(questions, start=1):
             if not isinstance(question, dict):
                 continue
-            options = question.get("options") if isinstance(question.get("options"), list) else []
+            raw_options = question.get("options") if isinstance(question.get("options"), list) else []
+            # 归一化 option: LLM 可能返回 string 或 {text, label, ...} dict
+            options: list = []
+            for o in raw_options:
+                if isinstance(o, str):
+                    options.append(o)
+                elif isinstance(o, dict):
+                    label = str(o.get("label") or o.get("letter") or "").strip()
+                    text = str(o.get("text") or o.get("option") or o.get("content") or "").strip()
+                    combined = f"{label}. {text}".strip(". ") if label else text
+                    options.append(combined or str(o))
+                else:
+                    options.append(str(o or ""))
             if len(options) < 4:
-                options = ["避免热点并保证可区分", "扩大端口规模", "删除现有图谱", "关闭检索功能"]
+                options = ["A. 避免热点并保证可区分", "B. 扩大端口规模", "C. 删除现有图谱", "D. 关闭检索功能"]
             normalized_questions.append(
                 {
                     "id": _safe_text(question.get("id")) or f"q{index}",
@@ -543,7 +555,7 @@ class LLMResourceGenerationAgent:
                     "type": "single_choice",
                     "difficulty": "medium",
                     "stem": f"围绕“{request_payload['question']}”最关键的理解是什么？",
-                    "options": ["避免热点并保证可区分", "扩大端口规模", "删除现有图谱", "关闭检索功能"],
+                    "options": ["A. 避免热点并保证可区分", "B. 扩大端口规模", "C. 删除现有图谱", "D. 关闭检索功能"],
                     "answer": "A",
                     "explanation": "依据规划草稿中的核心说明。",
                     "knowledge_points": request_payload.get("knowledge_items") or [request_payload["topic"]],

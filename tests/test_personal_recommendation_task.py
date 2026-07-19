@@ -549,6 +549,112 @@ def test_run_recommendation_route_from_payload_accepts_max_candidates_alias(monk
     assert captured["K"] == 7
 
 
+def test_run_recommendation_route_from_payload_saves_snapshot(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+
+    def fake_route(**kwargs):
+        return {
+            "success": True,
+            "graph": {"nodes": [{"id": "n1", "title": "Intro"}], "edges": []},
+            "candidates": [{"path": ["n1"], "rank": 1}],
+            "selected": [{"path": ["n1"]}],
+            "best_path": {"path": ["n1"]},
+            "error_code": "",
+            "error_message": "",
+        }
+
+    monkeypatch.setattr(prt, "run_recommendation_route", fake_route)
+
+    result = prt.run_recommendation_route_from_payload({"user_id": 8, "syllabus_id": 20, "goals": ["intro"]})
+
+    assert result["recommendation_id"]
+    assert result["snapshot_status"] == prt_facade.RECOMMENDATION_SNAPSHOT_STATUS_PROPOSED
+    detail = prt_facade.get_recommendation_snapshot(result["recommendation_id"])
+    assert detail["success"] is True
+    assert detail["snapshot"]["recommendation"]["graph"]["nodes"][0]["id"] == "n1"
+
+
+def test_run_recommendation_route_from_payload_can_disable_snapshot(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    monkeypatch.setattr(
+        prt,
+        "run_recommendation_route",
+        lambda **kwargs: {
+            "success": True,
+            "graph": {"nodes": [{"id": "n1"}], "edges": []},
+            "candidates": [],
+            "selected": [],
+            "best_path": None,
+        },
+    )
+
+    result = prt.run_recommendation_route_from_payload({"user_id": 8, "syllabus_id": 20, "persist_snapshot": False})
+
+    assert "recommendation_id" not in result
+    assert prt_facade.list_recommendation_snapshots(8, 20)["snapshots"] == []
+
+
+def test_ensure_recommendation_snapshot_backfills_injected_result(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    result = {
+        "success": True,
+        "graph": {"nodes": [{"id": "n1"}], "edges": []},
+        "candidates": [{"path": ["n1"]}],
+        "selected": [],
+        "best_path": {"path": ["n1"]},
+    }
+
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+    first_id = result["recommendation_id"]
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+
+    assert result["recommendation_id"] == first_id
+    assert len(prt_facade.list_recommendation_snapshots(8, 20)["snapshots"]) == 1
+
+
+def test_ensure_recommendation_snapshot_can_resave_proposed(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    result = {
+        "success": True,
+        "graph": {"nodes": [{"id": "n1"}], "edges": []},
+        "candidates": [{"path": ["n1"]}],
+        "selected": [],
+        "best_path": {"path": ["n1"]},
+    }
+
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+    first_id = result["recommendation_id"]
+    prt.ensure_recommendation_snapshot(
+        8,
+        20,
+        result,
+        request_payload={"message": "recommend again"},
+        allow_proposed_resave=True,
+    )
+
+    assert result["recommendation_id"] != first_id
+    assert len(prt_facade.list_recommendation_snapshots(8, 20)["snapshots"]) == 2
+
+
+def test_ensure_recommendation_snapshot_does_not_resave_accepted(monkeypatch, tmp_path):
+    monkeypatch.setenv("PERSONAL_RECOMMENDATION_ROOT", str(tmp_path / "personal_recommendation"))
+    result = {
+        "success": True,
+        "graph": {"nodes": [{"id": "n1"}], "edges": []},
+        "candidates": [{"path": ["n1"]}],
+        "selected": [],
+        "best_path": {"path": ["n1"]},
+    }
+
+    prt.ensure_recommendation_snapshot(8, 20, result, request_payload={"message": "recommend"})
+    first_id = result["recommendation_id"]
+    result["snapshot_status"] = prt_facade.RECOMMENDATION_SNAPSHOT_STATUS_ACCEPTED
+    prt.ensure_recommendation_snapshot(8, 20, result, allow_proposed_resave=True)
+
+    assert result["recommendation_id"] == first_id
+    assert len(prt_facade.list_recommendation_snapshots(8, 20)["snapshots"]) == 1
+
+
 def test_run_recommendation_route_from_payload_auto_injects_agent_decomposer_with_rag(monkeypatch):
     captured = {}
 
@@ -664,6 +770,287 @@ def test_planning_hints_ask_for_clarification_when_no_candidates(monkeypatch):
     result = prt.run_recommendation_route(user_id=1, goals=["unknown"])
 
     assert result["planning_hints"]["suggested_next_action"] == prt.NEXT_ACTION_ASK_GOAL_CLARIFICATION
+
+
+def test_recommendation_falls_back_to_path_when_generator_returns_no_candidates(monkeypatch):
+    learning_tree = {
+        "n1": {"title": "Intro", "outcomes": ["intro"], "prerequisites": [], "difficulty": 1, "learning_time_est": 1},
+        "n2": {"title": "Core", "outcomes": ["core"], "prerequisites": ["n1"], "difficulty": 2, "learning_time_est": 1},
+        "n3": {"title": "Goal", "outcomes": ["goal"], "prerequisites": ["n2"], "difficulty": 3, "learning_time_est": 1},
+    }
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prt, "generate", lambda *args, **kwargs: [])
+
+    result = prt.run_recommendation_route(user_id=1, syllabus_id=2, goals=["goal"])
+
+    assert result["success"] is True
+    assert result["candidates"]
+    assert result["best_path"]
+    assert result["best_path"]["path"]
+    assert result["planning_hints"]["suggested_next_action"] != prt.NEXT_ACTION_ASK_GOAL_CLARIFICATION
+
+
+def test_recommendation_fallback_prioritizes_earlier_chapters(monkeypatch):
+    learning_tree = {
+        "late": {
+            "title": "Late Goal",
+            "outcomes": ["goal"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "source_period": {"week_index": "6"},
+        },
+        "early": {
+            "title": "Foundation",
+            "outcomes": ["foundation"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "source_period": {"week_index": "1"},
+        },
+    }
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prt, "generate", lambda *args, **kwargs: [])
+
+    result = prt.run_recommendation_route(user_id=1, syllabus_id=2, goals=["goal"])
+
+    assert result["best_path"]["path"][0] == "early"
+
+
+def test_recommendation_gap_ranking_prioritizes_earlier_candidates(monkeypatch):
+    learning_tree = {
+        "early": {
+            "title": "Foundation",
+            "outcomes": ["foundation"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "source_period": {"week_index": "1"},
+        },
+        "middle": {
+            "title": "Middle",
+            "outcomes": ["middle"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "source_period": {"week_index": "3"},
+        },
+        "late": {
+            "title": "Late",
+            "outcomes": ["late"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "source_period": {"week_index": "6"},
+        },
+    }
+
+    def fake_generate(*args, **kwargs):
+        return [
+            {"path": ["late"], "cost": 1, "skills": {"late"}, "path_depth": 1},
+            {"path": ["early"], "cost": 1, "skills": {"foundation"}, "path_depth": 1},
+            {"path": ["middle"], "cost": 1, "skills": {"middle"}, "path_depth": 1},
+        ]
+
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prt, "generate", fake_generate)
+
+    result = prt.run_recommendation_route(
+        user_id=1,
+        syllabus_id=2,
+        goals=["late"],
+        study_graph_state={"completed_node_ids": ["late"]},
+    )
+
+    assert [candidate["path"][0] for candidate in result["candidates"]] == ["early", "middle"]
+    assert len(result["candidates"]) <= prt.DEFAULT_RECOMMENDATION_CANDIDATE_LIMIT
+    assert result["best_path"]["path"][0] == "early"
+
+
+def test_recommendation_prefers_syllabus_linear_route_over_similarity_jump(monkeypatch):
+    learning_tree = {
+        "w1": {
+            "title": "Week 1",
+            "outcomes": ["foundation"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "1",
+        },
+        "w2": {
+            "title": "Week 2",
+            "outcomes": ["middle"],
+            "prerequisites": ["w1"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "2",
+            "edge_sources": {"w1": "syllabus"},
+        },
+        "w3": {
+            "title": "Week 3",
+            "outcomes": ["goal"],
+            "prerequisites": ["w2", "similar"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "3",
+            "edge_sources": {"w2": "syllabus", "similar": "rag"},
+            "edge_confidence": {"w2": 1.0, "similar": 0.6},
+        },
+        "similar": {
+            "title": "Similar Knowledge",
+            "outcomes": ["related"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "8",
+        },
+    }
+
+    def fake_generate(*args, **kwargs):
+        return [
+            {"path": ["similar", "w3"], "cost": 2, "skills": {"related", "goal"}, "path_depth": 2},
+            {"path": ["w1", "w2", "w3"], "cost": 3, "skills": {"foundation", "middle", "goal"}, "path_depth": 3},
+        ]
+
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(prt, "generate", fake_generate)
+
+    result = prt.run_recommendation_route(user_id=1, syllabus_id=2, goals=["goal"])
+
+    assert result["best_path"]["path"] == ["w1", "w2", "w3"]
+    assert result["candidates"][0]["path"] == ["w1", "w2", "w3"]
+
+
+def test_recommendation_outputs_two_stage_route_and_display_labels(monkeypatch):
+    learning_tree = {
+        "chapter_1": {
+            "title": "数据采集",
+            "outcomes": ["data_collection"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "1",
+            "node_source": "syllabus_period",
+            "decomposition_method": "period_anchor",
+        },
+        "chapter_2": {
+            "title": "分布式存储",
+            "outcomes": ["distributed_storage"],
+            "prerequisites": ["chapter_1"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "2",
+            "node_source": "syllabus_period",
+            "decomposition_method": "period_anchor",
+            "edge_sources": {"chapter_1": "syllabus"},
+        },
+        "chapter_2.hdfs": {
+            "title": "HDFS",
+            "outcomes": ["HDFS"],
+            "prerequisites": ["chapter_2"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "node_source": "syllabus_period_concept",
+            "decomposition_method": "agent",
+            "source_period": {"week_index": "2", "title": "分布式存储", "node_id": "chapter_2"},
+            "edge_sources": {"chapter_2": "agent"},
+        },
+    }
+
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(
+        prt,
+        "generate",
+        lambda *args, **kwargs: [{"path": ["chapter_2.hdfs"], "cost": 1, "skills": {"HDFS"}, "path_depth": 1}],
+    )
+
+    result = prt.run_recommendation_route(user_id=1, syllabus_id=2, goals=["HDFS"])
+
+    assert result["best_path"]["route_structure"] == "chapter_backbone_then_knowledge_expansion"
+    assert result["best_path"]["chapter_backbone"][0]["node_id"] == "chapter_2"
+    assert result["best_path"]["knowledge_expansion"][0]["knowledge_node_ids"] == ["chapter_2.hdfs"]
+    assert result["best_path"]["path_nodes"][0]["learning_time_est"] == 1
+    assert result["best_path"]["path_nodes"][0]["display_type"] == "chapter"
+    assert result["best_path"]["path_nodes"][-1]["display_type"] == "knowledge"
+    assert result["candidates"][0]["path_nodes"][0]["difficulty"] == 1
+    assert result["selected"][0]["full_path_nodes"]
+    node_by_id = {node["id"]: node for node in result["graph"]["nodes"]}
+    assert node_by_id["chapter_2"]["display_type"] == "chapter"
+    assert node_by_id["chapter_2.hdfs"]["display_type"] == "knowledge"
+    assert node_by_id["chapter_2"]["display_group"] == "章节骨干"
+    assert node_by_id["chapter_2.hdfs"]["display_group"] == "知识点发散"
+
+
+def test_two_stage_route_expands_multiple_prioritized_knowledge_nodes(monkeypatch):
+    learning_tree = {
+        "chapter_1": {
+            "title": "HBase",
+            "outcomes": ["HBase"],
+            "prerequisites": [],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "week_index": "1",
+            "node_source": "syllabus_period",
+            "decomposition_method": "period_anchor",
+        },
+        "chapter_1.rowkey": {
+            "title": "RowKey",
+            "outcomes": ["RowKey"],
+            "prerequisites": ["chapter_1"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "node_source": "syllabus_period_concept",
+            "decomposition_method": "agent",
+            "study_graph_state": "weak",
+            "source_period": {"week_index": "1", "node_id": "chapter_1"},
+        },
+        "chapter_1.region": {
+            "title": "Region",
+            "outcomes": ["Region"],
+            "prerequisites": ["chapter_1"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "node_source": "syllabus_period_concept",
+            "decomposition_method": "agent",
+            "source_period": {"week_index": "1", "node_id": "chapter_1"},
+        },
+        "chapter_1.column_family": {
+            "title": "Column Family",
+            "outcomes": ["Column Family"],
+            "prerequisites": ["chapter_1"],
+            "difficulty": 1,
+            "learning_time_est": 1,
+            "node_source": "syllabus_period_concept",
+            "decomposition_method": "agent",
+            "source_period": {"week_index": "1", "node_id": "chapter_1"},
+        },
+    }
+
+    monkeypatch.setattr(prt, "build_recommendation_profile", lambda user_id, syllabus_id=None: {"knowledge_levels": {}, "preferences": {}, "constraints": {}})
+    monkeypatch.setattr(prt, "load_recommendation_learning_tree", lambda syllabus_id=None: learning_tree)
+    monkeypatch.setattr(
+        prt,
+        "generate",
+        lambda *args, **kwargs: [{"path": ["chapter_1"], "cost": 1, "skills": {"HBase"}, "path_depth": 1}],
+    )
+
+    result = prt.run_recommendation_route(
+        user_id=1,
+        syllabus_id=2,
+        goals=["Region"],
+        L_max=6,
+        study_graph_state={"weak_node_ids": ["chapter_1.rowkey"]},
+    )
+
+    expansion = result["best_path"]["knowledge_expansion"][0]
+    assert expansion["knowledge_count"] == 2
+    assert expansion["knowledge_node_ids"] == ["chapter_1.rowkey", "chapter_1.region"]
+    assert "chapter_1.column_family" not in result["best_path"]["path"]
 
 
 def test_load_recommendation_learning_tree_marks_sample_fallback(monkeypatch):

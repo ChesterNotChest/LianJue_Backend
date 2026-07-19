@@ -94,7 +94,7 @@ def _tool_retrieve_generation_materials(
         query = " ".join(_safe_text(item) for item in query_parts if _safe_text(item))
     if not query:
         return {"success": False, "paragraphs": [], "reasoning_paths": [], "error": ""}
-    return search_fn(query, graph_name=graph_name, top_k=3)
+    return search_fn(query, graph_name=graph_name, top_k=8)
 
 
 def _tool_read_generation_draft(state: dict, resource_type: str) -> dict:
@@ -124,7 +124,7 @@ def _build_default_plan(request_payload: dict, resource_type: str) -> dict:
 def _build_default_draft(request_payload: dict, resource_type: str, plan: dict, retrieval_context: dict) -> dict:
     paragraphs = retrieval_context.get("paragraphs") if isinstance(retrieval_context, dict) else []
     paragraphs = paragraphs if isinstance(paragraphs, list) else []
-    evidence = [str(item).strip() for item in paragraphs[:3] if str(item).strip()]
+    evidence = [str(item).strip() for item in paragraphs[:8] if str(item).strip()]
     key_concepts = _normalize_str_list(request_payload.get("knowledge_items")) + _normalize_str_list(request_payload.get("weak_points"))
     if not key_concepts:
         key_concepts = [_safe_text(request_payload.get("topic"))]
@@ -142,7 +142,7 @@ def _build_default_draft(request_payload: dict, resource_type: str, plan: dict, 
         "key_concepts": _clip_text_items(key_concepts, limit=8, max_chars=80),
         "weak_points": _clip_text_items(request_payload.get("weak_points"), limit=5, max_chars=80),
         "outline": outline,
-        "evidence_summaries": _clip_text_items(evidence, limit=3, max_chars=180),
+        "evidence_summaries": _clip_text_items(evidence, limit=8, max_chars=500),
         "generation_constraints": {
             "max_slides": (request_payload.get("generation_requirements") or {}).get("max_slides", 6)
             if isinstance(request_payload.get("generation_requirements"), dict)

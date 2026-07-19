@@ -65,6 +65,8 @@ CONCEPT_PREREQUISITE_TITLES = {
     "列族": ("HBase",),
     "稀疏数据": ("HBase",),
 }
+MIN_RULE_FALLBACK_CONCEPTS_PER_PERIOD = 2
+MAX_RULE_FALLBACK_CONCEPTS_PER_PERIOD = 3
 
 
 def _pick_id(item: dict) -> Optional[str]:
@@ -169,12 +171,12 @@ def _period_title(period: dict) -> str:
             if separator in content:
                 parts = [part.strip() for part in content.split(separator) if part.strip()]
                 if len(parts) >= 2:
-                    return parts[0][:20]
-        return content[:20]
+                    return parts[-1][:40]
+        return content[:40]
     enhanced = _clean_text(period.get("enhanced_content"))
     if enhanced:
         sentence = re.split(r"[。.!！？?]", enhanced, maxsplit=1)[0].strip()
-        return sentence[:20] if sentence else enhanced[:20]
+        return sentence[:40] if sentence else enhanced[:40]
     week_index = _clean_text(period.get("week_index"))
     return f"period_{week_index}" if week_index else ""
 
@@ -226,6 +228,62 @@ def _concept_outcomes(title: str, concept_id: str) -> List[str]:
     return result
 
 
+def _normalize_concept_title(value: Any) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    text = re.sub(r"\s+", " ", text).strip(" -_，,。.;；:：、")
+    if not text or len(text) < 2:
+        return ""
+    if len(text) > 24:
+        sentence = re.split(r"[。.!！?？]", text, maxsplit=1)[0].strip()
+        if 2 <= len(sentence) <= 24:
+            text = sentence
+        else:
+            return ""
+    return text
+
+
+def _fallback_concept_titles_from_period(period: dict) -> List[str]:
+    candidates: List[str] = []
+    for key in ("knowledge_points", "knowledge_point", "objectives", "outcomes", "skills", "keywords"):
+        for item in _normalize_links(period.get(key)):
+            title = _normalize_concept_title(item)
+            if title:
+                candidates.append(title)
+
+    period_title = _normalize_concept_title(_period_title(period))
+    if period_title:
+        candidates.append(period_title)
+
+    text = " ".join(
+        _clean_text(period.get(key))
+        for key in ("content", "enhanced_content", "original_content")
+        if period.get(key)
+    )
+    for separator in ("：", ":", "；", ";"):
+        if separator in text:
+            parts = [part.strip() for part in text.split(separator) if part.strip()]
+            if len(parts) >= 2:
+                text = "；".join(parts[1:])
+                break
+    for phrase in re.split(r"[、,，;；/／|｜\n]+", text):
+        title = _normalize_concept_title(phrase)
+        if title:
+            candidates.append(title)
+
+    seen = set()
+    result = []
+    for title in candidates:
+        if title in seen:
+            continue
+        seen.add(title)
+        result.append(title)
+        if len(result) >= MAX_RULE_FALLBACK_CONCEPTS_PER_PERIOD:
+            break
+    return result
+
+
 def _extract_period_concepts(period: dict) -> List[dict]:
     text = " ".join(
         _clean_text(period.get(key))
@@ -266,6 +324,23 @@ def _extract_period_concepts(period: dict) -> List[dict]:
                     "fallback_tag": FALLBACK_TAG_RULE_IMPLIED_CONCEPT,
                 }
             )
+    if len(concepts) < MIN_RULE_FALLBACK_CONCEPTS_PER_PERIOD:
+        for title in _fallback_concept_titles_from_period(period):
+            if title in seen:
+                continue
+            seen.add(title)
+            concepts.append(
+                {
+                    "title": title,
+                    "matched_by": ["period.text_phrase"],
+                    "confidence": 0.5,
+                    "implied": False,
+                    "decomposition_method": DECOMPOSITION_METHOD_RULE_FALLBACK,
+                    "fallback_tag": FALLBACK_TAG_RULE_CONCEPT,
+                }
+            )
+            if len(concepts) >= MAX_RULE_FALLBACK_CONCEPTS_PER_PERIOD:
+                break
     return concepts
 
 

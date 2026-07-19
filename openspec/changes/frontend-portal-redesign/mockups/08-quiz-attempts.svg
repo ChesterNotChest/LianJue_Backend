@@ -1,0 +1,180 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 960" font-family="Inter, system-ui, sans-serif">
+  <defs><filter id="ss"><feDropShadow dx="0" dy="1" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.05"/></filter></defs>
+  <rect width="1440" height="960" fill="#f8fafc"/>
+
+  <!-- Top bar -->
+  <rect x="0" y="0" width="1440" height="56" fill="#fff" stroke="#f1f5f9"/>
+  <text x="32" y="36" font-size="16" font-weight="800" fill="#6366f1" letter-spacing="1">联觉 LianJue</text>
+  <text x="148" y="36" font-size="13" fill="#cbd5e1">/</text><text x="162" y="36" font-size="13" font-weight="600" fill="#0f172a">大数据概论</text>
+  <text x="260" y="36" font-size="13" fill="#cbd5e1">/</text><text x="274" y="36" font-size="13" font-weight="600" fill="#6366f1">我的测验</text>
+  <text x="360" y="36" font-size="11" fill="#6366f1">← 返回学科首页</text>
+
+  <!-- Sidebar -->
+  <rect x="0" y="56" width="232" height="904" fill="#fff" stroke="#f1f5f9"/>
+  <text x="20" y="88" font-size="15" font-weight="700" fill="#0f172a">大数据概论</text>
+  <rect x="20" y="98" width="52" height="20" rx="5" fill="#ede9fe"/><text x="46" y="112" font-size="9" font-weight="600" fill="#6366f1" text-anchor="middle">已发布</text>
+  <text x="40" y="150" font-size="13" fill="#475569">学科首页</text><text x="40" y="188" font-size="13" fill="#475569">教学大纲</text>
+  <text x="40" y="226" font-size="13" fill="#475569">智能体</text><text x="40" y="264" font-size="13" fill="#475569">学习成长图谱</text>
+  <text x="40" y="302" font-size="13" fill="#475569">知识图谱</text>
+  <line x1="20" y1="334" x2="212" y2="334" stroke="#f1f5f9"/>
+  <text x="20" y="360" font-size="11" fill="#94a3b8" font-weight="600">快捷入口</text>
+  <text x="40" y="388" font-size="12" fill="#475569">课程进度</text>
+  <rect x="12" y="400" width="208" height="38" rx="8" fill="#6366f1" opacity="0.1"/><rect x="12" y="400" width="3" height="38" rx="1.5" fill="#6366f1"/>
+  <text x="40" y="424" font-size="13" font-weight="700" fill="#6366f1">我的测验</text>
+
+  <!-- ═══════ MAIN ═══════ -->
+  <g transform="translate(264,80)">
+    <text x="0" y="0" font-size="18" font-weight="700" fill="#0f172a">我的测验</text>
+    <text x="0" y="20" font-size="12" fill="#94a3b8">该课程的 AI 生成测验 · data: generative_list (type=quiz) + quiz_attempts</text>
+
+    <!-- Stats bar -->
+    <g transform="translate(0,44)"><rect x="0" y="0" width="880" height="48" rx="10" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+      <g transform="translate(20,10)"><text x="0" y="9" font-size="9" fill="#94a3b8">可用测验</text><text x="0" y="27" font-size="16" font-weight="800" fill="#0f172a">3</text></g>
+      <line x1="110" y1="10" x2="110" y2="38" stroke="#f1f5f9"/>
+      <g transform="translate(130,10)"><text x="0" y="9" font-size="9" fill="#94a3b8">已完成</text><text x="0" y="27" font-size="16" font-weight="800" fill="#22c55e">2</text></g>
+      <line x1="210" y1="10" x2="210" y2="38" stroke="#f1f5f9"/>
+      <g transform="translate(230,10)"><text x="0" y="9" font-size="9" fill="#94a3b8">平均得分</text><text x="0" y="27" font-size="16" font-weight="800" fill="#22c55e">75%</text></g>
+      <line x1="330" y1="10" x2="330" y2="38" stroke="#f1f5f9"/>
+      <g transform="translate(350,10)"><text x="0" y="9" font-size="9" fill="#94a3b8">薄弱知识点</text><text x="0" y="27" font-size="16" font-weight="800" fill="#ef4444">4</text></g>
+    </g>
+
+    <!-- ═══════ Quiz Card 1: HDFS 诊断测验 ═══════ -->
+    <g transform="translate(0,112)">
+      <rect x="0" y="0" width="880" height="200" rx="12" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+
+      <!-- Left: Quiz identity + entry -->
+      <g transform="translate(20,16)">
+        <rect x="0" y="0" width="280" height="168" rx="8" fill="#fef3c7"/>
+        <text x="16" y="24" font-size="10" font-weight="600" fill="#f59e0b">测验</text>
+        <text x="16" y="44" font-size="16" font-weight="700" fill="#0f172a">HDFS 架构诊断</text>
+        <text x="16" y="64" font-size="11" fill="#64748b">15 题 · 覆盖 NameNode、DataNode</text>
+        <text x="16" y="82" font-size="11" fill="#64748b">副本策略与故障恢复</text>
+        <rect x="16" y="100" width="100" height="28" rx="8" fill="#f59e0b"/>
+        <text x="66" y="119" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">开始测验</text>
+        <rect x="124" y="100" width="72" height="28" rx="8" fill="#fff" stroke="#e2e8f0"/>
+        <text x="160" y="119" font-size="10" fill="#64748b" text-anchor="middle">查看详情</text>
+      </g>
+
+      <!-- Middle: Score summary -->
+      <g transform="translate(320,16)">
+        <text x="0" y="0" font-size="10" font-weight="600" fill="#64748b">成绩摘要</text>
+
+        <g transform="translate(0,14)">
+          <rect x="0" y="0" width="160" height="48" rx="8" fill="#dcfce7" stroke="#bbf7d0"/>
+          <text x="16" y="18" font-size="9" fill="#16a34a" font-weight="600">最佳</text>
+          <text x="16" y="36" font-size="18" font-weight="800" fill="#16a34a">80%</text>
+          <text x="80" y="18" font-size="9" fill="#065f46">12/15 正确</text>
+          <text x="80" y="36" font-size="9" fill="#065f46">第 3 次提交</text>
+        </g>
+
+        <g transform="translate(174,14)">
+          <rect x="0" y="0" width="160" height="48" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="16" y="18" font-size="9" fill="#64748b" font-weight="600">最近</text>
+          <text x="16" y="36" font-size="18" font-weight="800" fill="#0f172a">80%</text>
+          <text x="80" y="18" font-size="9" fill="#64748b">3 次提交</text>
+          <text x="80" y="36" font-size="9" fill="#94a3b8">10/12 最后</text>
+        </g>
+
+        <g transform="translate(0,76)">
+          <text x="0" y="0" font-size="9" fill="#64748b">薄弱点</text>
+          <rect x="0" y="6" width="344" height="44" rx="6" fill="#fef2f2"/>
+          <text x="12" y="22" font-size="10" fill="#ef4444">RowKey 热点</text>
+          <text x="120" y="22" font-size="10" fill="#ef4444">预分区策略</text>
+          <text x="224" y="22" font-size="10" fill="#f59e0b">NameNode 故障</text>
+          <text x="12" y="40" font-size="9" fill="#94a3b8">各出现 2 次 · 建议重点复习</text>
+        </g>
+      </g>
+
+      <!-- Right: Attempt mini history -->
+      <g transform="translate(700,16)">
+        <text x="0" y="0" font-size="10" font-weight="600" fill="#64748b">提交历史</text>
+        <g transform="translate(0,14)">
+          <rect x="0" y="0" width="160" height="28" rx="6" fill="#fff"/><circle cx="10" cy="14" r="4" fill="#22c55e"/><text x="20" y="18" font-size="10" fill="#0f172a">第 3 次 · 80%</text><text x="130" y="18" font-size="9" fill="#94a3b8" text-anchor="end">10/12</text>
+        </g>
+        <g transform="translate(0,46)">
+          <rect x="0" y="0" width="160" height="28" rx="6" fill="#fef2f2"/><circle cx="10" cy="14" r="4" fill="#ef4444"/><text x="20" y="18" font-size="10" fill="#0f172a">第 2 次 · 60%</text><text x="130" y="18" font-size="9" fill="#94a3b8" text-anchor="end">10/10</text>
+        </g>
+        <g transform="translate(0,78)">
+          <rect x="0" y="0" width="160" height="28" rx="6" fill="#fff"/><circle cx="10" cy="14" r="4" fill="#22c55e"/><text x="20" y="18" font-size="10" fill="#0f172a">第 1 次 · 73%</text><text x="130" y="18" font-size="9" fill="#94a3b8" text-anchor="end">10/08</text>
+        </g>
+      </g>
+    </g>
+
+    <!-- ═══════ Quiz Card 2: MapReduce ═══════ -->
+    <g transform="translate(0,328)">
+      <rect x="0" y="0" width="880" height="200" rx="12" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+
+      <g transform="translate(20,16)">
+        <rect x="0" y="0" width="280" height="168" rx="8" fill="#fef3c7"/>
+        <text x="16" y="24" font-size="10" font-weight="600" fill="#f59e0b">测验</text>
+        <text x="16" y="44" font-size="16" font-weight="700" fill="#0f172a">MapReduce 执行流程</text>
+        <text x="16" y="64" font-size="11" fill="#64748b">10 题 · Shuffle、Combiner</text>
+        <text x="16" y="82" font-size="11" fill="#64748b">Partitioner、优化策略</text>
+        <rect x="16" y="100" width="100" height="28" rx="8" fill="#f59e0b"/>
+        <text x="66" y="119" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">重新测验</text>
+        <rect x="124" y="100" width="72" height="28" rx="8" fill="#fff" stroke="#e2e8f0"/>
+        <text x="160" y="119" font-size="10" fill="#64748b" text-anchor="middle">查看详情</text>
+      </g>
+
+      <g transform="translate(320,16)">
+        <text x="0" y="0" font-size="10" font-weight="600" fill="#64748b">成绩摘要</text>
+        <g transform="translate(0,14)">
+          <rect x="0" y="0" width="160" height="48" rx="8" fill="#fef3c7" stroke="#fde68a"/>
+          <text x="16" y="18" font-size="9" fill="#d97706" font-weight="600">最佳</text>
+          <text x="16" y="36" font-size="18" font-weight="800" fill="#d97706">70%</text>
+          <text x="80" y="18" font-size="9" fill="#92400e">7/10 正确</text>
+          <text x="80" y="36" font-size="9" fill="#92400e">第 2 次提交</text>
+        </g>
+        <g transform="translate(174,14)">
+          <rect x="0" y="0" width="160" height="48" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+          <text x="16" y="18" font-size="9" fill="#64748b" font-weight="600">最近</text>
+          <text x="16" y="36" font-size="18" font-weight="800" fill="#0f172a">70%</text>
+          <text x="80" y="18" font-size="9" fill="#64748b">2 次提交</text>
+          <text x="80" y="36" font-size="9" fill="#94a3b8">10/08 最后</text>
+        </g>
+        <g transform="translate(0,76)">
+          <text x="0" y="0" font-size="9" fill="#64748b">薄弱点</text>
+          <rect x="0" y="6" width="344" height="44" rx="6" fill="#fef2f2"/>
+          <text x="12" y="22" font-size="10" fill="#ef4444">Combiner 机制</text>
+          <text x="140" y="22" font-size="10" fill="#f59e0b">Partitioner</text>
+          <text x="12" y="40" font-size="9" fill="#94a3b8">建议配合思维导图复习执行流程</text>
+        </g>
+      </g>
+
+      <g transform="translate(700,16)">
+        <text x="0" y="0" font-size="10" font-weight="600" fill="#64748b">提交历史</text>
+        <g transform="translate(0,14)"><rect x="0" y="0" width="160" height="28" rx="6" fill="#fef3c7"/><circle cx="10" cy="14" r="4" fill="#f59e0b"/><text x="20" y="18" font-size="10" fill="#0f172a">第 2 次 · 70%</text><text x="130" y="18" font-size="9" fill="#94a3b8" text-anchor="end">10/08</text></g>
+        <g transform="translate(0,46)"><rect x="0" y="0" width="160" height="28" rx="6" fill="#fef2f2"/><circle cx="10" cy="14" r="4" fill="#ef4444"/><text x="20" y="18" font-size="10" fill="#0f172a">第 1 次 · 50%</text><text x="130" y="18" font-size="9" fill="#94a3b8" text-anchor="end">10/05</text></g>
+      </g>
+    </g>
+
+    <!-- ═══════ Quiz Card 3: Spark (untouched) ═══════ -->
+    <g transform="translate(0,544)">
+      <rect x="0" y="0" width="880" height="120" rx="12" fill="#fafafa" stroke="#e2e8f0" stroke-dasharray="5,3"/>
+
+      <g transform="translate(20,16)">
+        <rect x="0" y="0" width="280" height="88" rx="8" fill="#f1f5f9"/>
+        <text x="16" y="24" font-size="10" font-weight="600" fill="#94a3b8">测验</text>
+        <text x="16" y="44" font-size="16" font-weight="700" fill="#94a3b8">Spark RDD 核心概念</text>
+        <text x="16" y="64" font-size="11" fill="#cbd5e1">10 题 · 尚未作答</text>
+        <rect x="16" y="76" width="100" height="28" rx="8" fill="#6366f1"/>
+        <text x="66" y="95" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">开始测验</text>
+      </g>
+
+      <g transform="translate(340,16)">
+        <rect x="0" y="0" width="520" height="88" rx="8" fill="#f8fafc"/>
+        <text x="260" y="40" font-size="12" fill="#94a3b8" text-anchor="middle">完成 MapReduce 测验后推荐尝试</text>
+        <text x="260" y="56" font-size="11" fill="#cbd5e1" text-anchor="middle">建议先掌握 Shuffle 与 Combiner 概念</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Buddy FAB -->
+  <g transform="translate(1364,870)">
+    <circle cx="0" cy="0" r="30" fill="#fff" filter="url(#ss)"/><circle cx="0" cy="0" r="28" fill="#6366f1"/>
+    <circle cx="-6" cy="-3" r="3.5" fill="#fff" opacity="0.9"/><circle cx="6" cy="-3" r="3.5" fill="#fff" opacity="0.9"/>
+    <path d="M-8,8 Q0,18 8,8" stroke="#fff" fill="none" stroke-width="2" opacity="0.6" stroke-linecap="round"/>
+    <circle cx="20" cy="-20" r="10" fill="#ef4444"/><text x="20" y="-16" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">1</text>
+  </g>
+  <g transform="translate(1288,854)"><text x="0" y="0" font-size="11" fill="#6366f1" text-anchor="end">学伴小觉</text><text x="0" y="15" font-size="10" fill="#94a3b8" text-anchor="end">全天候陪伴</text></g>
+</svg>

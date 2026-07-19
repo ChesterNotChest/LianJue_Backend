@@ -1,0 +1,275 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">个性化学习闭环总图</title>
+  <desc id="desc">围绕学生画像、学习路径、资源生成与智能学伴的总体闭环图</desc>
+  <defs>
+    <linearGradient id="sideBlue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#eaf5ff" stop-opacity="0.08"/>
+      <stop offset="0.55" stop-color="#eaf5ff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#eaf5ff" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="sideRose" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff2ef" stop-opacity="0.08"/>
+      <stop offset="0.55" stop-color="#fff2ef" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#fff2ef" stop-opacity="0.08"/>
+    </linearGradient>
+    <radialGradient id="leftHalo" cx="50%" cy="50%" r="58%">
+      <stop offset="0" stop-color="#dcefff" stop-opacity="0.95"/>
+      <stop offset="0.68" stop-color="#edf7ff" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rightHalo" cx="50%" cy="50%" r="58%">
+      <stop offset="0" stop-color="#ffe6df" stop-opacity="0.95"/>
+      <stop offset="0.68" stop-color="#fff1ed" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="centerHalo" cx="50%" cy="50%" r="62%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="1"/>
+      <stop offset="0.58" stop-color="#f3eef8" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="blueBlock" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fb1dc"/>
+      <stop offset="0.48" stop-color="#5b96ca"/>
+      <stop offset="1" stop-color="#386f9f"/>
+    </linearGradient>
+    <linearGradient id="purpleBlock" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a996d4"/>
+      <stop offset="1" stop-color="#654aa4"/>
+    </linearGradient>
+    <linearGradient id="rosePill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8e6e2"/>
+      <stop offset="1" stop-color="#d9958b"/>
+    </linearGradient>
+    <linearGradient id="pillFill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef4fb"/>
+    </linearGradient>
+    <marker id="arrowGray" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,8 L9,4 z" fill="#8b93a3"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="11" markerHeight="11" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,8 L9,4 z" fill="#477da9"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="11" markerHeight="11" refX="8" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,8 L9,4 z" fill="#7e65b5"/>
+    </marker>
+    <filter id="drop" x="-12%" y="-18%" width="124%" height="136%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#203040" flood-opacity="0.16"/>
+    </filter>
+    <style>
+      .font { font-family: "Microsoft YaHei", "SimSun", Arial, sans-serif; }
+      .title { font-size: 34px; font-weight: 800; fill: #1f2937; }
+      .sub { font-size: 17px; fill: #667085; }
+      .sideBlueText { font-size: 30px; font-weight: 800; fill: #356b93; }
+      .sideRoseText { font-size: 30px; font-weight: 800; fill: #a95751; }
+      .pillText { font-size: 20px; font-weight: 700; fill: #263445; }
+      .smallText { font-size: 17px; font-weight: 700; fill: #344054; }
+      .barText { font-size: 25px; font-weight: 800; fill: #ffffff; }
+      .centerText { font-size: 30px; font-weight: 800; fill: #9b5d55; }
+      .lineLabel { font-size: 16px; font-weight: 700; fill: #707987; }
+      .pill { fill: url(#pillFill); stroke: #aeb7c2; stroke-width: 1.5; }
+      .blueBlock { fill: url(#blueBlock); stroke: #386f9f; stroke-width: 1.4; filter: url(#drop); }
+      .purpleBlock { fill: url(#purpleBlock); stroke: #654aa4; stroke-width: 1.4; filter: url(#drop); }
+      .rosePill { fill: url(#rosePill); stroke: #cd8c84; stroke-width: 1.1; filter: url(#drop); }
+      .dash { fill: none; stroke: #9aa2ad; stroke-width: 1.7; stroke-dasharray: 7 7; }
+      .dashArrow { fill: none; stroke: #8b93a3; stroke-width: 1.8; stroke-dasharray: 7 7; marker-end: url(#arrowGray); }
+      .solidArrow { fill: none; stroke: #6d839d; stroke-width: 2.3; marker-end: url(#arrowGray); }
+      .blueArrow { fill: none; stroke: #477da9; stroke-width: 2.8; marker-end: url(#arrowBlue); }
+      .purpleArrow { fill: none; stroke: #7e65b5; stroke-width: 4; marker-end: url(#arrowPurple); }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+  <text class="font title" x="800" y="38" text-anchor="middle">个性化学习闭环总图</text>
+  <text class="font sub" x="800" y="68" text-anchor="middle">以学习状态表征为起点，经路径规划与资源生成形成智能学伴持续演化闭环</text>
+
+  <rect x="36" y="136" width="78" height="640" fill="url(#sideBlue)"/>
+  <text class="font sideBlueText" text-anchor="middle">
+    <tspan x="75" y="258">学</tspan>
+    <tspan x="75" y="293">习</tspan>
+    <tspan x="75" y="328">状</tspan>
+    <tspan x="75" y="363">态</tspan>
+    <tspan x="75" y="398">的</tspan>
+    <tspan x="75" y="433">多</tspan>
+    <tspan x="75" y="468">模</tspan>
+    <tspan x="75" y="503">态</tspan>
+    <tspan x="75" y="538">表</tspan>
+    <tspan x="75" y="573">征</tspan>
+  </text>
+  <rect x="1486" y="136" width="78" height="640" fill="url(#sideRose)"/>
+  <text class="font sideRoseText" text-anchor="middle">
+    <tspan x="1525" y="258">智</tspan>
+    <tspan x="1525" y="293">能</tspan>
+    <tspan x="1525" y="328">学</tspan>
+    <tspan x="1525" y="363">伴</tspan>
+    <tspan x="1525" y="398">的</tspan>
+    <tspan x="1525" y="433">自</tspan>
+    <tspan x="1525" y="468">演</tspan>
+    <tspan x="1525" y="503">化</tspan>
+    <tspan x="1525" y="538">闭</tspan>
+    <tspan x="1525" y="573">环</tspan>
+  </text>
+
+  <g class="font">
+    <rect class="pill" x="150" y="142" width="164" height="38" rx="19"/>
+    <text class="pillText" x="232" y="168" text-anchor="middle">学习目标</text>
+    <rect class="pill" x="138" y="206" width="164" height="38" rx="19"/>
+    <text class="pillText" x="220" y="232" text-anchor="middle">知识结构</text>
+    <rect class="pill" x="150" y="270" width="164" height="38" rx="19"/>
+    <text class="pillText" x="232" y="296" text-anchor="middle">学习记录</text>
+    <rect class="pill" x="150" y="650" width="164" height="38" rx="19"/>
+    <text class="pillText" x="232" y="676" text-anchor="middle">资源反馈</text>
+    <rect class="pill" x="138" y="714" width="164" height="38" rx="19"/>
+    <text class="pillText" x="220" y="740" text-anchor="middle">成长图谱</text>
+    <path class="dash" d="M114 161 H150"/>
+    <path class="dash" d="M114 225 H138"/>
+    <path class="dash" d="M114 289 H150"/>
+    <path class="dash" d="M114 669 H150"/>
+    <path class="dash" d="M114 733 H138"/>
+
+    <rect class="pill" x="1288" y="142" width="164" height="38" rx="19"/>
+    <text class="pillText" x="1370" y="168" text-anchor="middle">提问交互</text>
+    <rect class="pill" x="1300" y="206" width="164" height="38" rx="19"/>
+    <text class="pillText" x="1382" y="232" text-anchor="middle">主动关怀</text>
+    <rect class="pill" x="1288" y="270" width="164" height="38" rx="19"/>
+    <text class="pillText" x="1370" y="296" text-anchor="middle">记忆沉淀</text>
+    <rect class="pill" x="1288" y="650" width="164" height="38" rx="19"/>
+    <text class="pillText" x="1370" y="676" text-anchor="middle">资源列表</text>
+    <rect class="pill" x="1300" y="714" width="164" height="38" rx="19"/>
+    <text class="pillText" x="1382" y="740" text-anchor="middle">学生成长树</text>
+    <path class="dash" d="M1452 161 H1486"/>
+    <path class="dash" d="M1464 225 H1486"/>
+    <path class="dash" d="M1452 289 H1486"/>
+    <path class="dash" d="M1452 669 H1486"/>
+    <path class="dash" d="M1464 733 H1486"/>
+  </g>
+
+  <ellipse cx="350" cy="452" rx="170" ry="198" fill="url(#leftHalo)"/>
+  <ellipse cx="1250" cy="452" rx="170" ry="198" fill="url(#rightHalo)"/>
+  <ellipse cx="800" cy="452" rx="286" ry="292" fill="url(#centerHalo)"/>
+
+  <g class="font">
+    <circle cx="350" cy="452" r="75" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <path d="M350 377 A75 75 0 0 1 425 452" fill="none" stroke="#467eb4" stroke-width="18"/>
+    <path d="M425 452 A75 75 0 0 1 350 527" fill="none" stroke="#6d57b2" stroke-width="18"/>
+    <path d="M350 527 A75 75 0 0 1 275 452" fill="none" stroke="#4aa4a4" stroke-width="18"/>
+    <path d="M275 452 A75 75 0 0 1 350 377" fill="none" stroke="#8e67c7" stroke-width="18"/>
+    <circle cx="350" cy="452" r="48" fill="#ffffff" stroke="#7b8794" stroke-width="2"/>
+    <text class="pillText" x="350" y="445" text-anchor="middle">学生</text>
+    <text class="pillText" x="350" y="472" text-anchor="middle">画像</text>
+    <circle cx="220" cy="452" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="220" y="446" text-anchor="middle">结构</text>
+    <text class="smallText" x="220" y="468" text-anchor="middle">特征</text>
+    <circle cx="350" cy="320" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="350" y="314" text-anchor="middle">目标</text>
+    <text class="smallText" x="350" y="336" text-anchor="middle">特征</text>
+    <circle cx="465" cy="452" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="465" y="446" text-anchor="middle">掌握</text>
+    <text class="smallText" x="465" y="468" text-anchor="middle">特征</text>
+    <circle cx="350" cy="584" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="350" y="578" text-anchor="middle">反馈</text>
+    <text class="smallText" x="350" y="600" text-anchor="middle">特征</text>
+
+    <circle cx="1250" cy="452" r="75" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <path d="M1250 377 A75 75 0 0 1 1325 452" fill="none" stroke="#d9675d" stroke-width="18"/>
+    <path d="M1325 452 A75 75 0 0 1 1250 527" fill="none" stroke="#7158b5" stroke-width="18"/>
+    <path d="M1250 527 A75 75 0 0 1 1175 452" fill="none" stroke="#547db0" stroke-width="18"/>
+    <path d="M1175 452 A75 75 0 0 1 1250 377" fill="none" stroke="#ba6a5f" stroke-width="18"/>
+    <circle cx="1250" cy="452" r="48" fill="#ffffff" stroke="#7b8794" stroke-width="2"/>
+    <text class="pillText" x="1250" y="445" text-anchor="middle">学伴</text>
+    <text class="pillText" x="1250" y="472" text-anchor="middle">特征</text>
+    <circle cx="1135" cy="452" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="1135" y="446" text-anchor="middle">学习</text>
+    <text class="smallText" x="1135" y="468" text-anchor="middle">状态</text>
+    <circle cx="1250" cy="320" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="1250" y="314" text-anchor="middle">用户</text>
+    <text class="smallText" x="1250" y="336" text-anchor="middle">记忆</text>
+    <circle cx="1380" cy="452" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="1380" y="446" text-anchor="middle">交互</text>
+    <text class="smallText" x="1380" y="468" text-anchor="middle">特征</text>
+    <circle cx="1250" cy="584" r="42" fill="#ffffff" stroke="#8f97a4" stroke-width="2"/>
+    <text class="smallText" x="1250" y="578" text-anchor="middle">成长</text>
+    <text class="smallText" x="1250" y="600" text-anchor="middle">编码</text>
+  </g>
+
+  <g class="font">
+    <rect class="blueBlock" x="570" y="176" width="188" height="48" rx="3"/>
+    <text class="barText" x="664" y="208" text-anchor="middle">画像维度</text>
+    <rect class="purpleBlock" x="704" y="92" width="192" height="48" rx="5"/>
+    <text class="barText" x="800" y="123" text-anchor="middle">信息驱动</text>
+    <text class="pillText" x="800" y="162" text-anchor="middle">学习目标分解</text>
+    <rect class="blueBlock" x="842" y="176" width="188" height="48" rx="3"/>
+    <text class="barText" x="936" y="208" text-anchor="middle">计划进度</text>
+    <path class="dashArrow" d="M704 118 C628 142 592 168 570 190"/>
+    <path class="dashArrow" d="M896 118 C972 142 1008 168 1030 190"/>
+    <path class="dash" d="M758 200 H842"/>
+
+    <rect class="blueBlock" x="570" y="706" width="188" height="48" rx="3"/>
+    <text class="barText" x="664" y="738" text-anchor="middle">成长状态</text>
+    <rect class="purpleBlock" x="704" y="784" width="192" height="56" rx="5"/>
+    <text class="barText" x="800" y="820" text-anchor="middle">反馈提取</text>
+    <text class="pillText" x="800" y="774" text-anchor="middle">学习数据立方体</text>
+    <rect class="blueBlock" x="842" y="706" width="188" height="48" rx="3"/>
+    <text class="barText" x="936" y="738" text-anchor="middle">资源融合</text>
+    <path class="dashArrow" d="M704 812 C626 790 590 765 570 738"/>
+    <path class="dashArrow" d="M896 812 C974 790 1010 765 1030 738"/>
+    <path class="dash" d="M758 730 H842"/>
+  </g>
+
+  <g class="font">
+    <ellipse cx="800" cy="260" rx="114" ry="37" fill="url(#rosePill)"/>
+    <text class="centerText" x="800" y="270" text-anchor="middle">路径规划</text>
+    <ellipse cx="800" cy="642" rx="114" ry="37" fill="url(#rosePill)"/>
+    <text class="centerText" x="800" y="652" text-anchor="middle">资源生成</text>
+    <ellipse cx="800" cy="452" rx="232" ry="266" fill="none" stroke="#9aa2ad" stroke-width="1.6" stroke-dasharray="7 7"/>
+
+    <rect class="pill" x="626" y="360" width="136" height="42" rx="2"/>
+    <text class="pillText" x="694" y="388" text-anchor="middle">个人大纲</text>
+    <rect class="pill" x="838" y="360" width="136" height="42" rx="2"/>
+    <text class="pillText" x="906" y="388" text-anchor="middle">推荐列表</text>
+    <rect class="pill" x="626" y="506" width="136" height="42" rx="2"/>
+    <text class="pillText" x="694" y="534" text-anchor="middle">成长分析</text>
+    <rect class="pill" x="838" y="506" width="136" height="42" rx="2"/>
+    <text class="pillText" x="906" y="534" text-anchor="middle">资源详情</text>
+
+    <path class="purpleArrow" d="M770 326 V592" opacity="0.78"/>
+    <path class="purpleArrow" d="M830 592 V326" opacity="0.78"/>
+    <rect x="704" y="410" width="192" height="88" fill="#ffffff" stroke="#d4d8df" stroke-width="1.2"/>
+    <path d="M724 440 C748 424 778 460 804 438 C832 416 858 458 878 434" fill="none" stroke="#9bb5d0" stroke-width="2"/>
+    <path d="M724 462 H876 M724 477 H848" stroke="#d9dee7" stroke-width="2"/>
+    <text class="smallText" x="800" y="458" text-anchor="middle" fill="#9b5d55">学习闭环数据</text>
+  </g>
+
+  <g class="font">
+    <rect class="purpleBlock" x="524" y="326" width="56" height="254" rx="2"/>
+    <text class="barText" x="552" y="382" text-anchor="middle">
+      <tspan x="552" dy="0">画</tspan><tspan x="552" dy="29">像</tspan><tspan x="552" dy="29">演</tspan><tspan x="552" dy="29">化</tspan><tspan x="552" dy="29">算</tspan><tspan x="552" dy="29">法</tspan>
+    </text>
+    <rect class="pill" x="488" y="242" width="150" height="44" rx="2"/>
+    <text class="pillText" x="563" y="271" text-anchor="middle">掌握情况</text>
+    <rect class="pill" x="488" y="616" width="150" height="44" rx="2"/>
+    <text class="pillText" x="563" y="645" text-anchor="middle">学习反馈</text>
+    <path class="solidArrow" d="M563 286 V326"/>
+    <path class="solidArrow" d="M552 580 V616"/>
+
+    <rect class="purpleBlock" x="1020" y="326" width="56" height="254" rx="2"/>
+    <text class="barText" x="1048" y="382" text-anchor="middle">
+      <tspan x="1048" dy="0">学</tspan><tspan x="1048" dy="29">伴</tspan><tspan x="1048" dy="29">交</tspan><tspan x="1048" dy="29">互</tspan><tspan x="1048" dy="29">模</tspan><tspan x="1048" dy="29">型</tspan>
+    </text>
+    <rect class="pill" x="962" y="242" width="150" height="44" rx="2"/>
+    <text class="pillText" x="1037" y="271" text-anchor="middle">计划进度</text>
+    <rect class="pill" x="962" y="616" width="150" height="44" rx="2"/>
+    <text class="pillText" x="1037" y="645" text-anchor="middle">资源列表</text>
+    <path class="solidArrow" d="M1037 286 V326"/>
+    <path class="solidArrow" d="M1048 580 V616"/>
+
+    <path class="dashArrow" d="M490 264 C458 280 420 300 394 320"/>
+    <text class="lineLabel" x="438" y="287" text-anchor="middle" transform="rotate(-31 438 287)">掌握感知</text>
+    <path class="dashArrow" d="M490 638 C458 622 420 602 394 584"/>
+    <text class="lineLabel" x="438" y="613" text-anchor="middle" transform="rotate(31 438 613)">反馈工程</text>
+    <path class="dashArrow" d="M1110 264 C1142 280 1180 300 1206 320"/>
+    <text class="lineLabel" x="1162" y="287" text-anchor="middle" transform="rotate(31 1162 287)">计划匹配</text>
+    <path class="dashArrow" d="M1110 638 C1142 622 1180 602 1206 584"/>
+    <text class="lineLabel" x="1162" y="613" text-anchor="middle" transform="rotate(-31 1162 613)">资源分布</text>
+  </g>
+</svg>

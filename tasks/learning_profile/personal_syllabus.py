@@ -14,6 +14,7 @@ from tasks.learning_profile import profile_builder
 from tasks.learning_profile.storage import load_json_file
 import os
 _DEBUG_SYNC = os.getenv("DEBUG_PROFILE_SYNC") == "1"
+_ALIGN_CACHE: dict = {}
 
 _PROFILE_SUGGESTION_TO_SCORE = {
 	'weak_far': 0,
@@ -362,8 +363,8 @@ def append_profile_personal_syllabus_suggestion(user_id: int, syllabus_id: int, 
 		'competance_progress': entry.get('competance_progress'),
 	}
 
-_COMPETANCE_THRESHOLD_MASTER = 0.7
-_COMPETANCE_THRESHOLD_NORMAL = 0.35
+_COMPETANCE_THRESHOLD_MASTER = 0.85
+_COMPETANCE_THRESHOLD_NORMAL = 0.45
 
 
 def _score_to_competance(score):
@@ -394,7 +395,108 @@ def _extract_week_content(period_entry):
 	return content[:50]
 
 
-def sync_knowledge_to_weeks(user_id, syllabus_id):
+def _llm_align_knowledge(knowledge, week_candidates):
+	"""Best-effort semantic alignment from knowledge-point tags to week labels.
+
+	This is owned by the learning-profile week sync path. It intentionally does
+	not depend on personal_recommendation internals, because those helpers are
+	private to route generation and may change independently.
+	"""
+	if os.getenv("KNOWLEDGE_ALIGN_LLM_ENABLED") == "0":
+		return knowledge
+	if not knowledge or not week_candidates:
+		return knowledge
+
+	kp_keys = frozenset(str(key) for key in knowledge.keys())
+	week_titles = frozenset(
+		str(node.get("title") or "")
+		for node in week_candidates.values()
+		if isinstance(node, dict)
+	)
+	cache_key = hash((kp_keys, week_titles))
+	cached = _ALIGN_CACHE.get(cache_key)
+	if cached is not None:
+		return cached
+
+	tag_lines = "\n".join(f"- {key}" for key, value in knowledge.items() if value > 0)
+	if not tag_lines:
+		_ALIGN_CACHE[cache_key] = knowledge
+		return knowledge
+
+	week_lines = []
+	for week_index, node in week_candidates.items():
+		if not isinstance(node, dict):
+			continue
+		title = str(node.get("title") or "").strip()
+		if title:
+			week_lines.append(f"- week({week_index}): {title[:120]}")
+	if not week_lines:
+		_ALIGN_CACHE[cache_key] = knowledge
+		return knowledge
+
+	system_prompt = (
+		"You are matching knowledge point tags to course week descriptions. "
+		"For each week description, find the best matching knowledge tag. "
+		"Only match when there is a clear semantic relationship. "
+		"Return ONLY valid JSON. No explanation."
+	)
+	user_prompt = (
+		"Knowledge tags:\n" + tag_lines + "\n\n"
+		"Week descriptions:\n" + "\n".join(week_lines) + "\n\n"
+		'Return JSON: {"matches": {"week title": {"tag": "best matching knowledge tag"}}}'
+		"\nOnly include entries where you are confident of a match."
+	)
+
+	try:
+		from config import LITELLM_MODEL_CONFIGS
+		import litellm
+
+		text_config = LITELLM_MODEL_CONFIGS.get("text") or {}
+		response = litellm.completion(
+			model=text_config.get("model_name", ""),
+			messages=[
+				{"role": "system", "content": system_prompt},
+				{"role": "user", "content": user_prompt},
+			],
+			api_base=text_config.get("api_base") or None,
+			api_key=text_config.get("api_key") or os.getenv("OPENAI_API_KEY"),
+			temperature=0,
+		)
+		raw = (response.choices[0].message.content or "").strip()
+	except Exception:
+		_ALIGN_CACHE[cache_key] = knowledge
+		return knowledge
+
+	try:
+		parsed = json.loads(raw)
+	except json.JSONDecodeError:
+		import re
+		match = re.search(r"\{[\s\S]*\}", raw)
+		if not match:
+			_ALIGN_CACHE[cache_key] = knowledge
+			return knowledge
+		try:
+			parsed = json.loads(match.group(0))
+		except json.JSONDecodeError:
+			_ALIGN_CACHE[cache_key] = knowledge
+			return knowledge
+
+	matches = parsed.get("matches") if isinstance(parsed, dict) else {}
+	if not isinstance(matches, dict):
+		_ALIGN_CACHE[cache_key] = knowledge
+		return knowledge
+
+	enriched = dict(knowledge)
+	for matched_text, info in matches.items():
+		tag = info.get("tag") if isinstance(info, dict) else info
+		if isinstance(tag, str) and tag in knowledge:
+			enriched[str(matched_text)] = knowledge[tag]
+
+	_ALIGN_CACHE[cache_key] = enriched
+	return enriched
+
+
+def sync_knowledge_to_weeks(user_id, syllabus_id, by_knowledge_point=None, *, allow_upgrade=True):
 	"""Map profile knowledge_point scores to syllabus weeks and set competance.
 
 	Reads the persisted profile's by_knowledge_point dict, aligns knowledge
@@ -407,15 +509,20 @@ def sync_knowledge_to_weeks(user_id, syllabus_id):
 	except Exception:
 		return None
 
-	# -- read profile --
-	from tasks.learning_profile_task import get_persisted_learning_profile
-	profile = get_persisted_learning_profile(user_id, syllabus_id)
-	if not isinstance(profile, dict):
-		return None
-	km = profile.get("knowledge_mastery")
-	if not isinstance(km, dict):
-		return None
-	by_kp = km.get("by_knowledge_point")
+	# -- read knowledge point scores --
+	# During a fresh profile build the new profile has not been persisted yet,
+	# so callers may pass the just-computed by_knowledge_point mapping directly.
+	if isinstance(by_knowledge_point, dict) and by_knowledge_point:
+		by_kp = by_knowledge_point
+	else:
+		from tasks.learning_profile_task import get_persisted_learning_profile
+		profile = get_persisted_learning_profile(user_id, syllabus_id)
+		if not isinstance(profile, dict):
+			return None
+		km = profile.get("knowledge_mastery")
+		if not isinstance(km, dict):
+			return None
+		by_kp = km.get("by_knowledge_point")
 	if not isinstance(by_kp, dict) or not by_kp:
 		if _DEBUG_SYNC: print("[SYNC] by_knowledge_point empty or missing")
 		return None
@@ -452,11 +559,10 @@ def sync_knowledge_to_weeks(user_id, syllabus_id):
 	if not week_candidates:
 		return None
 
-	# -- LLM alignment: knowledge tags -> week labels --
-	from tasks.personal_recommendation.perception import _llm_align_knowledge
-	enriched = _llm_align_knowledge(dict(by_kp), week_candidates)
-
 	week_scores = {}
+	# -- Optional LLM alignment: knowledge tags -> week labels --
+	enriched = _llm_align_knowledge(dict(by_kp), week_candidates)
+	enriched = enriched if isinstance(enriched, dict) else {}
 	for wi, node in week_candidates.items():
 		label = node["title"]
 		direct = enriched.get(label, 0.0)
@@ -505,6 +611,11 @@ def sync_knowledge_to_weeks(user_id, syllabus_id):
 		score = week_scores.get(wi)
 		if score is not None and score > 0:
 			new_level = _score_to_competance(score)
+			if not allow_upgrade and old in _PROFILE_COMPETANCE_ORDER:
+				old_index = _PROFILE_COMPETANCE_ORDER.index(old)
+				new_index = _PROFILE_COMPETANCE_ORDER.index(new_level) if new_level in _PROFILE_COMPETANCE_ORDER else old_index
+				if new_index > old_index:
+					continue
 			entry["competance"] = new_level
 			entry["competance_progress"] = 3
 			competance_before[wi] = old
@@ -525,5 +636,3 @@ def sync_knowledge_to_weeks(user_id, syllabus_id):
 	except Exception:
 		return None
 	return {"synced_weeks": synced_count, "competance_before": competance_before, "competance_after": competance_after}
-
-

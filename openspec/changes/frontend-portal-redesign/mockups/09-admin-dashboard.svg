@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1300" font-family="Inter, system-ui, sans-serif">
+  <defs><filter id="ss"><feDropShadow dx="0" dy="1" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.05"/></filter></defs>
+  <rect width="1440" height="1300" fill="#f8fafc"/>
+  <!-- Top bar -->
+  <rect x="0" y="0" width="1440" height="56" fill="#fff" stroke="#f1f5f9"/>
+  <text x="32" y="36" font-size="16" font-weight="800" fill="#6366f1" letter-spacing="1">联觉 LianJue</text>
+  <rect x="140" y="16" width="52" height="24" rx="6" fill="#f1f5f9"/><text x="166" y="33" font-size="9" fill="#64748b" text-anchor="middle">管理</text>
+  <text x="200" y="36" font-size="13" fill="#cbd5e1">/</text><text x="214" y="36" font-size="13" font-weight="600" fill="#0f172a">算法设计与分析</text>
+  <text x="320" y="36" font-size="11" fill="#6366f1">← 返回首页</text>
+  <!-- Sidebar -->
+  <rect x="0" y="56" width="232" height="1244" fill="#fff" stroke="#f1f5f9"/>
+  <text x="20" y="88" font-size="15" font-weight="700" fill="#0f172a">算法设计与分析</text>
+  <rect x="20" y="98" width="52" height="20" rx="5" fill="#ede9fe"/><text x="46" y="112" font-size="9" font-weight="600" fill="#6366f1" text-anchor="middle">已发布</text>
+  <rect x="12" y="138" width="208" height="38" rx="8" fill="#6366f1" opacity="0.1"/><rect x="12" y="138" width="3" height="38" rx="1.5" fill="#6366f1"/>
+  <text x="40" y="162" font-size="13" font-weight="700" fill="#6366f1">学科总览</text>
+  <text x="40" y="204" font-size="13" fill="#475569">学生进度</text>
+  <text x="40" y="242" font-size="13" fill="#475569">知识图谱</text>
+  <!-- Main -->
+  <g transform="translate(264,80)">
+    <text x="0" y="0" font-size="18" font-weight="700" fill="#0f172a">学科总览</text>
+    <text x="0" y="22" font-size="12" fill="#94a3b8">已发布 · Algorithm · graph_id: 18 · 16 周</text>
+
+    <!-- ═══ State cards ═══ -->
+    <g transform="translate(0,58)">
+      <!-- Card 1 -->
+      <g transform="translate(0,0)">
+        <rect x="0" y="0" width="320" height="96" rx="14" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+        <text x="28" y="36" font-size="12" font-weight="600" fill="#94a3b8">知识图谱</text>
+        <text x="28" y="60" font-size="16" font-weight="800" fill="#0f172a">Algorithm</text>
+        <text x="28" y="78" font-size="11" fill="#64748b">8,200 nodes · 1 个图谱</text>
+      </g>
+      <!-- Card 2 -->
+      <g transform="translate(344,0)">
+        <rect x="0" y="0" width="320" height="96" rx="14" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+        <text x="28" y="36" font-size="12" font-weight="600" fill="#94a3b8">教学大纲</text>
+        <text x="28" y="60" font-size="16" font-weight="800" fill="#0f172a">16 周</text>
+        <text x="28" y="78" font-size="11" fill="#64748b">2026-07-05 更新</text>
+      </g>
+      <!-- Card 3 -->
+      <g transform="translate(688,0)">
+        <rect x="0" y="0" width="320" height="96" rx="14" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+        <text x="28" y="36" font-size="12" font-weight="600" fill="#94a3b8">学生</text>
+        <text x="28" y="60" font-size="16" font-weight="800" fill="#0f172a">1 名</text>
+        <text x="28" y="78" font-size="11" fill="#64748b">掌握度 64%</text>
+      </g>
+    </g>
+
+    <!-- ═══ 填充知识 ═══ -->
+    <g transform="translate(0,194)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#0f172a">填充知识</text>
+      <text x="0" y="20" font-size="11" fill="#94a3b8">上传文档到知识图谱 · PDF / DOC / PPT / TXT / MD</text>
+      <g transform="translate(0,44)">
+        <rect x="0" y="0" width="1008" height="200" rx="14" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+        <!-- Drop zone -->
+        <rect x="28" y="28" width="952" height="84" rx="12" fill="#f8fafc" stroke="#e2e8f0" stroke-dasharray="6,4"/>
+        <text x="504" y="64" font-size="14" fill="#94a3b8" text-anchor="middle">拖拽文件到此处，或点击选择</text>
+        <text x="504" y="84" font-size="11" fill="#cbd5e1" text-anchor="middle">支持 .pdf .doc .docx .ppt .pptx .txt .md</text>
+        <!-- Selected files -->
+        <g transform="translate(28,132)">
+          <rect x="0" y="0" width="700" height="44" rx="10" fill="#f0fdf4" stroke="#bbf7d0"/>
+          <text x="20" y="18" font-size="12" font-weight="600" fill="#16a34a">hbase_arch_doc.pdf</text>
+          <text x="20" y="34" font-size="10" fill="#65a30d">2.4 MB</text>
+          <text x="180" y="18" font-size="12" font-weight="600" fill="#16a34a">spark_intro_slides.pdf</text>
+          <text x="180" y="34" font-size="10" fill="#65a30d">3.1 MB</text>
+          <text x="640" y="26" font-size="11" fill="#16a34a" text-anchor="end">2 个文件已选择</text>
+        </g>
+        <rect x="760" y="132" width="220" height="44" rx="10" fill="#6366f1"/>
+        <text x="870" y="159" font-size="13" font-weight="700" fill="#fff" text-anchor="middle">创建填充任务 (2)</text>
+      </g>
+    </g>
+
+    <!-- ═══ 编辑大纲 (scrolling card editor with dirty-state save) ═══ -->
+    <g transform="translate(0,468)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#0f172a">编辑大纲</text>
+      <text x="0" y="20" font-size="11" fill="#94a3b8">逐周编辑 · 卡片内直接修改 · 有差异时保存按钮亮起</text>
+      <g transform="translate(0,44)">
+        <!-- Outer container with fixed height + internal scroll -->
+        <rect x="0" y="0" width="1008" height="400" rx="14" fill="#fff" stroke="#e2e8f0" filter="url(#ss)"/>
+        <!-- Toolbar -->
+        <rect x="0" y="0" width="1008" height="52" rx="14" fill="#fafafa"/><rect x="0" y="26" width="1008" height="26" fill="#fafafa"/>
+        <g transform="translate(24,12)">
+          <!-- Save button: dirty state (bright) when changes exist -->
+          <g transform="translate(0,0)">
+            <rect x="0" y="0" width="100" height="28" rx="8" fill="#6366f1"/><text x="50" y="19" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">保存大纲</text>
+            <circle cx="96" cy="6" r="4" fill="#f59e0b"/>
+          </g>
+          <rect x="114" y="0" width="100" height="28" rx="8" fill="#f1f5f9"/><text x="164" y="19" font-size="11" fill="#64748b" text-anchor="middle">+ 添加周次</text>
+          <text x="240" y="19" font-size="11" fill="#f59e0b">有未保存的修改</text>
+        </g>
+        <!-- Scrollable card list (clipped) -->
+        <g transform="translate(24,68)">
+          <!-- Week 1 card — editing, with input-like styling -->
+          <rect x="0" y="0" width="960" height="106" rx="10" fill="#fff" stroke="#6366f1" stroke-width="1.5"/>
+          <!-- Header row -->
+          <g transform="translate(14,10)">
+            <text x="0" y="0" font-size="11" font-weight="700" fill="#0f172a">第 1 周</text>
+            <g transform="translate(80,0)">
+              <rect x="0" y="-6" width="80" height="18" rx="5" fill="#f8fafc" stroke="#e2e8f0"/>
+              <text x="8" y="7" font-size="9" fill="#64748b">重要性: medium</text>
+            </g>
+            <rect x="910" y="-8" width="40" height="20" rx="5" fill="#fef2f2"/><text x="930" y="6" font-size="9" fill="#ef4444" text-anchor="middle">删除</text>
+          </g>
+          <!-- Editable fields -->
+          <g transform="translate(14,30)">
+            <text x="0" y="0" font-size="9" fill="#94a3b8">原始内容</text>
+            <rect x="0" y="4" width="930" height="26" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+            <text x="8" y="21" font-size="11" fill="#0f172a">什么是算法？怎样证明算法是正确的？数学归纳法及其应用示例</text>
+          </g>
+          <g transform="translate(14,66)">
+            <text x="0" y="0" font-size="9" fill="#94a3b8">增强内容</text>
+            <rect x="0" y="4" width="930" height="26" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+            <text x="8" y="21" font-size="11" fill="#0f172a">算法是解决问题的明确步骤序列，其正确性可通过数学归纳法证明。数学归纳法基于递推原理：若P(0)成立且P(k)→P(k+1)，则对所有n成立。</text>
+          </g>
+
+          <!-- Week 2 card — unmodified -->
+          <g transform="translate(0,118)">
+            <rect x="0" y="0" width="960" height="106" rx="10" fill="#fff" stroke="#e2e8f0"/>
+            <g transform="translate(14,10)">
+              <text x="0" y="0" font-size="11" font-weight="700" fill="#0f172a">第 2 周</text>
+              <g transform="translate(80,0)">
+                <rect x="0" y="-6" width="80" height="18" rx="5" fill="#f8fafc" stroke="#e2e8f0"/>
+                <text x="8" y="7" font-size="9" fill="#64748b">重要性: medium</text>
+              </g>
+              <rect x="910" y="-8" width="40" height="20" rx="5" fill="#fef2f2"/><text x="930" y="6" font-size="9" fill="#ef4444" text-anchor="middle">删除</text>
+            </g>
+            <g transform="translate(14,30)">
+              <text x="0" y="0" font-size="9" fill="#94a3b8">原始内容</text>
+              <rect x="0" y="4" width="930" height="26" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+              <text x="8" y="21" font-size="11" fill="#0f172a">算法的计算复杂性、函数的渐近增长与排序算法</text>
+            </g>
+            <g transform="translate(14,66)">
+              <text x="0" y="0" font-size="9" fill="#94a3b8">增强内容</text>
+              <rect x="0" y="4" width="930" height="26" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+              <text x="8" y="21" font-size="11" fill="#0f172a">算法的计算复杂性主要研究算法在最坏情况下的运算时间，通常用渐近增长函数如大O表示法来描述。</text>
+            </g>
+          </g>
+        </g>
+        <!-- Scroll indicator -->
+        <g transform="translate(0,380)">
+          <rect x="0" y="0" width="1008" height="20" rx="14" fill="linear-gradient(transparent,#fff)"/>
+          <text x="504" y="14" font-size="9" fill="#94a3b8" text-anchor="middle">滚动查看全部 16 周</text>
+        </g>
+      </g>
+    </g>
+
+    <!-- ═══ 已上传文件 ═══ -->
+    <g transform="translate(0,942)">
+      <text x="0" y="0" font-size="14" font-weight="700" fill="#0f172a">已上传文件</text>
+      <g transform="translate(0,28)">
+        <!-- Row 1 -->
+        <g transform="translate(0,0)">
+          <rect x="0" y="0" width="1008" height="56" rx="12" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+          <text x="28" y="26" font-size="13" font-weight="600" fill="#0f172a">大数据概论_calendar.pdf</text>
+          <text x="28" y="44" font-size="11" fill="#94a3b8">2025-09-01 · 教学日历 · 关联 Job #42</text>
+          <rect x="890" y="14" width="60" height="24" rx="6" fill="#dcfce7"/><text x="920" y="31" font-size="10" font-weight="600" fill="#22c55e" text-anchor="middle">完成</text>
+        </g>
+        <!-- Row 2 -->
+        <g transform="translate(0,72)">
+          <rect x="0" y="0" width="1008" height="56" rx="12" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+          <text x="28" y="26" font-size="13" font-weight="600" fill="#0f172a">hbase_arch_doc.pdf</text>
+          <text x="28" y="44" font-size="11" fill="#94a3b8">2025-09-15 · 知识文档 · 关联 Job #45</text>
+          <rect x="890" y="14" width="60" height="24" rx="6" fill="#dcfce7"/><text x="920" y="31" font-size="10" font-weight="600" fill="#22c55e" text-anchor="middle">完成</text>
+        </g>
+        <!-- Row 3 -->
+        <g transform="translate(0,144)">
+          <rect x="0" y="0" width="1008" height="56" rx="12" fill="#fff" stroke="#f1f5f9" filter="url(#ss)"/>
+          <text x="28" y="26" font-size="13" font-weight="600" fill="#0f172a">spark_intro_slides.pdf</text>
+          <text x="28" y="44" font-size="11" fill="#94a3b8">2025-10-01 · 课件 · 关联 Job #58</text>
+          <rect x="890" y="14" width="60" height="24" rx="6" fill="#fef3c7"/><text x="920" y="31" font-size="10" font-weight="600" fill="#d97706" text-anchor="middle">处理中</text>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg>

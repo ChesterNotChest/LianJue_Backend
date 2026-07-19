@@ -7,7 +7,7 @@ from repositories.syllabus_repo import get_syllabus_by_id
 from tasks.learning_profile import alignment
 from tasks.learning_profile import profile_builder
 from tasks.learning_profile import storage as profile_storage
-from tasks.learning_profile.personal_syllabus import init_profile_personal_syllabus, read_profile_personal_syllabus
+from tasks.learning_profile.personal_syllabus import read_profile_personal_syllabus
 from tasks.learning_profile.storage import load_existing_profile, load_json_file, merge_profile_update
 
 def _tool_load_history_context(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -42,7 +42,9 @@ def _tool_load_personal_syllabus_context(state: Dict[str, Any]) -> Dict[str, Any
 	loaded_personal_syllabuses = load_personal_syllabus_rows(int(state['user_id']), state.get('syllabus_id'))
 	initialized = False
 	if not loaded_personal_syllabuses and state.get('syllabus_id') is not None:
-		created = init_profile_personal_syllabus(int(state['user_id']), int(state['syllabus_id']))
+		from tasks.learning_profile.service import _init_profile_personal_syllabus_from_service
+
+		created = _init_profile_personal_syllabus_from_service(int(state['user_id']), int(state['syllabus_id']))
 		if isinstance(created, dict):
 			initialized = True
 			personal_json = created.get('personal_syllabus') if isinstance(created.get('personal_syllabus'), dict) else {}
@@ -82,7 +84,9 @@ def _tool_read_personal_syllabus_context(state: Dict[str, Any]) -> Dict[str, Any
 def _tool_init_personal_syllabus_context(state: Dict[str, Any]) -> Dict[str, Any]:
 	created = None
 	if state.get('syllabus_id') is not None:
-		created = init_profile_personal_syllabus(int(state['user_id']), int(state['syllabus_id']))
+		from tasks.learning_profile.service import _init_profile_personal_syllabus_from_service
+
+		created = _init_profile_personal_syllabus_from_service(int(state['user_id']), int(state['syllabus_id']))
 	personal_syllabus = created.get('personal_syllabus') if isinstance(created, dict) else None
 	state['profile_personal_syllabus'] = personal_syllabus
 	state['profile_personal_syllabus_loaded'] = isinstance(personal_syllabus, dict)
@@ -238,4 +242,3 @@ def _tool_save_or_update_profile(state: Dict[str, Any]) -> Dict[str, Any]:
 		'profile_path': profile_path,
 		'profile_revision': merged_profile.get('profile_revision'),
 	}
-

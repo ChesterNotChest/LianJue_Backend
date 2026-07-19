@@ -198,6 +198,33 @@ def test_syllabus_adapter_adds_low_confidence_implied_hbase_concepts():
     assert rowkey["reliability"] == 0.35
 
 
+def test_syllabus_adapter_adds_phrase_fallback_concepts_for_sparse_late_periods():
+    syllabus = {
+        "period": [
+            {
+                "week_index": "12",
+                "content": "行业应用与前沿：智慧城市、医疗数据分析、金融风控",
+                "enhanced_content": "讨论不同行业的大数据应用案例和发展趋势",
+                "importance": "medium",
+            }
+        ]
+    }
+
+    learning_tree = syllabus_json_to_learning_tree(syllabus)
+    concept_nodes = [
+        node
+        for node in learning_tree.values()
+        if node.get("node_source") == "syllabus_period_concept"
+    ]
+    concept_titles = {node["title"] for node in concept_nodes}
+
+    assert len(concept_nodes) >= 2
+    assert {"智慧城市", "医疗数据分析"}.issubset(concept_titles)
+    assert all(node["decomposition_method"] == "rule_fallback" for node in concept_nodes)
+    assert all(node["confidence"] == 0.5 for node in concept_nodes)
+    assert all(node["matched_by"] == ["period.text_phrase"] for node in concept_nodes)
+
+
 def test_syllabus_adapter_uses_agent_concepts_when_injected():
     syllabus = {
         "period": [

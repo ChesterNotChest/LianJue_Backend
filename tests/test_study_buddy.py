@@ -8,6 +8,7 @@ import pytest
 
 from tasks.study_buddy.contracts import BUDDY_TREE_SCHEMA_VERSION
 from tasks.study_buddy.memory import create_memory_tag, delete_memory_tag, load_memory_tags
+from tasks.study_buddy.messages import append_buddy_message, load_buddy_messages
 from tasks.study_buddy.tree import build_buddy_tree
 from tasks.study_buddy.tree_store import load_buddy_tree, save_buddy_tree
 
@@ -128,7 +129,9 @@ def test_load_nonexistent_tree(monkeypatch, tmp_path):
 @pytest.fixture(autouse=True)
 def _temp_memory_root(monkeypatch, tmp_path):
     import tasks.study_buddy.memory as mem
+    import tasks.study_buddy.messages as msg
     monkeypatch.setattr(mem, "_memory_root", lambda: tmp_path)
+    monkeypatch.setattr(msg, "_memory_root", lambda: tmp_path)
 
 
 def test_create_memory_tag():
@@ -196,3 +199,61 @@ def test_empty_tag_rejected():
     r = create_memory_tag(1, 29, "  ")
     assert r["success"] is False
     assert r["action"] == "empty"
+
+
+def test_buddy_messages_roundtrip():
+    append_buddy_message(1, 29, role="user", text="你好", source="chat")
+    append_buddy_message(1, 29, role="buddy", text="我在", source="chat")
+    append_buddy_message(1, 29, role="buddy", text="进度变了", source="proactive")
+
+    messages = load_buddy_messages(1, 29)
+    assert [m["from"] for m in messages] == ["user", "buddy", "proactive"]
+    assert [m["text"] for m in messages] == ["你好", "我在", "进度变了"]
+
+
+def test_buddy_chat_persists_short_history(monkeypatch):
+    import tasks.study_buddy_task as task
+
+    def fake_chat_with_buddy(**kwargs):
+        assert load_buddy_messages(kwargs["user_id"], kwargs["syllabus_id"]) == []
+        return {"reply": "我收到啦", "memory_tags_written": []}
+
+    monkeypatch.setattr(task, "chat_with_buddy", fake_chat_with_buddy)
+    result = task.buddy_chat(1, 29, "今天学什么")
+
+    assert result["reply"] == "我收到啦"
+    messages = task.list_buddy_messages(1, 29)
+    assert [m["from"] for m in messages] == ["user", "buddy"]
+    assert [m["text"] for m in messages] == ["今天学什么", "我收到啦"]
+
+
+def test_trigger_study_buddy_persists_proactive_message(monkeypatch):
+    import tasks.study_buddy_task as task
+
+    monkeypatch.setattr(task, "proactive_buddy_message", lambda **kwargs: "这一步开了")
+    msg = task.trigger_study_buddy(1, 29, plan={}, study_graph_features={})
+
+    assert msg == "这一步开了"
+    messages = task.list_buddy_messages(1, 29)
+    assert len(messages) == 1
+    assert messages[0]["from"] == "proactive"
+    assert messages[0]["text"] == "这一步开了"
+
+
+def test_notify_study_buddy_event_persists_single_event_message(monkeypatch):
+    import tasks.study_buddy_task as task
+
+    monkeypatch.setattr(task, "proactive_buddy_event_message", lambda **kwargs: "event reply")
+    msg = task.notify_study_buddy_event(
+        1,
+        29,
+        "resource_ready",
+        payload={"resource_type": "quiz"},
+    )
+
+    assert msg == "event reply"
+    messages = task.list_buddy_messages(1, 29)
+    assert len(messages) == 1
+    assert messages[0]["from"] == "proactive"
+    assert messages[0]["source"] == "event"
+    assert messages[0]["metadata"]["event_type"] == "resource_ready"

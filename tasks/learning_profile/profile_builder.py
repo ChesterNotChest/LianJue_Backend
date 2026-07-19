@@ -316,7 +316,7 @@ def summarize_activity(events: Sequence[dict], now_ts: int) -> Dict[str, Any]:
 	}
 
 
-def build_answer_mastery(answer_events: Sequence[dict], latest_ts: int) -> Dict[str, Any]:
+def build_answer_mastery(answer_events: Sequence[dict], latest_ts: int, learning_events: Sequence[dict] = ()) -> Dict[str, Any]:
 	answer_stats: Dict[str, Dict[str, float]] = defaultdict(lambda: {
 		'weighted_total': 0.0,
 		'weighted_correct': 0.0,
@@ -324,7 +324,7 @@ def build_answer_mastery(answer_events: Sequence[dict], latest_ts: int) -> Dict[
 		'evidence': [],
 		'latest_ts': 0.0,
 	})
-	for event in answer_events:
+	for event in list(answer_events or []) + list(learning_events or []):
 		knowledge_points = event.get('knowledge_points') or []
 		if not knowledge_points:
 			continue
@@ -336,9 +336,14 @@ def build_answer_mastery(answer_events: Sequence[dict], latest_ts: int) -> Dict[
 			weight = 0.75
 		else:
 			weight = 0.5
+		if event.get('source') == 'learning_records':
+			weight *= 0.55
 		correct = event.get('correct')
 		score = event.get('score')
-		score_value = float(score) if isinstance(score, (int, float)) else (1.0 if correct is True else 0.0 if correct is False else 0.5)
+		if isinstance(score, (int, float)):
+			score_value = alignment.clip(float(score))
+		else:
+			score_value = 1.0 if correct is True else 0.0 if correct is False else 0.5
 		for kp in knowledge_points:
 			item = answer_stats[kp]
 			item['weighted_total'] += weight
@@ -592,7 +597,7 @@ def compute_learning_profile_bundle(state: Dict[str, Any], normalize_events) -> 
 	activity_summary = summarize_activity(all_events, now_ts)
 	latest_ts = int(activity_summary.get('latest_ts') or 0) or now_ts
 
-	answer_mastery = build_answer_mastery(answer_events, latest_ts)
+	answer_mastery = build_answer_mastery(answer_events, latest_ts, learning_events)
 	answer_mastery_scores = answer_mastery['by_knowledge_point']
 	knowledge_point_details = answer_mastery['knowledge_point_details']
 	answer_mean = mean_or_zero(list(answer_mastery_scores.values()))

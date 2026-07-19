@@ -15,7 +15,7 @@ from repositories.user_syllabus_repo import create_user_syllabus, list_user_syll
 from schemas.syllabus import Syllabus
 from schemas.user_syllabus import UserSyllabus
 from schemas.file import File
-from constant import SyllabusPermission
+from constant import SyllabusStatus
 from utils.markdown_utils import preprocess_markdown_content, clean_llm_response
 from utils.llm_utils import get_model_instance
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -166,7 +166,7 @@ def _delete_calendar_file_if_created(uploaded_file: dict) -> None:
         os.remove(file_path_to_remove)
 
 
-def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None, user_id: int = None) -> Syllabus:
+def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time: str = None, user_id: int = None, title: str = None) -> Syllabus:
     # 上传一份新的教学日历，生成一个新的syllabus记录
     if not upload_time:
         upload_time = datetime.utcnow().isoformat()
@@ -178,12 +178,12 @@ def upload_calendar(file_path, file_name, file_bytes: bytes = None, upload_time:
         syllabus = create_syllabus(
             edu_calendar_path=uploaded_file['path'],
             file_id=uploaded_file['file_id'],
+            title=title,
         )
         if syllabus is not None and user_id is not None:
             create_user_syllabus(
                 user_id=int(user_id),
                 syllabus_id=int(getattr(syllabus, 'syllabus_id', None)),
-                syllabus_permission=SyllabusPermission.OWNER.value,
             )
 
         return syllabus
@@ -614,54 +614,78 @@ def _get_primary_graph_info(syllabus_id: int):
     return _get_graph_info_from_legacy_payload(syllabus_id)
 
 
+def _get_all_graph_info(syllabus_id: int) -> list[dict]:
+    """Return all graph_id + graphId (graph name) pairs for a syllabus."""
+    graph_ids = list_graphs_by_syllabus(syllabus_id)
+    result = []
+    for gid in graph_ids:
+        graph = get_graph_by_id(gid)
+        if graph:
+            result.append({
+                'graph_id': getattr(graph, 'graph_id', gid),
+                'graph_name': getattr(graph, 'graphId', None),
+            })
+    if not result:
+        primary_id, primary_name = _get_graph_info_from_legacy_payload(syllabus_id)
+        if primary_id is not None:
+            result.append({'graph_id': primary_id, 'graph_name': primary_name})
+    return result
+
+
 def _serialize_teacher_syllabus(syllabus, user_binding=None):
     graph_id, graph_name = _get_primary_graph_info(getattr(syllabus, 'syllabus_id', None))
-    permission = getattr(user_binding, 'syllabus_permission', None)
+    all_graphs = _get_all_graph_info(getattr(syllabus, 'syllabus_id', None))
 
     return {
         'syllabus_id': getattr(syllabus, 'syllabus_id', None),
         'title': getattr(syllabus, 'title', None),
+        'status': getattr(syllabus, 'status', 'draft'),
         'edu_calendar_path': getattr(syllabus, 'edu_calendar_path', None),
         'syllabus_draft_path': getattr(syllabus, 'syllabus_draft_path', None),
         'syllabus_path': getattr(syllabus, 'syllabus_path', None),
         'day_one_time': _serialize_day_one_time(getattr(syllabus, 'day_one_time', None)),
-        'syllabus_permission': permission,
         'graph_id': graph_id,
         'graph_name': graph_name,
+        'graph_ids': [g['graph_id'] for g in all_graphs],
+        'graph_names': [g['graph_name'] for g in all_graphs if g.get('graph_name')],
     }
 
 
 def _serialize_student_syllabus(syllabus, user_binding):
     personal_path = getattr(user_binding, 'personal_syllabus_path', None)
+    all_graphs = _get_all_graph_info(getattr(syllabus, 'syllabus_id', None))
     return {
         'syllabus_id': getattr(syllabus, 'syllabus_id', None),
         'title': getattr(syllabus, 'title', None),
         'personal_syllabus_path': personal_path,
         'day_one_time': _serialize_day_one_time(getattr(syllabus, 'day_one_time', None)),
         'isLearning': bool(personal_path),
+        'graph_ids': [g['graph_id'] for g in all_graphs],
+        'graph_names': [g['graph_name'] for g in all_graphs if g.get('graph_name')],
     }
 
 
-def _list_manageable_syllabuses(user_id: int):
-    bindings = list_user_syllabuses(user_id, syllabus_permission=SyllabusPermission.OWNER.value)
-    result = []
+def _serialize_operator_syllabus(syllabus) -> dict:
+    """Serialize a syllabus for the operator view, including bound user count."""
+    from schemas.user_syllabus import UserSyllabus
 
-    for binding in bindings:
-        syllabus = get_syllabus_by_id(getattr(binding, 'syllabus_id', None))
-        if not syllabus:
-            continue
-        result.append(_serialize_teacher_syllabus(syllabus, binding))
-
-    return result
+    d = _serialize_teacher_syllabus(syllabus)
+    d["bound_users"] = (
+        UserSyllabus.query.filter_by(syllabus_id=syllabus.syllabus_id).count()
+    )
+    return d
 
 
 def _list_learning_syllabuses(user_id: int):
+    """Return only published syllabuses bound to the user."""
     bindings = list_user_syllabuses(user_id)
     result = []
 
     for binding in bindings:
-        syllabus = get_syllabus_by_id(getattr(binding, 'syllabus_id', None))
+        syllabus = get_syllabus_by_id(getattr(binding, "syllabus_id", None))
         if not syllabus:
+            continue
+        if syllabus.status != SyllabusStatus.PUBLISHED.value:
             continue
         result.append(_serialize_student_syllabus(syllabus, binding))
 
@@ -669,18 +693,22 @@ def _list_learning_syllabuses(user_id: int):
 
 
 def list_all_syllabuses_brief_info(user_id: int = None, manage: bool = False):
-    """List syllabus brief info for teacher manage view or student learning view.
+    """List syllabus brief info.
 
     - user_id is None: return all syllabuses in teacher-style shape.
-    - manage=True: return only syllabuses the user can manage (owner).
-    - manage=False: return all syllabuses bound to the user in student-style shape.
+    - user_id + user.permission == 'operator': return all syllabuses with operator metadata.
+    - user_id + user.permission == 'user': return only published syllabuses bound to the user.
     """
+    from repositories.user_repo import get_user_by_id
+
     if user_id is None:
         syllabuses = list_all_syllabuses()
         return [_serialize_teacher_syllabus(s) for s in syllabuses]
 
-    if manage:
-        return _list_manageable_syllabuses(user_id)
+    user = get_user_by_id(user_id)
+    if user and user.permission == "operator":
+        syllabuses = list_all_syllabuses()
+        return [_serialize_operator_syllabus(s) for s in syllabuses]
 
     return _list_learning_syllabuses(user_id)
 

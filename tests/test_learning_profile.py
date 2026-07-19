@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from tasks import learning_profile_task as lpt
 from tasks.learning_profile import agent_runtime as profile_runtime
 from tasks.learning_profile import agent_tools as profile_tools
+from tasks.learning_profile import alignment, profile_builder
 from tasks.learning_profile import service as profile_service
 from tasks.learning_profile.models import LearningProfileResult
 
@@ -153,6 +154,30 @@ def test_build_learning_profile_uses_behavior_answer_and_resource_signals(
     )
     assert profile["signals"]["answer_record_count"] == 3
     assert profile["evidence"]
+
+
+def test_learning_record_scores_contribute_to_knowledge_mastery():
+    learning_events = alignment.normalize_learning_events([
+        {
+            "event_type": "practice",
+            "score": 0.48,
+            "started_at": 1760000000,
+            "meta": {"knowledge_points": ["function_practice"]},
+        },
+        {
+            "event_type": "study_session",
+            "score": 0.72,
+            "started_at": 1760000000,
+            "meta": {"knowledge_points": ["hbase_intro"]},
+        },
+    ])
+
+    mastery = profile_builder.build_answer_mastery([], 1760000000, learning_events)
+
+    assert mastery["by_knowledge_point"]["function_practice"] == 0.48
+    assert mastery["knowledge_point_details"]["function_practice"]["level"] == "medium"
+    assert mastery["by_knowledge_point"]["hbase_intro"] == 0.72
+    assert mastery["knowledge_point_details"]["hbase_intro"]["level"] == "high"
 
 
 def test_build_learning_profile_returns_tool_profile_when_agent_final_output_fails(monkeypatch):

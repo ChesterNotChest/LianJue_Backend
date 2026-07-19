@@ -26,6 +26,7 @@ student message
 - `answer_learning_question`
 - `record_learning_feedback`
 - `skip_current_step`
+- `abandon_learning_plan`
 - `ask_goal_clarification`
 
 即时答疑相关枚举定义在 `tasks/total_agent/agent_contracts.py`：
@@ -65,7 +66,10 @@ session window:
 
 - Total Agent 是全局调度中枢，负责 intent、上下文读取、工具路由、异常回退和统一输出。
 - Total Agent 不直接生成教学内容、不直接改写画像、不直接编辑学习树，只通过 task 门户调用子模块。
-- 个性化学习闭环遵循“画像描述状态 -> 推荐决定路径 -> 资源服务当前节点 -> 反馈回流计划与学习树”的顺序。
+  - 画像观察通过 `call_profile_agent` → `build_learning_profile` → `run_learning_profile_agent()` 委托 Profile Agent 全量计算派生字段。
+  - 学习反馈通过 `record_learning_feedback` → `run_student_agent()` 委托 Student Agent 进行 RAG 检索、树上下文化、父节点裁决和掌握度更新。
+  - 路径推荐通过 `call_recommendation_agent` → `run_personal_recommendation_agent()` 优先走 Recommendation Agent，失败时 fallback 到确定性路径。
+- 个性化学习闭环遵循”画像描述状态 -> 推荐决定路径 -> 资源服务当前节点 -> 反馈回流计划与学习树”的顺序。
 - “资源推送”在当前实现中不是独立业务模块，而是当前 active plan step 的资源生成和前端展示动作。
 - 未实现的内容审核 Agent、学习效果评估 Agent、视频/动画脚本生成不作为当前 Total Agent 能力承诺；当前只保留后续扩展边界。
 
@@ -85,8 +89,8 @@ Agent 工具定义在 `tasks/total_agent/agent_tools.py`：
 
 ```text
 load_total_context
-infer_user_intent
-run_learning_recommendation
+note_intent
+call_recommendation_agent
 normalize_learning_goal_for_recommendation
 accept_learning_plan
 get_next_learning_task
@@ -95,17 +99,22 @@ retrieve_learning_evidence
 answer_learning_question
 record_learning_feedback
 skip_current_step
+abandon_learning_plan
+call_profile_agent
+list_my_resources
+get_course_learning_tree_summary
 ```
 
 Total Agent 不直接编造业务产物，只通过 task 门户调用子能力：
 
 ```text
 learning_profile_task
-  -> get_persisted_learning_profile
   -> get_or_build_learning_profile only when explicitly opted in
+  -> 增量观察通过 call_profile_agent → build_learning_profile → run_learning_profile_agent()
+     Profile Agent 执行 normalize_events → compute_features → assemble_profile 完整管线
 
 personal_recommendation_task
-  -> run_recommendation_route_from_payload
+  -> run_personal_recommendation_agent (优先) → fallback run_recommendation_route_from_payload
   -> accept_recommendation_path
   -> get_active_learning_plan
   -> append / update learning_plan manifest
@@ -116,7 +125,13 @@ generative_task
 study_graph_task
   -> get_learning_tree_features
   -> get_course_learning_tree_summary
-  -> submit_learning_tree_changes for feedback sync
+  -> 知识树写入通过 record_learning_feedback → run_student_agent()
+     Student Agent 执行 rag_search → get_tree_context → build_changes → submit_changes
+
+study_buddy_task
+  -> notify_study_buddy_event for single high-priority learning event
+  -> trigger_study_buddy as tree-change fallback
+  -> buddy_chat / list_buddy_messages for independent buddy panel
 ```
 
 ## 关键行为
@@ -131,8 +146,8 @@ study_graph_task
 - 真实画像字段保持 Profile Agent 原生风格，例如 `concept_gaps`、`bottleneck_topics`、`knowledge_mastery`、`resource_preference`。
 - `normalize_profile_summary` 将真实画像归一为调度摘要：`weak_points`、`preferred_formats`、`risk_level`、`time_budget`。
 - `build_current_step_resource_strategy` 根据 message、当前 step、profile 和 study graph 生成资源策略。
-- 用户显式 `resource_types` 优先，不被 profile 偏好覆盖。
-- 当前 step 命中画像或学习树弱点时，资源策略会倾向 `targeted`，并可扩展到 `documents + quiz + mindmap`。
+- 资源策略优先级为：用户显式 `resource_types` 最高；明确点名 PPT、文档、编程练习等具体类型次之；命中画像或学习树弱点时走 `targeted` 并可扩展到 `documents + quiz + mindmap`；普通练习/复习请求在没有弱点上下文时才收敛为单一 quiz/review。
+- “随便给我来一个”这类模糊资源请求在没有 active plan 时进入 `ask_goal_clarification`；已有 active plan 时继续当前 step。
 - `tool_generate_current_step_resource` 不直接逐个等待 Resource Agent。它只调用一次 `process_resource_generation_request`；处理器先冻结完整 `resource_type_tasks`，再并行调用多个单类型 Resource Agent。
 - 每个单类型 Resource Agent 只能生成 `assigned_resource_type` 对应资源；自然语言 message/question 不能新增或覆盖结构化资源类型。
 - 资源生成结果除扁平 `resources` 外，还返回 `resource_tasks`、`resource_results`、`failed_resource_types` 和 `overall_status`，供前端展示每类资源状态。
@@ -148,6 +163,7 @@ study_graph_task
 - RAG query 会拼接 message、session topic hints、learning goal、next task 和相关 weak nodes，并限制长度；低相关 evidence 返回 `low_relevance_evidence` warning。
 - profile weak points 只在和问题、当前 step、outcomes、study graph 或 session hints 相关时进入回答文本。
 - `tool_status_events` 是当前同步运行结果的稳定字段；它可供前端观察工具阶段，但还不是正式 streaming/SSE 协议。
+- Total Agent 每轮最多写入一条学伴主动消息。资源生成工具成功时可即时通知 `resource_ready`；最终结果阶段会按事件优先级选择 `plan_accepted`、`learning_feedback_recorded`、`step_skipped`、`recommendation_ready`、`question_answered` 等事件之一，若事件消息为空才走学习记录树变化 fallback。
 
 即时答疑 answer payload 稳定结构：
 
@@ -230,13 +246,33 @@ study_graph_task
 - `message` 是 debug/fallback 短文本，允许为空，不作为 UI 状态判断依据。
 - `payload` 只放轻量摘要，不放完整 profile、RAG 原文或资源正文。
 
+状态取值：
+
+```text
+pending
+running
+succeeded
+failed
+skipped
+warning
+```
+
+当前同步执行路径里，工具 wrapper 默认产生：
+
+```text
+stage running
+  -> succeeded  # 工具返回 success!=false
+  -> failed     # 工具抛异常或返回 success=false
+```
+
+`pending` 主要用于流式 tool call 协议里的前端占位；`skipped` 和 `warning` 是稳定枚举预留，适合后续把“有意跳过”和“成功但有风险”显式展示出来。未知 status 会被 `create_status_event` 归一为 `warning`。
+
 当前已接入的状态来源：
 
 ```text
 total_agent
   load_total_context
-  infer_user_intent
-  run_learning_recommendation
+  call_recommendation_agent
   normalize_learning_goal_for_recommendation
   accept_learning_plan
   get_next_learning_task
@@ -245,6 +281,9 @@ total_agent
   answer_learning_question
   record_learning_feedback
   skip_current_step
+  abandon_learning_plan
+  call_profile_agent
+  get_course_learning_tree_summary
 
 profile_agent
   load_context / assemble_profile
@@ -275,6 +314,36 @@ study_graph
 - 已能支持请求完成后展示阶段轨迹，也能在服务端 callback 存在时即时发出 running/succeeded/failed。
 - 暂不承诺模型 token 流式输出，也不暴露 pydantic-ai 内部 tool calling 细节。
 - 如果后续要做前端实时进度条，应在现有 `tool_status_events` schema 上增加 SSE/WebSocket/polling 出口，而不是新增一套状态协议。
+
+## Total Agent 业务状态机
+
+Total Agent 自身不持久化长期业务状态，主要消费和推进其他模块状态：
+
+| 状态对象 | 字段 | 取值 | Total Agent 权限 |
+|---|---|---|---|
+| intent | `intent` | `recommend_learning_path`、`accept_recommendation`、`generate_current_step_resource`、`answer_learning_question`、`record_learning_feedback`、`skip_current_step`、`ask_goal_clarification` | 本轮路由决策 |
+| profile source | `profile_summary.profile_source` | `persisted_profile`、`built_profile`、`none` | 默认只读 persisted；显式 opt-in 才 build |
+| learning plan step | `active_plan.steps[].status` | `pending`、`active`、`completed`、`skipped` | 只通过 recommendation task 门户推进 |
+| resource batch | `generation_result.overall_status` | `succeeded`、`partial_success`、`failed` | 只读聚合结果并返回给前端 |
+| buddy event | `buddy_event.event_type` | `resource_ready`、`plan_accepted`、`learning_feedback_recorded`、`step_skipped`、`recommendation_ready`、`question_answered` | 每轮最多写一条学伴消息 |
+
+intent 路由状态机：
+
+```text
+load_total_context
+  -> infer_user_intent
+  -> one terminal intent
+  -> execute intent tool chain
+  -> suggested_next_action
+```
+
+关键边界：
+
+- `answer_learning_question` 不推进 plan、不生成资源、不写 feedback。
+- `generate_current_step_resource` 不推进 plan；成功后可触发 `resource_ready` 学伴事件。
+- `record_learning_feedback` 可把当前 active step 改为 `completed`，再激活下一个 pending step，并尝试同步 Study Graph。
+- `skip_current_step` 可把当前 active step 改为 `skipped`，再激活下一个 pending step。
+- `ask_goal_clarification` 是安全终态，不创建推荐、不创建 plan、不生成资源。
 
 ## 资源生成
 
@@ -350,6 +419,22 @@ tests/fixtures/total_agent/deep_student_state.json
 | real RAG QA | `test_total_agent_e2e_real_deep_state_answer_learning_question` | 深状态 + 真实 RAG 概念型即时答疑 |
 
 ## 最近收口
+
+**2026-07-16：子 Agent 收口（旁路修复）**
+
+三个旁路已收口为对子 Agent 的正确委托：
+
+| 旁路 | 位置 | 修复 |
+|------|------|------|
+| Profile 直写 | `tool_note_profile_observation` | 确定性 merge 后 best-effort 调 `build_learning_profile` → `run_learning_profile_agent()` 重算派生字段 |
+| Study Graph 直写 | `_record_step_status` | `submit_learning_tree_changes()` → `run_student_agent()`，经 RAG + tree context + parent_candidate 解析 |
+| Recommendation 不走 Agent | `tool_run_learning_recommendation` | `run_personal_recommendation_agent()` 优先，失败 fallback 确定性路径 |
+
+常量重命名：
+- `TOOL_NOTE_PROFILE_OBSERVATION` → `TOOL_CALL_PROFILE_AGENT`
+- `TOOL_RUN_LEARNING_RECOMMENDATION` → `TOOL_CALL_RECOMMENDATION_AGENT`
+
+详细设计见 `docs/subagent_inbox_contract.md`（状态：✅ 已实现）。
 
 默认 E2E 入口已通过：
 
@@ -431,6 +516,8 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 - 深状态 E2E、profile-driven continue、study graph weak/stale、feedback sync、clarification/no-force。
 - 全真实 opt-in 与 aligned graph 稳定成功闭环。
 - Agent 状态事件与 `tool_status_events`。
+- 子 Agent 收口（旁路修复），详见 `docs/subagent_inbox_contract.md`（✅ 已实现）。
+- 意图门禁清退，详见 `docs/intent_gates_cleanup_contract.md`（✅ 已实现）。
 
 旧阶段文档可删除；如果后续发现旧文档仍有有效事实，应先融合进本文或测试，再删除旧文档。
 

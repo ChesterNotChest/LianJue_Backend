@@ -86,6 +86,52 @@ display:
   color_state = weak | growing | stable | mastered
 ```
 
+## 状态机
+
+Study Graph 有三套需要分清的状态：
+
+| 状态对象 | 字段 | 取值 | 写入方 | 读取方 |
+|---|---|---|---|---|
+| 变更候选结果 | `results[].status` / change log `status` | `accepted`、`merged`、`rejected`、`needs_review`、`skipped` | `apply_learning_tree_changes` | 测试、调试、审计、Total Agent warning |
+| 节点掌握度 | `node.mastery.label` | `weak`、`learning`、`normal`、`mastered` | `compute_mastery_update` | features、课程聚合、Total Agent、学伴 |
+| 节点展示状态 | `node.display.growth_stage` / `color_state` | `seed/sprout/branch/fruit`、`weak/growing/stable/mastered` | `compute_display_update` | 前端图展示 |
+
+变更候选状态机：
+
+```text
+incoming change
+  -> skipped      # client_change_id 已处理过，幂等跳过，只写 change log
+  -> needs_review # 低置信度或命中歧义，需要人工/后续策略处理，只写 change log
+  -> rejected     # unsupported op、未实现 op、明确无效目标，只写 change log
+  -> accepted     # 新建知识节点，写 node/edge/change log
+  -> merged       # 命中已有节点并合并，写 node/edge/change log
+```
+
+掌握度状态机：
+
+```text
+current mastery score
+  + signal delta * confidence
+  -> clamp 0.0..1.0
+  -> score_to_mastery_label
+```
+
+展示状态映射固定为：
+
+```text
+weak     -> growth_stage=seed,   color_state=weak
+learning -> growth_stage=sprout, color_state=growing
+normal   -> growth_stage=branch, color_state=stable
+mastered -> growth_stage=fruit,  color_state=mastered
+```
+
+边界：
+
+- `needs_review`、`rejected`、`skipped` 不写入节点或边，只写 change log。
+- `accepted` 表示新节点创建；`merged` 表示归一化 title/alias 命中已有节点并更新。
+- `update_mastery` 和 `attach_parent` 当前仍是 rejected，不是未完成的半写状态。
+- Learning Plan 的 step 状态只在调用方允许时转成 Study Graph change；Study Graph 不反向修改 Learning Plan。
+
 路径常量位于 `constant.py`：
 
 - `BasePath.STUDY_GRAPH_ROOT = "/study_graph"`

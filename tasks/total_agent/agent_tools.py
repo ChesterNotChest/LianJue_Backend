@@ -8,9 +8,13 @@ from uuid import uuid4
 from typing import Any, Dict, Iterable, List, Optional
 
 from tasks import personal_recommendation_task as prt
+import json
+from pathlib import Path
+
 from tasks.common.status_events import (
     STATUS_FAILED,
     STATUS_RUNNING,
+    STATUS_SKIPPED,
     STATUS_SUCCEEDED,
     emit_status_event,
     emit_status_pair,
@@ -101,6 +105,7 @@ from tasks.total_agent.agent_contracts import (
     REUSE_REJECT_TOO_EASY,
     REUSE_REJECT_TOO_HARD,
     REUSE_REJECT_TOPIC_MISMATCH,
+    TOOL_ABANDON_LEARNING_PLAN,
     TOOL_ACCEPT_LEARNING_PLAN,
     TOOL_ANSWER_LEARNING_QUESTION,
     TOOL_APPLY_LEARNING_EFFECT_SIGNAL,
@@ -111,10 +116,12 @@ from tasks.total_agent.agent_contracts import (
     TOOL_GET_NEXT_LEARNING_TASK,
     TOOL_INFER_USER_INTENT,
     TOOL_LOAD_TOTAL_CONTEXT,
+    TOOL_LIST_MY_RESOURCES,
     TOOL_NORMALIZE_LEARNING_GOAL,
+    TOOL_CALL_PROFILE_AGENT,
     TOOL_RECORD_LEARNING_FEEDBACK,
     TOOL_RETRIEVE_LEARNING_EVIDENCE,
-    TOOL_RUN_LEARNING_RECOMMENDATION,
+    TOOL_CALL_RECOMMENDATION_AGENT,
     TOOL_SKIP_CURRENT_STEP,
     TOTAL_AGENT_CONTEXT_SCHEMA_VERSION,
     TOTAL_AGENT_LEARNING_EVENT_RECORDED,
@@ -123,6 +130,72 @@ from tasks.total_agent.agent_contracts import (
 )
 
 TOTAL_AGENT_STATUS_AGENT = "total_agent"
+
+PLAN_STATE_SELECTED_PATH = "selected_path"
+PLAN_STATE_CANDIDATE_PATH = "candidate_path"
+PLAN_STATE_NO_PATH = "no_path"
+
+
+def _ensure_syllabus_term_table(syllabus_id: int) -> list[str]:
+    """从大纲 enhanced_content 提取学科术语表，缓存到 syllabus JSON 的 _term_table 字段。"""
+    from repositories.syllabus_repo import get_syllabus_by_id
+    from tasks.learning_profile.storage import load_json_file
+
+    syllabus = get_syllabus_by_id(syllabus_id)
+    if not syllabus:
+        return []
+    path_str = getattr(syllabus, "syllabus_path", None)
+    if not path_str:
+        return []
+    spath = Path(path_str)
+    if not spath.exists():
+        return []
+
+    data = load_json_file(str(spath))
+    if not isinstance(data, dict):
+        return []
+
+    # 已有缓存
+    cached = data.get("_term_table")
+    if isinstance(cached, list) and cached:
+        return [str(t) for t in cached if t]
+
+    # LLM 提取
+    periods = data.get("period", []) if isinstance(data.get("period"), list) else []
+    content_text = " ".join(
+        str(e.get("enhanced_content") or e.get("content") or "")
+        for e in periods if isinstance(e, dict)
+    )[:6000]
+    if not content_text.strip():
+        return []
+
+    try:
+        from tasks.common.agent_model import build_openai_compatible_model
+        model = build_openai_compatible_model(agent_name="term extractor")
+        result = model.complete(
+            f"Extract 15-30 key subject-specific terminology items from this syllabus content. "
+            f"Return ONLY a JSON array of strings, no explanation. Each term should be 2-8 Chinese characters "
+            f"representing a specific concept, technique, or topic taught in this subject.\n\n{content_text}"
+        )
+        text = str(result or "").strip()
+        # 提取 JSON 数组
+        import re as _re
+        match = _re.search(r"\[.*?\]", text, _re.DOTALL)
+        if match:
+            terms = json.loads(match.group())
+            if isinstance(terms, list):
+                terms = [str(t).strip() for t in terms if str(t).strip()]
+                data["_term_table"] = terms
+                # 写回大纲 JSON
+                try:
+                    spath.parent.mkdir(parents=True, exist_ok=True)
+                    spath.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+                return terms
+    except Exception:
+        pass
+    return []
 
 
 def _utc_timestamp() -> int:
@@ -149,6 +222,213 @@ def _list_from_any(value: Any) -> list:
 
 def _safe_text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _bounded_debug_text(value: Any, limit: int = 160) -> str:
+    text = _safe_text(value)
+    return text[:limit]
+
+
+def _debug_log(message: str) -> None:
+    try:
+        log_dir = Path("logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        with (log_dir / "chat_debug.log").open("a", encoding="utf-8") as handle:
+            handle.write(f"{datetime.now(timezone.utc).isoformat()} TOTAL_AGENT_TOOL {message}\n")
+    except Exception:
+        pass
+
+
+def _compute_plan_state_kind(active_plan: Any, pending_recommendation: Any) -> str:
+    plan = _safe_dict(active_plan)
+    if plan.get("plan_id"):
+        return PLAN_STATE_SELECTED_PATH
+    pending = _safe_dict(pending_recommendation)
+    if pending.get("status") == "proposed" and pending.get("recommendation_id"):
+        return PLAN_STATE_CANDIDATE_PATH
+    return PLAN_STATE_NO_PATH
+
+
+def _normalize_total_agent_candidate_index(payload: dict) -> tuple[Optional[int], dict]:
+    raw_candidate_index = payload.get("candidate_index")
+    raw_display_number = payload.get("display_candidate_number")
+    source = _safe_text(payload.get("candidate_index_source"))
+    meta = {
+        "raw_candidate_index": raw_candidate_index,
+        "display_candidate_number": raw_display_number,
+        "candidate_index_source": source or "storage_index",
+    }
+
+    if raw_display_number not in (None, ""):
+        try:
+            display_number = int(raw_display_number)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("display_candidate_number must be an integer") from exc
+        meta["candidate_index_source"] = "display_number"
+        return display_number - 1, meta
+
+    if raw_candidate_index in (None, ""):
+        return None, meta
+
+    try:
+        candidate_index = int(raw_candidate_index)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("candidate_index must be an integer") from exc
+
+    if source == "storage_index":
+        meta["candidate_index_source"] = "storage_index"
+        return candidate_index, meta
+
+    if source == "display_number":
+        meta["candidate_index_source"] = "display_number"
+        return candidate_index - 1, meta
+
+    if payload.get("_llm_candidate_selection") is True:
+        meta["candidate_index_source"] = "llm_display_number"
+        return candidate_index - 1, meta
+
+    meta["candidate_index_source"] = "storage_index"
+    return candidate_index, meta
+
+
+def _tool_debug_summary(result: dict, state: Optional[Dict[str, Any]] = None) -> dict:
+    runtime_state = _safe_dict(state)
+    payload = _safe_dict(runtime_state.get("payload"))
+    active_plan = _safe_dict(result.get("active_plan") or result.get("plan"))
+    pending = _safe_dict(result.get("pending_recommendation"))
+    recommendation = _safe_dict(result.get("recommendation"))
+    accept_result = _safe_dict(result.get("accept_result"))
+    next_task = _safe_dict(result.get("next_task") or result.get("task"))
+    accepted_candidate_index = result.get("accepted_candidate_index")
+    if accepted_candidate_index is None:
+        accepted_candidate_index = accept_result.get("accepted_candidate_index")
+    return {
+        "tool": _bounded_debug_text(result.get("tool")),
+        "success": bool(result.get("success")),
+        "status": _bounded_debug_text(result.get("_status")),
+        "error_code": _bounded_debug_text(result.get("error_code")),
+        "run_id": _bounded_debug_text(runtime_state.get("run_id")),
+        "user_id": payload.get("user_id") or result.get("user_id"),
+        "syllabus_id": payload.get("syllabus_id") or result.get("syllabus_id"),
+        "session_id": _bounded_debug_text(payload.get("session_id")),
+        "plan_state_kind": _bounded_debug_text(result.get("plan_state_kind")),
+        "active_plan_id": _bounded_debug_text(active_plan.get("plan_id")),
+        "pending_recommendation_id": _bounded_debug_text(pending.get("recommendation_id")),
+        "recommendation_id": _bounded_debug_text(result.get("recommendation_id") or recommendation.get("recommendation_id")),
+        "candidate_count": result.get("candidate_count") or pending.get("candidate_count"),
+        "accepted_plan_id": _bounded_debug_text(result.get("accepted_plan_id") or accept_result.get("accepted_plan_id")),
+        "accepted_candidate_index": accepted_candidate_index,
+        "raw_candidate_index": result.get("raw_candidate_index"),
+        "display_candidate_number": result.get("display_candidate_number"),
+        "candidate_index_source": _bounded_debug_text(result.get("candidate_index_source")),
+        "next_task_title": _bounded_debug_text(next_task.get("title") or next_task.get("topic")),
+    }
+
+
+def _debug_context_summary(state: Dict[str, Any], total_context: dict) -> None:
+    active_plan = _safe_dict(total_context.get("active_plan"))
+    pending = _safe_dict(total_context.get("pending_recommendation"))
+    next_task = _safe_dict(total_context.get("next_task"))
+    summary = {
+        "run_id": _bounded_debug_text(state.get("run_id")),
+        "user_id": total_context.get("user_id"),
+        "syllabus_id": total_context.get("syllabus_id"),
+        "session_id": _bounded_debug_text(_safe_dict(state.get("payload")).get("session_id")),
+        "plan_state_kind": _bounded_debug_text(total_context.get("plan_state_kind")),
+        "active_plan_id": _bounded_debug_text(active_plan.get("plan_id")),
+        "pending_recommendation_id": _bounded_debug_text(pending.get("recommendation_id")),
+        "candidate_count": pending.get("candidate_count", 0),
+        "next_task_title": _bounded_debug_text(next_task.get("title") or next_task.get("topic")),
+        "warning_count": len(_safe_list(total_context.get("warnings"))),
+    }
+    _debug_log("CONTEXT " + json.dumps(summary, ensure_ascii=False, sort_keys=True))
+
+
+def _map_knowledge_mastery_to_detected_topics(items: list) -> list:
+    """将 knowledge_mastery 条目映射为 Student Agent 期望的 detected_topics 格式。"""
+    signal_map = {"mastered": "mastered", "weak": "struggled", "learning": "learned"}
+    detected = []
+    for item in (items or []):
+        if not isinstance(item, dict):
+            continue
+        title = _safe_text(item.get("knowledge"))
+        if not title:
+            continue
+        try:
+            confidence = float(item.get("score") or 0.5)
+        except (TypeError, ValueError):
+            confidence = 0.5
+        confidence = max(0.0, min(1.0, confidence))
+        label = _safe_text(item.get("mastery_label") or "learning")
+        signal = signal_map.get(label, "learned")
+        detected.append({"title": title, "confidence": confidence, "signal": signal})
+    return detected
+
+
+def _notify_buddy_resource_ready_from_tool(state: Dict[str, Any], tool_result: dict) -> None:
+    payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id")) or 0
+    if not user_id or state.get("_study_buddy_event_sent"):
+        return
+    if not _safe_dict(tool_result).get("success", True):
+        return
+    raw_generation = _safe_dict(tool_result.get("generation_result"))
+    resources = _safe_list(tool_result.get("resources")) or _normalize_resources(raw_generation)
+    resource = _safe_dict(resources[0]) if resources else {}
+    next_task = _safe_dict(tool_result.get("next_task"))
+    event_payload = {
+        "next_task_title": _safe_text(next_task.get("title") or next_task.get("topic")),
+        "overall_status": _safe_text(tool_result.get("overall_status") or raw_generation.get("overall_status")),
+        "resource": {
+            "resource_id": _safe_text(resource.get("resource_id")),
+            "resource_type": _safe_text(resource.get("resource_type") or resource.get("type")),
+            "title": _safe_text(resource.get("title")),
+            "topic": _safe_text(resource.get("topic")),
+            "count": len(resources),
+        },
+    }
+    try:
+        from tasks.study_buddy_task import notify_study_buddy_event
+
+        message = notify_study_buddy_event(
+            user_id=user_id,
+            syllabus_id=syllabus_id,
+            event_type="resource_ready",
+            payload=event_payload,
+        )
+        state["_study_buddy_event_sent"] = bool(message)
+        if message:
+            state["_study_buddy_event_type"] = "resource_ready"
+            state["_study_buddy_message"] = message
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("[study_buddy.total_agent] resource_tool_notify_failed")
+
+
+def _notify_buddy_plan_accepted(state: Dict[str, Any], plan: dict, next_task: dict) -> None:
+    """计划确认后标记 _study_buddy_event_sent 防止 _build_agent_final_result 重复推送。
+
+    实际学伴通知已下沉到 accept_recommendation_path（learning_plan.py），
+    覆盖前端按钮和 Agent 工具两条路径。
+    """
+    if state.get("_study_buddy_event_sent"):
+        return
+    state["_study_buddy_event_sent"] = True
+    state["_study_buddy_event_type"] = "plan_accepted"
+
+
+def _notify_buddy_plan_abandoned(state: Dict[str, Any], plan_id: str, reason: str) -> None:
+    """计划放弃后标记 _study_buddy_event_sent 防止 _build_agent_final_result 重复推送。
+
+    实际学伴通知已下沉到 abandon_learning_plan（learning_plan.py），
+    覆盖前端按钮和 Agent 工具两条路径。
+    """
+    if state.get("_study_buddy_event_sent"):
+        return
+    state["_study_buddy_event_sent"] = True
+    state["_study_buddy_event_type"] = "plan_abandoned"
 
 
 def _json_safe(value: Any) -> Any:
@@ -194,11 +474,34 @@ def _extend_status_events(target_state: Dict[str, Any], source_state_or_result: 
         target_state["tool_status_events"] = list(events)
 
 
+# ── error_code 白名单：这些 code 映射为 skipped 而非 failed ──
+_TOOL_END_SKIPPED_ERROR_CODES: frozenset = frozenset({
+    "no_active_plan",
+    "no_next_task",
+    "no_target_step",
+    "no_resource_tasks",
+    "active_plan_exists",
+    "stale_snapshot",
+    "candidate_selection_requires_accept",
+})
+
+
+def _tool_end_status(success: bool, error_code: str) -> str:
+    """根据 success 和 error_code 计算 tool_end 的展示状态。"""
+    if success:
+        return STATUS_SUCCEEDED
+    if error_code in _TOOL_END_SKIPPED_ERROR_CODES:
+        return STATUS_SKIPPED
+    return STATUS_FAILED
+
+
 def _tool_result(tool_name: str, success: bool = True, state: Optional[Dict[str, Any]] = None, **payload: Any) -> dict:
     result = {"tool": tool_name, "success": bool(success)}
     result.update(_json_safe(payload))
     result.setdefault("error_code", "" if success else "tool_failed")
     result.setdefault("error_message", "")
+    # tool_end 展示状态：前端直接使用，不再从 success 推断
+    result["_status"] = _tool_end_status(success, str(result.get("error_code") or ""))
     if state is not None:
         emit_status_event(
             state,
@@ -208,6 +511,10 @@ def _tool_result(tool_name: str, success: bool = True, state: Optional[Dict[str,
             message=result.get("error_message") or "",
             payload={"error_code": result.get("error_code") or ""} if not success else {},
         )
+        try:
+            _debug_log("TOOL_RESULT " + json.dumps(_tool_debug_summary(result, state), ensure_ascii=False, sort_keys=True))
+        except Exception:
+            pass
     return result
 
 
@@ -282,17 +589,191 @@ def _plan_metrics(plan: Any) -> dict:
     }
 
 
-def _confirmation_requested(payload: dict) -> bool:
-    if payload.get("auto_accept") is True:
+def _format_percent(value: Any) -> str:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if score <= 1:
+        score *= 100
+    return f"{round(score)}%"
+
+
+def build_learning_feedback_guidance(payload: dict, feedback_result: dict, next_task_result: Optional[dict] = None) -> dict:
+    """Turn structured learning feedback into a student-facing coaching note."""
+    payload = _safe_dict(payload)
+    feedback_result = _safe_dict(feedback_result)
+    next_task_result = _safe_dict(next_task_result)
+    event_payload = _safe_dict(_safe_dict(feedback_result.get("event_entry")).get("payload"))
+    updated_step = _safe_dict(feedback_result.get("updated_step"))
+    activated_step = _safe_dict(feedback_result.get("activated_step"))
+    next_task = _safe_dict(feedback_result.get("next_task"))
+    if next_task_result:
+        next_task = _safe_dict(next_task_result.get("next_task")) or _safe_dict(next_task_result.get("task")) or next_task
+
+    score = payload.get("score")
+    if score is None:
+        score = event_payload.get("score")
+    score_text = _format_percent(score)
+    wrong_items = _unique_texts(
+        _list_from_any(payload.get("wrong_knowledge_items"))
+        or _list_from_any(event_payload.get("wrong_knowledge_items"))
+    )
+    answer_record_count = len(_safe_list(payload.get("answer_records"))) or int(event_payload.get("answer_record_count") or 0)
+    next_title = _safe_text(next_task.get("title") or next_task.get("topic"))
+    updated_title = _safe_text(updated_step.get("title") or updated_step.get("topic"))
+    activated_title = _safe_text(activated_step.get("title") or activated_step.get("topic"))
+
+    lines: list[str] = []
+    if score_text:
+        lines.append(f"我已经记录这次练习结果，得分约 {score_text}。")
+    else:
+        lines.append("我已经记录这次学习反馈。")
+
+    if wrong_items:
+        preview = "、".join(wrong_items[:4])
+        suffix = "等" if len(wrong_items) > 4 else ""
+        lines.append(f"这次主要需要补的是：{preview}{suffix}。先把这些点讲清楚，再继续往后会更稳。")
+    elif score_text:
+        lines.append("这次没有明显错题知识点，说明当前小节掌握得还可以，可以进入下一步。")
+    elif updated_title:
+        lines.append(f"我会把“{updated_title}”作为已反馈内容，后续资源会按你的状态继续调整。")
+
+    if next_title:
+        lines.append(f"下一步建议看“{next_title}”。如果你愿意，我可以先围绕薄弱点给你做一个短讲解，再生成对应练习。")
+    elif activated_title:
+        lines.append(f"接下来可以进入“{activated_title}”。如果刚才有不确定的地方，可以先让我补讲一遍。")
+    else:
+        lines.append("接下来可以先回看错题解析，再告诉我你想补讲哪一题或直接继续下一份资源。")
+
+    return {
+        "reply": "\n".join(lines),
+        "score": score,
+        "score_text": score_text,
+        "wrong_knowledge_items": wrong_items,
+        "answer_record_count": answer_record_count,
+        "updated_step_title": updated_title,
+        "activated_step_title": activated_title,
+        "next_task_title": next_title,
+    }
+
+
+
+def _has_pending_recommendation(state: Dict[str, Any]) -> bool:
+    """Check if there's a proposed recommendation that can be accepted."""
+    # Direct recommendation result in state (from prior agent tool call)
+    recommendation = _safe_dict(state.get("recommendation_result"))
+    if recommendation.get("best_path"):
         return True
-    message = _safe_text(payload.get("message"))
-    markers = ("采纳", "确认", "就按", "按这条", "开始这条", "接受", "accept", "confirm")
-    return any(marker in message.lower() for marker in markers)
+    # Payload may carry a recommendation_result (e.g. from tests or API)
+    payload = _safe_dict(state.get("payload"))
+    payload_rec = _safe_dict(payload.get("recommendation_result"))
+    if payload_rec.get("best_path"):
+        return True
+    # Total context may embed it from load_total_context
+    total_context = _safe_dict(state.get("total_context"))
+    rec_context = _safe_dict(total_context.get("recommendation") or total_context.get("recommendation_result"))
+    return bool(rec_context.get("best_path"))
 
 
 def _message_has_any(message: str, markers: Iterable[str]) -> bool:
     lowered = message.lower()
     return any(marker in lowered for marker in markers)
+
+
+def _message_confirms_plan_selection(message: str) -> bool:
+    return _message_has_any(
+        message,
+        (
+            "确认",
+            "确定",
+            "选择",
+            "选",
+            "采纳",
+            "开始",
+            "就这个",
+            "方案",
+            "confirm",
+            "accept",
+            "choose",
+            "select",
+            "start",
+            "option",
+            "plan",
+        ),
+    )
+
+
+def _message_requests_fresh_recommendation(message: str) -> bool:
+    return _message_has_any(
+        message,
+        (
+            "重新",
+            "重来",
+            "刷新",
+            "换一批",
+            "新的",
+            "新路径",
+            "再推荐",
+            "重新推荐",
+            "重新生成",
+            "fresh",
+            "new recommendation",
+            "regenerate",
+            "refresh",
+            "replace",
+        ),
+    )
+
+
+def _message_selects_candidate(message: str) -> bool:
+    if not _message_confirms_plan_selection(message):
+        return False
+    return _message_has_any(
+        message,
+        (
+            "第",
+            "方案",
+            "路径",
+            "候选",
+            "条",
+            "个",
+            "option",
+            "candidate",
+            "path",
+            "plan",
+        ),
+    )
+
+
+def _message_is_vague_resource_request(message: str) -> bool:
+    lowered = _safe_text(message).lower()
+    if not lowered:
+        return False
+    vague_markers = ("随便", "任意", "都行", "来一个", "anything", "whatever", "random")
+    if not any(marker in lowered for marker in vague_markers):
+        return False
+    concrete_markers = (
+        "ppt",
+        "slide",
+        "slides",
+        "文档",
+        "资料",
+        "quiz",
+        "练习",
+        "题",
+        "代码",
+        "coding",
+        "mindmap",
+        "思维导图",
+        "总结",
+        "复习",
+        "继续",
+        "下一步",
+        "学习",
+        "resource",
+    )
+    return not any(marker in lowered for marker in concrete_markers)
 
 
 def _unique_texts(items: Iterable[Any]) -> list[str]:
@@ -628,6 +1109,8 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     message_requests_practice = _message_has_any(message, ("练习", "practice", "exercise", "quiz", "题"))
     message_requests_coding = _message_has_any(message, ("代码", "coding", "code", "编程"))
     message_requests_review = _message_has_any(message, ("复习", "总结", "梳理", "review", "summary"))
+    message_requests_ppt = _message_has_any(message, ("ppt", "PPT", "幻灯片", "课件", "slides", "slide", "演示", "讲稿"))
+    message_requests_doc = _message_has_any(message, ("文档", "doc", "document", "资料", "文章", "讲解", "说明"))
     matched_study_graph_weak_node = bool(
         (next_node_id and next_node_id in weak_node_ids)
         or (next_title and next_title in weak_node_ids)
@@ -653,15 +1136,24 @@ def build_current_step_resource_strategy(state: dict) -> dict:
     if explicit_resource_types:
         resource_types = explicit_resource_types
         reason = "user explicitly requested resource types"
+    elif message_requests_ppt:
+        resource_types = ["ppt"]
+        reason = "message explicitly requests PPT/slides"
+    elif message_requests_doc:
+        resource_types = ["documents"]
+        reason = "message explicitly requests documents"
     elif message_requests_coding:
         resource_types = ["coding_practice"]
         reason = "message requests coding practice"
-    elif message_requests_review:
-        resource_types = ["mindmap"]
-        reason = "message requests review or summary"
     elif matched_profile_weak_point or matched_study_graph_weak_node:
         resource_types = _unique_texts([RESOURCE_STRATEGY_DEFAULT_TYPE, "quiz", *preferred_formats])
         reason = "current step is weak and profile/study graph indicates targeted practice"
+    elif message_requests_practice:
+        resource_types = ["quiz"]
+        reason = "message explicitly requests quiz/practice"
+    elif message_requests_review:
+        resource_types = ["mindmap"]
+        reason = "message requests review or summary"
     else:
         resource_types = [RESOURCE_STRATEGY_DEFAULT_TYPE]
         reason = "default lightweight current-step resource"
@@ -1640,9 +2132,27 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
 
     session_context = build_session_context(payload)
 
+    # ── 注入待确认推荐 ──
+    pending_recommendation = {}
+    try:
+        result = prt.list_recommendation_snapshots(user_id, syllabus_id, limit=1)
+        snapshots = result.get("snapshots") if isinstance(result, dict) else []
+        if snapshots and snapshots[0].get("status") == "proposed":
+            snap = snapshots[0]
+            pending_recommendation = {
+                "recommendation_id": snap.get("recommendation_id"),
+                "candidate_count": snap.get("candidate_count", 0),
+                "best_path_titles": snap.get("best_path_titles", []),
+                "status": "proposed",
+            }
+    except Exception:
+        pass  # 查询失败不影响其他上下文加载
+
+    plan_state_kind = _compute_plan_state_kind(active_plan, pending_recommendation)
     total_context = {
         "user_id": user_id,
         "syllabus_id": syllabus_id,
+        "plan_state_kind": plan_state_kind,
         "active_plan": active_plan,
         "next_task": next_task,
         "profile_summary": profile_summary,
@@ -1651,19 +2161,23 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
         "study_graph_state": study_graph_state,
         "course_learning_tree_summary": course_learning_tree_summary,
         "session_context": session_context,
+        "pending_recommendation": pending_recommendation,
         "warnings": warnings,
     }
     state["total_context"] = total_context
     state["active_plan"] = active_plan
     state["next_task"] = next_task
+    _debug_context_summary(state, total_context)
     return _tool_result(
         TOOL_LOAD_TOTAL_CONTEXT,
         True,
         state=state,
         user_id=user_id,
         syllabus_id=syllabus_id,
+        plan_state_kind=plan_state_kind,
         active_plan=active_plan,
         next_task=next_task,
+        pending_recommendation=pending_recommendation,
         profile_summary=profile_summary,
         current_resource_id=total_context["current_resource_id"],
         study_graph_state=study_graph_state,
@@ -1672,93 +2186,36 @@ def tool_load_total_context(state: Dict[str, Any]) -> dict:
     )
 
 
-def tool_infer_user_intent(state: Dict[str, Any]) -> dict:
-    _append_trace(state, TOOL_INFER_USER_INTENT)
-    payload = _safe_dict(state.get("payload"))
-    context = _safe_dict(state.get("total_context"))
-    message = _safe_text(payload.get("message") or payload.get("question"))
-    explicit_intent = _safe_text(payload.get("intent"))
-    active_plan = _safe_dict(context.get("active_plan"))
-    current_resource_id = _safe_text(context.get("current_resource_id"))
-
-    if explicit_intent:
-        intent = explicit_intent
-        confidence = 0.98
-        reason = "payload provided explicit intent"
-    elif _confirmation_requested(payload):
-        intent = INTENT_ACCEPT_RECOMMENDATION
-        confidence = 0.9
-        reason = "message confirms a recommendation path"
-    elif _message_has_any(message, ("完成", "做完", "看完", "学完", "得分", "通过", "done", "completed", "finished", "score")):
-        intent = INTENT_RECORD_LEARNING_FEEDBACK
-        confidence = 0.86
-        reason = "message reports current learning feedback"
-    elif _message_has_any(message, ("跳过", "太简单", "换一个", "skip")):
-        intent = INTENT_SKIP_CURRENT_STEP
-        confidence = 0.84
-        reason = "message asks to skip or replace current step"
-    elif active_plan and _message_has_any(message, ("下一步", "怎么学", "怎么学习", "先学什么", "next step", "how should i learn")) and not _message_has_any(message, ("推荐", "路径", "规划", "recommend", "path", "route")):
-        intent = INTENT_ANSWER_LEARNING_QUESTION
-        confidence = 0.85
-        reason = "message asks for learning strategy within current active plan"
-    elif _message_has_any(message, ("推荐", "路径", "学什么", "怎么学", "规划", "recommend", "path", "route")):
-        intent = INTENT_RECOMMEND_LEARNING_PATH
-        confidence = 0.82
-        reason = "message asks for learning path recommendation"
-    elif _message_has_any(message, ("继续", "下一步", "开始学习", "给我资料", "生成资源", "resource", "continue", "next")):
-        intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE
-        confidence = 0.82
-        reason = "message asks to continue current plan"
-    elif _message_has_any(message, ("为什么", "为啥", "是什么", "解释", "区别", "关系", "怎么理解", "question", "why", "explain")):
-        intent = INTENT_ANSWER_LEARNING_QUESTION
-        confidence = 0.84
-        reason = "message asks a learning question"
-    elif active_plan:
-        intent = INTENT_GENERATE_CURRENT_STEP_RESOURCE
-        confidence = 0.72
-        reason = "active plan exists and message is ambiguous"
-    else:
-        intent = INTENT_ASK_GOAL_CLARIFICATION
-        confidence = 0.58
-        reason = "no active plan or clear learning goal"
-
-    required_context = []
-    if intent in {
-        INTENT_GENERATE_CURRENT_STEP_RESOURCE,
-        INTENT_RECORD_LEARNING_FEEDBACK,
-        INTENT_SKIP_CURRENT_STEP,
-    }:
-        required_context.append("active_plan")
-    if intent == INTENT_RECORD_LEARNING_FEEDBACK:
-        required_context.append("current_resource_id")
-
-    result = _tool_result(
-        TOOL_INFER_USER_INTENT,
-        True,
-        state=state,
-        intent=intent,
-        confidence=confidence,
-        reason=reason,
-        required_context=required_context,
-        has_active_plan=bool(active_plan),
-        current_resource_id=current_resource_id,
-    )
-    state["intent"] = intent
-    state["intent_result"] = result
-    return result
-
-
 def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
-    _append_trace(state, TOOL_RUN_LEARNING_RECOMMENDATION)
+    _append_trace(state, TOOL_CALL_RECOMMENDATION_AGENT)
     payload = deepcopy(_safe_dict(state.get("payload")))
     user_id = _positive_int(payload.get("user_id"))
     if not user_id:
         return _tool_result(
-            TOOL_RUN_LEARNING_RECOMMENDATION,
+            TOOL_CALL_RECOMMENDATION_AGENT,
             False,
             state=state,
             error_code="missing_user_id",
             error_message="user_id must be a positive integer",
+        )
+    total_context = _safe_dict(state.get("total_context"))
+    pending_recommendation = _safe_dict(total_context.get("pending_recommendation"))
+    message = _safe_text(payload.get("message") or payload.get("question") or payload.get("learning_goal"))
+    if (
+        _safe_text(total_context.get("plan_state_kind")) == PLAN_STATE_CANDIDATE_PATH
+        and pending_recommendation.get("recommendation_id")
+        and _message_selects_candidate(message)
+        and not _message_requests_fresh_recommendation(message)
+    ):
+        return _tool_result(
+            TOOL_CALL_RECOMMENDATION_AGENT,
+            False,
+            state=state,
+            pending_recommendation=pending_recommendation,
+            plan_state_kind=PLAN_STATE_CANDIDATE_PATH,
+            suggested_next_action=ACTION_WAIT_USER_ACCEPTANCE,
+            error_code="candidate_selection_requires_accept",
+            error_message="current context has proposed candidates; select them with accept_learning_plan instead of regenerating",
         )
 
     injected = _safe_dict(payload.get("recommendation_result"))
@@ -1769,22 +2226,46 @@ def tool_run_learning_recommendation(state: Dict[str, Any]) -> dict:
         if not isinstance(goals, list) or not goals:
             goal_text = _safe_text(payload.get("learning_goal") or payload.get("message") or payload.get("question"))
             payload["goals"] = [goal_text] if goal_text else []
-        recommendation = emit_status_pair(
-            state,
-            agent="recommendation_agent",
-            stage="rank_path",
-            fn=lambda: prt.run_recommendation_route_from_payload(payload),
-            payload={"user_id": user_id, "syllabus_id": payload.get("syllabus_id")},
-        )
+        # ── agent-first: try Recommendation Agent, fallback to deterministic ──
+        recommendation = None
+        try:
+            from tasks.personal_recommendation.agent_runtime import run_personal_recommendation_agent
+            agent_result = run_personal_recommendation_agent(payload)
+            recommendation = agent_result.recommendation if agent_result else None
+        except Exception:
+            pass
+        if not recommendation:
+            recommendation = emit_status_pair(
+                state,
+                agent="recommendation_agent",
+                stage="rank_path",
+                fn=lambda: prt.run_recommendation_route_from_payload(payload),
+                payload={"user_id": user_id, "syllabus_id": payload.get("syllabus_id")},
+            )
 
+    prt.ensure_recommendation_snapshot(
+        user_id,
+        _positive_int(payload.get("syllabus_id")) or None,
+        recommendation,
+        request_payload=payload,
+        session_id=payload.get("session_id"),
+        persist_snapshot=payload.get("persist_snapshot") is not False,
+        allow_proposed_resave=bool(injected),
+    )
     state["recommendation_result"] = recommendation
-    has_best_path = bool(_safe_dict(recommendation).get("best_path"))
+    best_path = _safe_dict(recommendation).get("best_path")
+    has_best_path = isinstance(best_path, dict) and bool(best_path.get("path"))
     suggested = ACTION_WAIT_USER_ACCEPTANCE if has_best_path else ACTION_ASK_GOAL_CLARIFICATION
     return _tool_result(
-        TOOL_RUN_LEARNING_RECOMMENDATION,
+        TOOL_CALL_RECOMMENDATION_AGENT,
         bool(_safe_dict(recommendation).get("success", True)),
         state=state,
         recommendation=recommendation,
+        recommendation_id=_safe_text(_safe_dict(recommendation).get("recommendation_id")),
+        snapshot=_safe_dict(recommendation).get("snapshot"),
+        snapshot_status=_safe_text(_safe_dict(recommendation).get("snapshot_status")),
+        snapshot_save_error_code=_safe_text(_safe_dict(recommendation).get("snapshot_save_error_code")),
+        snapshot_save_error_message=_safe_text(_safe_dict(recommendation).get("snapshot_save_error_message")),
         has_best_path=has_best_path,
         suggested_next_action=suggested,
         error_code=_safe_text(_safe_dict(recommendation).get("error_code")),
@@ -1842,6 +2323,19 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
     payload = _safe_dict(state.get("payload"))
     user_id = _positive_int(payload.get("user_id"))
     syllabus_id = _positive_int(payload.get("syllabus_id"))
+    try:
+        candidate_index, candidate_index_meta = _normalize_total_agent_candidate_index(payload)
+    except ValueError as exc:
+        return _tool_result(
+            TOOL_ACCEPT_LEARNING_PLAN,
+            False,
+            state=state,
+            raw_candidate_index=payload.get("candidate_index"),
+            display_candidate_number=payload.get("display_candidate_number"),
+            candidate_index_source=_safe_text(payload.get("candidate_index_source")),
+            error_code="invalid_candidate_index",
+            error_message=str(exc),
+        )
     if not user_id:
         return _tool_result(
             TOOL_ACCEPT_LEARNING_PLAN,
@@ -1850,19 +2344,28 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
             error_code="missing_user_id",
             error_message="user_id must be a positive integer",
         )
-    if not _confirmation_requested(payload):
-        return _tool_result(
-            TOOL_ACCEPT_LEARNING_PLAN,
-            True,
-            state=state,
-            accepted=False,
-            plan={},
-            next_task={},
-            suggested_next_action=ACTION_WAIT_USER_ACCEPTANCE,
-            reason="user confirmation or auto_accept=true is required",
-        )
-
     recommendation = _safe_dict(state.get("recommendation_result") or payload.get("recommendation_result"))
+    snapshot_recommendation_id = ""
+    # ── fallback: 从 snapshot 回退读取 ──
+    if not recommendation:
+        try:
+            sid = syllabus_id
+            rec_id = _safe_text(payload.get("recommendation_id"))
+            if not rec_id:
+                result = prt.list_recommendation_snapshots(user_id, sid, limit=1)
+                snapshots = result.get("snapshots") if isinstance(result, dict) else []
+                if snapshots and snapshots[0].get("status") == "proposed":
+                    rec_id = snapshots[0].get("recommendation_id")
+            if rec_id:
+                snapshot_recommendation_id = _safe_text(rec_id)
+                from tasks.personal_recommendation.snapshot import _recommendation_result_from_snapshot
+                detail = prt.get_recommendation_snapshot(str(rec_id))
+                if detail.get("success"):
+                    recommendation = _recommendation_result_from_snapshot(
+                        detail.get("snapshot")
+                    )
+        except Exception:
+            pass
     if not recommendation:
         return _tool_result(
             TOOL_ACCEPT_LEARNING_PLAN,
@@ -1871,7 +2374,19 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
             error_code="missing_recommendation_result",
             error_message="recommendation_result is required to accept a learning plan",
         )
-    candidate_index = payload.get("candidate_index")
+    candidates = _safe_list(_safe_dict(recommendation).get("candidates"))
+    if candidate_index is not None and (candidate_index < 0 or candidate_index >= len(candidates)):
+        return _tool_result(
+            TOOL_ACCEPT_LEARNING_PLAN,
+            False,
+            state=state,
+            candidate_index=candidate_index,
+            candidate_count=len(candidates),
+            **candidate_index_meta,
+            recommendation_id=snapshot_recommendation_id or _safe_text(_safe_dict(recommendation).get("recommendation_id")),
+            error_code="invalid_candidate_index",
+            error_message="candidate_index is out of range",
+        )
     accept_result = prt.accept_recommendation_path(
         user_id=user_id,
         syllabus_id=syllabus_id,
@@ -1884,6 +2399,9 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
             False,
             state=state,
             accept_result=accept_result,
+            candidate_index=candidate_index,
+            **candidate_index_meta,
+            recommendation_id=snapshot_recommendation_id or _safe_text(_safe_dict(recommendation).get("recommendation_id")),
             error_code=_safe_text(accept_result.get("error_code") or "accept_learning_plan_failed"),
             error_message=_safe_text(accept_result.get("error_message")),
         )
@@ -1891,6 +2409,17 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
     next_task = _find_next_step(plan) or {}
     state["active_plan"] = plan
     state["next_task"] = next_task
+    state["pending_recommendation"] = {}
+    state["total_context"] = {
+        **_safe_dict(state.get("total_context")),
+        "user_id": user_id,
+        "syllabus_id": syllabus_id,
+        "active_plan": plan,
+        "next_task": next_task,
+        "pending_recommendation": {},
+        "plan_state_kind": PLAN_STATE_SELECTED_PATH,
+    }
+    _notify_buddy_plan_accepted(state, plan, next_task)
     return _tool_result(
         TOOL_ACCEPT_LEARNING_PLAN,
         True,
@@ -1898,8 +2427,14 @@ def tool_accept_learning_plan(state: Dict[str, Any]) -> dict:
         accepted=True,
         auto_accept=bool(payload.get("auto_accept") is True),
         accept_result=accept_result,
+        candidate_index=candidate_index,
+        accepted_candidate_index=candidate_index,
+        **candidate_index_meta,
+        recommendation_id=snapshot_recommendation_id or _safe_text(_safe_dict(recommendation).get("recommendation_id")),
+        accepted_plan_id=_safe_text(plan.get("plan_id")),
         plan=plan,
         next_task=next_task,
+        plan_state_kind=PLAN_STATE_SELECTED_PATH,
         metrics=_plan_metrics(plan),
         suggested_next_action=ACTION_GENERATE_CURRENT_STEP_RESOURCE,
     )
@@ -1910,6 +2445,22 @@ def tool_get_next_learning_task(state: Dict[str, Any]) -> dict:
     payload = _safe_dict(state.get("payload"))
     user_id = _positive_int(payload.get("user_id"))
     syllabus_id = _positive_int(payload.get("syllabus_id"))
+    total_context = _safe_dict(state.get("total_context"))
+    plan_state_kind = _safe_text(total_context.get("plan_state_kind"))
+    if plan_state_kind in {PLAN_STATE_CANDIDATE_PATH, PLAN_STATE_NO_PATH}:
+        state["active_plan"] = {}
+        state["next_task"] = {}
+        return _tool_result(
+            TOOL_GET_NEXT_LEARNING_TASK,
+            False,
+            state=state,
+            plan={},
+            next_task={},
+            metrics={},
+            plan_state_kind=plan_state_kind,
+            error_code="no_active_plan",
+            error_message="current context has no selected learning plan",
+        )
     plan = _safe_dict(state.get("active_plan"))
     if not plan and user_id:
         plan = _safe_dict(prt.get_active_learning_plan(user_id, syllabus_id))
@@ -1947,11 +2498,39 @@ def _build_resource_request(state: Dict[str, Any], next_task: dict, resource_str
     strategy = _safe_dict(resource_strategy) or build_current_step_resource_strategy(state)
     resource_types = _safe_list(strategy.get("resource_types")) or [RESOURCE_STRATEGY_DEFAULT_TYPE]
     knowledge_items = _safe_list(strategy.get("knowledge_items")) or outcomes or [title]
+
+    # graph_name: always derive from syllabus_id (fixed at total agent entry)
+    graph_name = ""
+    sid = payload.get("syllabus_id")
+    if sid:
+        try:
+            from tasks.syllabus_task import _get_primary_graph_info
+            _, graph_name = _get_primary_graph_info(int(sid))
+            graph_name = _safe_text(graph_name)
+        except Exception:
+            graph_name = ""
+
+    # question: build a semantically rich RAG query from structured knowledge
+    # items — the resource agent does NOT interpret user intent, it needs
+    # concrete technical keywords to retrieve against the knowledge graph.
+    question_parts: list[str] = []
+    if title:
+        question_parts.append(f"学习主题: {title}")
+    if outcomes:
+        question_parts.append("知识点: " + "; ".join(outcomes))
+    profile_summary = _safe_dict(_safe_dict(state.get("total_context")).get("profile_summary"))
+    weak_points = _safe_list(profile_summary.get("weak_points"))
+    if weak_points:
+        question_parts.append("薄弱环节: " + "; ".join(weak_points))
+    question = "\n".join(question_parts) if question_parts else _safe_text(
+        payload.get("question") or payload.get("message") or f"请生成 {title} 的学习资源"
+    )
+
     return {
         "user_id": payload.get("user_id"),
         "syllabus_id": payload.get("syllabus_id"),
         "message": payload.get("message") or payload.get("question") or "",
-        "question": payload.get("question") or payload.get("message") or f"请生成 {title} 的学习资源",
+        "question": question,
         "topic": title,
         "target": title,
         "current_step": next_task,
@@ -1961,7 +2540,7 @@ def _build_resource_request(state: Dict[str, Any], next_task: dict, resource_str
         "strategy_reason": strategy.get("reason") or "",
         "strategy_signals": _safe_dict(strategy.get("strategy_signals")),
         "resource_strategy": strategy,
-        "graph_name": payload.get("graph_name") or payload.get("rag_graph_name"),
+        "graph_name": graph_name,
         "rag_top_k": payload.get("rag_top_k"),
     }
 
@@ -2247,7 +2826,7 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
     resources = _normalize_resources(_safe_dict(generation_result))
     state["resource_generation_request"] = request_payload
     state["resource_generation_result"] = generation_result
-    return _tool_result(
+    result = _tool_result(
         TOOL_GENERATE_CURRENT_STEP_RESOURCE,
         bool(_safe_dict(generation_result).get("success", True)),
         state=state,
@@ -2264,6 +2843,8 @@ def tool_generate_current_step_resource(state: Dict[str, Any]) -> dict:
         error_code=_safe_text(_safe_dict(generation_result).get("error_code")),
         error_message=_safe_text(_safe_dict(generation_result).get("error_message")),
     )
+    _notify_buddy_resource_ready_from_tool(state, result)
+    return result
 
 
 def _append_learning_event(payload: dict, plan: dict, step: dict, status: str) -> dict:
@@ -2279,6 +2860,12 @@ def _append_learning_event(payload: dict, plan: dict, step: dict, status: str) -
             "resource_type": payload.get("resource_type") or "",
             "resource_id": payload.get("resource_id") or _safe_dict(payload.get("context")).get("current_resource_id") or "",
             "score": payload.get("score"),
+            "weak_points": payload.get("weak_points"),
+            "knowledge_mastery": payload.get("knowledge_mastery"),
+            "feedback_note": payload.get("feedback_note"),
+            "wrong_knowledge_items": _unique_texts(_list_from_any(payload.get("wrong_knowledge_items"))),
+            "answer_record_count": len(_safe_list(payload.get("answer_records"))),
+            "student_feedback": _safe_dict(payload.get("student_feedback")),
             "status": status,
             "recorded_at": _utc_timestamp(),
         },
@@ -2348,12 +2935,112 @@ def _record_step_status(state: Dict[str, Any], status: str, tool_name: str) -> d
         syllabus_id=syllabus_id,
         sync_study_graph=(status == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED),
     )
+    # ── knowledge_mastery → study_graph 节点更新 ──
+    knowledge_mastery = _safe_list(payload.get("knowledge_mastery"))
+    if knowledge_mastery and syllabus_id:
+        try:
+            from tasks.study_graph.student_agent import run_student_agent
+            detected_topics = _map_knowledge_mastery_to_detected_topics(knowledge_mastery)
+            if detected_topics:
+                run_student_agent({
+                    "user_id": int(user_id),
+                    "syllabus_id": int(syllabus_id),
+                    "source_kind": "total_agent",
+                    "detected_topics": detected_topics,
+                    "events": [],
+                    "rag_context": [],
+                    "parent_candidates": [],
+                    "timestamp": _utc_timestamp(),
+                })
+        except Exception:
+            pass  # knowledge_mastery sync 失败不影响主流程
+
+    # ── learning_record → profile + 刷新 signals ──
+    if status == prt.LEARNING_PLAN_STEP_STATUS_COMPLETED:
+        try:
+            from tasks.learning_profile.storage import load_existing_profile, save_personal_profile
+            step_title = _safe_text(step.get("title"))
+            try:
+                score_val = float(payload.get("score") or 0.7)
+            except (TypeError, ValueError):
+                score_val = 0.7
+            km_items = _safe_list(payload.get("knowledge_mastery"))
+            knowledge_points = []
+            for item in km_items:
+                if isinstance(item, dict):
+                    knowledge_points.append(_safe_text(item.get("knowledge")))
+            if not knowledge_points:
+                knowledge_points.append(step_title)
+            record = {
+                "event_type": "study_session",
+                "topic": step_title,
+                "status": "completed",
+                "score": score_val,
+                "started_at": _utc_timestamp(),
+                "duration_minutes": 20,
+                "meta": {"knowledge_points": knowledge_points[:5]},
+            }
+            existing, _ = load_existing_profile(user_id, syllabus_id)
+            if existing:
+                existing.setdefault("learning_records", []).append(record)
+                # ── 增量更新 signals ──
+                now = _utc_timestamp()
+                lr = existing.get("learning_records", [])
+                ru = existing.get("resource_usage", [])
+                day_stamps = set()
+                total_min = 0
+                all_scores = []
+                for r in lr:
+                    if isinstance(r, dict):
+                        ts = r.get("started_at", 0)
+                        if ts and now - ts <= 7 * 86400:
+                            day_stamps.add(ts // 86400)
+                        total_min += r.get("duration_minutes", 20)
+                        s = r.get("score")
+                        if isinstance(s, (int, float)):
+                            all_scores.append(float(s))
+                for r in ru:
+                    if isinstance(r, dict):
+                        ts = r.get("timestamp", 0)
+                        if ts and now - ts <= 7 * 86400:
+                            day_stamps.add(ts // 86400)
+                sig = existing.setdefault("signals", {})
+                sig["active_days_7d"] = len(day_stamps)
+                if not sig.get("active_days_30d"):
+                    sig["active_days_30d"] = len(day_stamps)
+                sig["avg_duration_minutes"] = round(total_min / max(len(lr), 1))
+                if all_scores:
+                    km = existing.setdefault("knowledge_mastery", {})
+                    km["overall_score"] = round(sum(all_scores) / len(all_scores), 4)
+                # ── term_familiarity ──
+                term_table = _ensure_syllabus_term_table(syllabus_id)
+                if term_table:
+                    topics_text = " ".join(
+                        r.get("topic", "") for r in lr
+                        if isinstance(r, dict) and (now - r.get("started_at", 0) <= 30 * 86400)
+                    )
+                    hits = sum(1 for t in term_table if t.lower() in topics_text.lower())
+                    tf_score = round(min(1.0, 0.12 * hits), 4)
+                    existing.setdefault("term_familiarity", {})["score"] = tf_score
+                save_personal_profile(user_id, syllabus_id, existing)
+        except Exception:
+            pass  # learning_record 写入失败不影响主流程
+
     updated_plan = _safe_dict(update.get("plan") or prt.get_active_learning_plan(user_id, syllabus_id))
     updated_step = _safe_dict(_find_step(updated_plan, step.get("step_id")) or step)
     activated_step, final_plan = _activate_next_pending(user_id, syllabus_id, plan.get("plan_id"), updated_plan)
     next_task = _find_next_step(final_plan) or {}
-    state["active_plan"] = final_plan
-    state["next_task"] = next_task
+    # Auto-complete the plan when all steps are finished
+    plan_completed = False
+    if not activated_step and not next_task and final_plan.get("plan_id"):
+        try:
+            prt.complete_learning_plan(user_id, str(final_plan["plan_id"]), syllabus_id=syllabus_id)
+            plan_completed = True
+            final_plan["status"] = prt.LEARNING_PLAN_STATUS_COMPLETED
+        except Exception:
+            pass
+    state["active_plan"] = final_plan if not plan_completed else {}
+    state["next_task"] = {} if plan_completed else next_task
     study_graph_sync = _safe_dict(update.get("study_graph_sync"))
     if status == prt.LEARNING_PLAN_STEP_STATUS_SKIPPED:
         study_graph_sync = {"attempted": False, "success": True, "warning": "skipped step is not synced"}
@@ -2387,6 +3074,225 @@ def tool_skip_current_step(state: Dict[str, Any]) -> dict:
     return _record_step_status(state, prt.LEARNING_PLAN_STEP_STATUS_SKIPPED, TOOL_SKIP_CURRENT_STEP)
 
 
+def tool_abandon_learning_plan(state: Dict[str, Any]) -> dict:
+    _append_trace(state, TOOL_ABANDON_LEARNING_PLAN)
+    payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id"))
+    if not user_id:
+        return _tool_result(
+            TOOL_ABANDON_LEARNING_PLAN,
+            False,
+            state=state,
+            error_code="missing_user_id",
+            error_message="user_id must be a positive integer",
+        )
+    total_context = _safe_dict(state.get("total_context"))
+    active_plan = _safe_dict(total_context.get("active_plan"))
+    plan_id = str(active_plan.get("plan_id") or "")
+    if not plan_id:
+        return _tool_result(
+            TOOL_ABANDON_LEARNING_PLAN,
+            False,
+            state=state,
+            error_code="no_active_plan",
+            error_message="no active learning plan to abandon",
+        )
+    reason = _safe_text(payload.get("reason") or payload.get("message") or "student_request")
+    result = prt.abandon_learning_plan(user_id, plan_id, syllabus_id=syllabus_id, reason=reason)
+    state["active_plan"] = {}
+    state["next_task"] = {}
+    _notify_buddy_plan_abandoned(state, plan_id, reason)
+    return _tool_result(
+        TOOL_ABANDON_LEARNING_PLAN,
+        bool(result.get("success")),
+        state=state,
+        plan_id=plan_id,
+        status=result.get("status"),
+        reason=reason,
+    )
+
+
+def tool_note_profile_observation(
+    state: Dict[str, Any],
+    learning_style: str = "",
+    comprehension_level: str = "",
+    weak_points: list[str] = None,
+    strong_points: list[str] = None,
+    note: str = "",
+) -> dict:
+    """记录对用户学习特征的观察，合并到用户画像中。"""
+    _append_trace(state, TOOL_CALL_PROFILE_AGENT)
+    payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id"))
+    if not user_id or not syllabus_id:
+        return _tool_result(
+            TOOL_CALL_PROFILE_AGENT,
+            False,
+            state=state,
+            error_code="missing_user_or_syllabus",
+            error_message="user_id and syllabus_id are required",
+        )
+    observation = {}
+    if learning_style:
+        observation["learning_style"] = str(learning_style)
+    if comprehension_level:
+        observation["comprehension_level"] = str(comprehension_level)
+    if weak_points:
+        observation["weak_points"] = list(weak_points)
+    if strong_points:
+        observation["strong_points"] = list(strong_points)
+    if note:
+        observation["note"] = str(note)
+    if not observation:
+        return _tool_result(
+            TOOL_CALL_PROFILE_AGENT,
+            True,
+            state=state,
+            updated_fields=[],
+            note_id="",
+            reason="no observation fields provided",
+        )
+    try:
+        from tasks.learning_profile.storage import merge_profile_update, save_personal_profile, load_existing_profile
+        existing, _ = load_existing_profile(user_id, syllabus_id)
+        merged = merge_profile_update(existing, observation)
+        saved = save_personal_profile(user_id, syllabus_id, merged)
+
+        # ── 周次掌握度同步 ──
+        # ── 周次掌握度同步：弱点推 weak，强点推 mastered ──
+        point_map: list[tuple[list[str], str]] = [
+            (list(weak_points or []), "weak"),
+            (list(strong_points or []), "mastered"),
+        ]
+        if any(points for points, _level in point_map):
+            try:
+                from tasks.learning_profile.personal_syllabus import (
+                    read_profile_personal_syllabus,
+                    init_profile_personal_syllabus,
+                    append_profile_personal_syllabus_suggestion,
+                    maybe_apply_profile_personal_syllabus_progress,
+                )
+                ps = read_profile_personal_syllabus(user_id, syllabus_id, hydrate=True)
+                if not ps:
+                    created = init_profile_personal_syllabus(user_id, syllabus_id)
+                    ps = created.get("personal_syllabus") if isinstance(created, dict) else None
+                if isinstance(ps, dict):
+                    touched_weeks: set[int] = set()
+                    for points, level in point_map:
+                        if not points:
+                            continue
+                        for entry in ps.get("period", []):
+                            if not isinstance(entry, dict):
+                                continue
+                            content = _safe_text(entry.get("content") or entry.get("enhanced_content") or "")
+                            if not content:
+                                continue
+                            if any(p and p.lower() in content.lower() for p in points):
+                                wk = int(entry.get("week_index") or 0)
+                                append_profile_personal_syllabus_suggestion(
+                                    user_id, syllabus_id,
+                                    {"week_index": wk,
+                                     "suggested_competance": level,
+                                     "confidence": 0.8,
+                                     "source": "total_agent",
+                                     "reason": str(note or observation.get("note", ""))[:80]},
+                                )
+                                touched_weeks.add(wk)
+                    # ── 门禁检查：针对被触碰的周 ──
+                    for wk in touched_weeks:
+                        try:
+                            maybe_apply_profile_personal_syllabus_progress(ps, wk)
+                        except Exception:
+                            pass
+            except Exception:
+                pass  # 周次更新失败不影响主流程
+
+        # ── best-effort 调用 Profile Agent 重算派生字段 ──
+        try:
+            from tasks.learning_profile.service import build_learning_profile
+            existing_reloaded, _ = load_existing_profile(user_id, syllabus_id)
+            if existing_reloaded:
+                build_learning_profile(
+                    user_id=user_id,
+                    syllabus_id=syllabus_id,
+                    learning_records=existing_reloaded.get('learning_records', []),
+                    answer_records=existing_reloaded.get('answer_records', []),
+                    resource_usage=existing_reloaded.get('resource_usage', []),
+                )
+        except Exception:
+            pass  # Agent 失败不影响已落账的确定性写入
+
+        updated_fields = [k for k in observation if observation[k]]
+        return _tool_result(
+            TOOL_CALL_PROFILE_AGENT,
+            bool(saved),
+            state=state,
+            updated_fields=updated_fields,
+            note_id=str(saved.get("profile_path") or "") if saved else "",
+        )
+    except Exception as exc:
+        return _tool_result(
+            TOOL_CALL_PROFILE_AGENT,
+            False,
+            state=state,
+            error_code="profile_observation_failed",
+            error_message=str(exc),
+        )
+
+
+def tool_list_my_resources(
+    state: Dict[str, Any],
+    resource_type: str = "",
+    knowledge_item: str = "",
+    include_feedback: bool = False,
+) -> dict:
+    """查看已生成的个人学习资源。"""
+    _append_trace(state, TOOL_LIST_MY_RESOURCES)
+    payload = _safe_dict(state.get("payload"))
+    user_id = _positive_int(payload.get("user_id"))
+    syllabus_id = _positive_int(payload.get("syllabus_id"))
+    # ── 从 manifest 加载用户资源 ──
+    all_resources = []
+    if user_id:
+        try:
+            from tasks import generative_task
+            manifest = generative_task.load_manifest(int(user_id))
+            for item in manifest.get("resources", []):
+                if not isinstance(item, dict):
+                    continue
+                if syllabus_id and _positive_int(item.get("syllabus_id")) not in (None, syllabus_id):
+                    continue
+                all_resources.append(item)
+        except Exception:
+            pass
+    payload["resources"] = all_resources
+    payload["resource_types"] = [resource_type] if resource_type else []
+    payload["knowledge_items"] = [knowledge_item] if knowledge_item else []
+    result = find_personal_resources(payload)
+    matches = _safe_list(result.get("matches"))
+    resources = []
+    for item in matches:
+        entry = {
+            "resource_id": _safe_text(item.get("resource_id")),
+            "resource_type": _safe_text(item.get("resource_type")),
+            "title": _safe_text(item.get("title")),
+            "topic": _safe_text(item.get("topic")),
+            "created_at": item.get("created_at"),
+        }
+        if include_feedback:
+            entry["feedback"] = _safe_dict(item.get("student_feedback"))
+        resources.append(entry)
+    return _tool_result(
+        TOOL_LIST_MY_RESOURCES,
+        True,
+        state=state,
+        resources=resources,
+        count=len(resources),
+    )
+
+
 def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
     payload = payload or {}
     state: Dict[str, Any] = {
@@ -2407,7 +3313,30 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
             error_message=context_result.get("error_message") or "",
         )
 
-    intent_result = tool_infer_user_intent(state)
+    # Legacy intent inference: use explicit intent from payload, fallback to keyword heuristics
+    _payload = _safe_dict(state.get("payload"))
+    _intent_explicit = _safe_text(_payload.get("intent"))
+    message_text = _safe_text(_payload.get("message") or _payload.get("question"))
+    if _intent_explicit:
+        intent_result = {"intent": _intent_explicit, "confidence": 0.98, "reason": "explicit_from_payload"}
+    elif _message_has_any(message_text, ("确认", "选择", "选第", "采纳", "开始学习", "confirm", "accept", "choose", "select")) and (
+        _payload.get("recommendation_result") or _payload.get("candidate_index") is not None
+    ):
+        intent_result = {"intent": INTENT_ACCEPT_RECOMMENDATION, "confidence": 0.86, "reason": "keyword_accept"}
+    elif _message_has_any(message_text, ("推荐", "路径", "学什么", "怎么学", "规划", "recommend", "learning path", "path", "plan")):
+        intent_result = {"intent": INTENT_RECOMMEND_LEARNING_PATH, "confidence": 0.82, "reason": "keyword_recommend"}
+    elif _message_has_any(message_text, ("完成", "做完", "得分", "通过", "completed", "complete", "done", "score", "passed")):
+        intent_result = {"intent": INTENT_RECORD_LEARNING_FEEDBACK, "confidence": 0.86, "reason": "keyword_feedback"}
+    elif _message_has_any(message_text, ("生成", "产", "给我", "资料", "资源", "继续", "continue", "give me", "resource", "practice", "document", "documents", "quiz")):
+        intent_result = {"intent": INTENT_GENERATE_CURRENT_STEP_RESOURCE, "confidence": 0.82, "reason": "keyword_generate"}
+    elif _message_has_any(message_text, ("跳过", "换一个", "skip")):
+        intent_result = {"intent": INTENT_SKIP_CURRENT_STEP, "confidence": 0.84, "reason": "keyword_skip"}
+    elif _message_has_any(message_text, ("为什么", "解释", "区别", "why", "explain", "difference")):
+        intent_result = {"intent": INTENT_ANSWER_LEARNING_QUESTION, "confidence": 0.84, "reason": "keyword_question"}
+    else:
+        intent_result = {"intent": INTENT_ASK_GOAL_CLARIFICATION, "confidence": 0.58, "reason": "ambiguous"}
+    state["intent"] = intent_result["intent"]
+    state["intent_result"] = intent_result
     intent = _safe_text(intent_result.get("intent"))
     final_result: dict = {"context": context_result, "intent": intent_result}
     success = True
@@ -2442,6 +3371,26 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
                 else:
                     suggested_next_action = ACTION_ASK_GOAL_CLARIFICATION
     elif intent == INTENT_ACCEPT_RECOMMENDATION:
+        if not bool(_payload.get("auto_accept") is True) and not _message_confirms_plan_selection(message_text):
+            final_result["accept_learning_plan"] = {
+                "tool": TOOL_ACCEPT_LEARNING_PLAN,
+                "success": True,
+                "accepted": False,
+                "candidate_index": _payload.get("candidate_index"),
+                "suggested_next_action": ACTION_WAIT_USER_ACCEPTANCE,
+                "error_code": "",
+                "error_message": "",
+            }
+            suggested_next_action = ACTION_WAIT_USER_ACCEPTANCE
+            return build_total_agent_result(
+                state,
+                success=True,
+                intent=intent,
+                result=final_result,
+                suggested_next_action=suggested_next_action,
+                error_code="",
+                error_message="",
+            )
         accept = tool_accept_learning_plan(state)
         final_result["accept_learning_plan"] = accept
         success = bool(accept.get("success"))
@@ -2471,6 +3420,9 @@ def deterministic_run_total_agent(payload: Dict[str, Any]) -> dict:
         final_result["record_learning_feedback"] = feedback
         next_task = tool_get_next_learning_task(state)
         final_result["next_task"] = next_task
+        guidance = build_learning_feedback_guidance(payload, feedback, next_task)
+        final_result["learning_guidance"] = guidance
+        final_result["reply"] = guidance.get("reply") or ""
         success = bool(feedback.get("success"))
         suggested_next_action = feedback.get("suggested_next_action") or ACTION_GENERATE_CURRENT_STEP_RESOURCE
         error_code = feedback.get("error_code") or ""
@@ -2516,6 +3468,7 @@ __all__ = [
     "apply_learning_effect_signal",
     "build_concept_explanation_answer",
     "build_current_step_resource_strategy",
+    "build_learning_feedback_guidance",
     "build_exercise_help_answer",
     "build_learning_strategy_answer",
     "build_session_context",
@@ -2538,12 +3491,20 @@ __all__ = [
     "run_resource_type_tasks",
     "score_evidence_relevance",
     "tool_accept_learning_plan",
+    "tool_abandon_learning_plan",
     "tool_generate_current_step_resource",
     "tool_get_next_learning_task",
-    "tool_infer_user_intent",
+    "tool_list_my_resources",
     "tool_load_total_context",
     "tool_normalize_learning_goal_for_recommendation",
+    "tool_note_profile_observation",
     "tool_record_learning_feedback",
     "tool_run_learning_recommendation",
     "tool_skip_current_step",
+    "tool_call_profile_agent",
+    "tool_call_recommendation_agent",
 ]
+
+# ── 别名：agent_runtime.py 期望这些名字 ──
+tool_call_profile_agent = tool_note_profile_observation
+tool_call_recommendation_agent = tool_run_learning_recommendation

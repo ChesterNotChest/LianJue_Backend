@@ -79,6 +79,58 @@ RUN_LLM_TESTS=1 RUN_REAL_RAG_TESTS=1 RUN_DB_TESTS=1 python -m pytest -q tests/to
 python -m pytest -q tests/test_personal_recommendation_task.py::test_rag_overlay_ignores_character_level_reasoning_edges tests/test_personal_recommendation_task.py::test_personal_recommendation_mock_rag_route_graph_closes -rs
 ```
 
+## 状态机
+
+推荐模块有三套状态，不能混用：
+
+| 状态对象 | 字段 | 取值 | 写入方 | 读取方 |
+|---|---|---|---|---|
+| Recommendation Snapshot | `status` | `proposed`、`accepted`、`expired` | `save_recommendation_snapshot`、`accept_recommendation_snapshot_path` | API/前端展示、采纳入口 |
+| Learning Plan | `status` | `active`、`completed`、`superseded`、`abandoned` | `accept_recommendation_path`、manifest event | Total Agent、推荐 API |
+| Learning Plan Step | `status` | `pending`、`active`、`completed`、`skipped` | `accept_recommendation_path`、`update_learning_plan_step_status` | Total Agent、学伴、Study Graph sync |
+
+推荐快照状态机：
+
+```text
+proposed
+  -> accepted  # 用户/API/Total Agent 采纳该快照候选路径
+  -> expired   # 预留给后续过期策略；当前实现不自动批量过期
+accepted
+  -> accepted  # 幂等读取；不应重新保存成 proposed
+```
+
+学习计划状态机：
+
+```text
+active
+  -> superseded  # 新推荐路径被采纳时，旧 active plan 通过 EVENT_PLAN_SUPERSEDED 关闭
+  -> completed   # 预留终态；当前主要通过 step 进度计算完成度
+  -> abandoned   # 预留终态；当前没有默认自动放弃逻辑
+```
+
+学习计划 step 状态机：
+
+```text
+accept_recommendation_path:
+  first step -> active
+  later steps -> pending
+
+record_learning_feedback:
+  active -> completed
+  next pending -> active
+
+skip_current_step:
+  active -> skipped
+  next pending -> active
+```
+
+边界：
+
+- `run_recommendation_route` / `run_recommendation_route_from_payload` 只产出候选推荐，不写 snapshot、不写 plan、不写 study graph。
+- `save_recommendation_snapshot` 是展示缓存写入，不代表学生进入学习计划。
+- `accept_recommendation_path` 才创建 active learning plan，并会 supersede 旧 active plan。
+- 只有 step 状态更新到 `completed` 且调用方允许 sync 时，才尝试同步 Study Graph；sync 失败不回滚 Learning Plan。
+
 ## 0. 新增的常量定义
 
 本次迁移没有新增 `constant.py` 级别的全局常量。

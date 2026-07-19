@@ -34,9 +34,13 @@ class BasePath(Enum):
         MATERIAL_MD_CACHE_ROOT = "/material/material_md_cache"
         MATERIAL_PDF_ROOT = "/material/pdfs"
 
-class SyllabusPermission(Enum):
+class UserPermission(Enum):
         USER = "user"
-        OWNER = "owner"
+        OPERATOR = "operator"
+
+class SyllabusStatus(Enum):
+        DRAFT = "draft"
+        PUBLISHED = "published"
 
 class PersonalSyllabus(Enum):
         FORGET_DAYS = 7
@@ -52,5 +56,5 @@ class ProfilePersonalSyllabusSuggestionSource(Enum):
 
 class ProfilePersonalSyllabusSuggestionThreshold(Enum):
         CONFIDENCE_MIN = 0.65
-        WEEK_REVIEW_THRESHOLD = 5
+        WEEK_REVIEW_THRESHOLD = 2
         SUGGESTION_HISTORY_MAX = 50

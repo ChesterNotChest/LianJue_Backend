@@ -1,5 +1,8 @@
 # Study Buddy contract
 
+> **状态：✅ 已实现**
+> 学伴树已升级到 v2（trunk/learned/explore 三层 + mastery + buddy_notes），主动消息与独立对话均已闭环。详见 `study_buddy_dev_doc.md`。
+
 本文档收口"学伴 Agent"的实现。它在总 Agent 之外维护独立学习记录树和标签式自演化记忆，支持主动消息推送和独立对话。
 
 ## 阶段 1：学习记录树构建与持久化

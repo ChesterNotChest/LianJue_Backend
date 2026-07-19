@@ -97,6 +97,8 @@ def create_app():
         ("blueprint.syllabus_material_api", "bp"),
         ("blueprint.user_api", "bp"),
         ("blueprint.study_buddy_api", "bp"),
+        ("blueprint.quiz_attempt_api", "bp"),
+        ("blueprint.admin_api", "bp"),
     ]
 
     for module_name, attr_name in blueprint_targets:

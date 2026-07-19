@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 960" font-family="Inter, system-ui, sans-serif">
+  <defs>
+    <linearGradient id="sb" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#03040a"/><stop offset="100%" stop-color="#080c1a"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1440" height="960" fill="#f8fafc"/>
+
+  <rect x="0" y="0" width="1440" height="56" fill="#fff" stroke="#f1f5f9"/>
+  <text x="32" y="36" font-size="16" font-weight="800" fill="#6366f1" letter-spacing="1">联觉 LianJue</text>
+  <rect x="140" y="16" width="52" height="24" rx="6" fill="#f1f5f9"/><text x="166" y="33" font-size="9" fill="#64748b" text-anchor="middle">管理</text>
+  <text x="200" y="36" fill="#cbd5e1">/</text><text x="214" y="36" font-weight="600" fill="#0f172a">大数据概论</text>
+  <text x="320" y="36" font-size="11" fill="#6366f1">← 返回首页</text>
+
+  <rect x="0" y="56" width="232" height="904" fill="#fff" stroke="#f1f5f9"/>
+  <text x="20" y="88" font-size="15" font-weight="700" fill="#0f172a">大数据概论</text>
+  <text x="40" y="138" font-size="13" fill="#475569">学科总览</text>
+  <text x="40" y="176" font-size="13" fill="#475569">学生进度</text>
+  <rect x="12" y="192" width="208" height="38" rx="8" fill="#6366f1" opacity="0.1"/><rect x="12" y="192" width="3" height="38" rx="1.5" fill="#6366f1"/>
+  <text x="40" y="216" font-size="13" font-weight="700" fill="#6366f1">知识图谱</text>
+
+  <!-- Galaxy sub-window -->
+  <g transform="translate(248,72)">
+    <rect x="0" y="0" width="1176" height="860" rx="14" stroke="#1e293b" stroke-width="2"/>
+    <rect x="0" y="0" width="1176" height="860" rx="14" fill="url(#sb)"/>
+
+    <g opacity="0.3"><circle cx="80" cy="60" r="1" fill="#f8d89c"/><circle cx="340" cy="140" r="0.6" fill="#b8d9ff"/><circle cx="580" cy="50" r="0.9" fill="#8ba4d6"/><circle cx="800" cy="200" r="0.5" fill="#f8d89c"/><circle cx="1000" cy="90" r="0.8" fill="#b8d9ff"/><circle cx="1200" cy="280" r="0.5" fill="#8ba4d6"/><circle cx="200" cy="360" r="1" fill="#f8d89c"/><circle cx="480" cy="420" r="0.6" fill="#b8d9ff"/></g>
+
+    <g opacity="0.03" stroke="#38bdf8" fill="none" stroke-width="48"><path d="M980,420 Q780,140 380,120 Q220,110 260,370 Q320,560 740,560 Q1220,560 1300,360"/></g>
+    <g opacity="0.025" stroke="#a78bfa" fill="none" stroke-width="42"><path d="M980,420 Q1160,620 1300,600 Q1340,580 1260,360 Q1060,120 600,120 Q220,120 220,460"/></g>
+
+    <circle cx="980" cy="420" r="60" fill="#38bdf8" opacity="0.06" filter="url(#glow)"/><circle cx="980" cy="420" r="24" fill="#38bdf8" opacity="0.14"/><circle cx="980" cy="420" r="8" fill="#f8fafc" opacity="0.6"/>
+
+    <g font-size="10" fill="#64748b" text-anchor="middle" opacity="0.6">
+      <circle cx="1200" cy="280" r="16" fill="#a78bfa" opacity="0.3"/><text x="1200" y="296" fill="#a78bfa" font-size="10">RAG</text>
+      <circle cx="500" cy="240" r="16" fill="#38bdf8" opacity="0.3"/><text x="500" y="256" fill="#38bdf8" font-size="10">Algorithm</text>
+      <circle cx="720" cy="580" r="16" fill="#22c55e" opacity="0.3"/><text x="720" y="596" fill="#22c55e" font-size="10">Software</text>
+    </g>
+
+    <rect x="1120" y="16" width="50" height="24" rx="12" fill="rgba(56,189,248,0.2)"/><text x="1145" y="33" font-size="9" font-weight="700" fill="#38bdf8" text-anchor="middle">银河</text>
+    <rect x="1176" y="16" width="50" height="24" rx="12" fill="rgba(255,255,255,0.02)"/><text x="1201" y="33" font-size="9" fill="#475569" text-anchor="middle">平面</text>
+
+    <g transform="translate(16,806)"><rect x="0" y="0" width="460" height="38" rx="8" fill="rgba(0,0,0,0.4)"/>
+      <text x="14" y="18" font-size="10" fill="#64748b">RAG · 12,480 nodes · 3,210 edges</text>
+      <text x="14" y="32" font-size="9" fill="#94a3b8">Algorithm: 8,200 · 1,850 · Software: 5,600 · 980</text>
+    </g>
+    <g transform="translate(492,806)"><rect x="0" y="0" width="120" height="38" rx="8" fill="rgba(0,0,0,0.3)"/>
+      <circle cx="14" cy="19" r="5" fill="#a78bfa" opacity="0.5"/><text x="24" y="23" font-size="9" fill="#64748b">RAG</text>
+      <circle cx="60" cy="19" r="5" fill="#38bdf8" opacity="0.5"/><text x="70" y="23" font-size="9" fill="#64748b">Alg</text>
+      <circle cx="96" cy="19" r="5" fill="#22c55e" opacity="0.5"/><text x="106" y="23" font-size="9" fill="#64748b">SW</text>
+    </g>
+  </g>
+</svg>

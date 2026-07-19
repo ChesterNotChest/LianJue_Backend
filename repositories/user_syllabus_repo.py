@@ -7,26 +7,19 @@ def get_user_syllabus(user_id: int, syllabus_id: int):
     return UserSyllabus.query.filter_by(user_id=user_id, syllabus_id=syllabus_id).first()
 
 
-def list_user_syllabuses(user_id: int, syllabus_permission: str = None):
-    """Return all UserSyllabus rows for a user, optionally filtered by permission."""
-    q = UserSyllabus.query.filter_by(user_id=user_id)
-    if syllabus_permission is not None:
-        q = q.filter_by(syllabus_permission=syllabus_permission)
-    return q.all()
+def list_user_syllabuses(user_id: int):
+    """Return all UserSyllabus rows for a user."""
+    return UserSyllabus.query.filter_by(user_id=user_id).all()
 
 
-def list_user_syllabuses_by_syllabus(syllabus_id: int, syllabus_permission: str = None):
-    """Return all UserSyllabus rows for a syllabus, optionally filtered by permission."""
-    q = UserSyllabus.query.filter_by(syllabus_id=syllabus_id)
-    if syllabus_permission is not None:
-        q = q.filter_by(syllabus_permission=syllabus_permission)
-    return q.all()
+def list_user_syllabuses_by_syllabus(syllabus_id: int):
+    """Return all UserSyllabus rows for a syllabus."""
+    return UserSyllabus.query.filter_by(syllabus_id=syllabus_id).all()
 
 
 def create_user_syllabus(
     user_id: int,
     syllabus_id: int,
-    syllabus_permission: str = 'user',
     personal_syllabus_path: str = None,
     personal_profile_path: str = None,
 ):
@@ -34,10 +27,6 @@ def create_user_syllabus(
     existing = get_user_syllabus(user_id, syllabus_id)
     if existing:
         updated = False
-        if syllabus_permission and getattr(existing, 'syllabus_permission', None) != syllabus_permission:
-            if syllabus_permission == 'owner' or not getattr(existing, 'syllabus_permission', None):
-                existing.syllabus_permission = syllabus_permission
-                updated = True
         if personal_syllabus_path and getattr(existing, 'personal_syllabus_path', None) != personal_syllabus_path:
             existing.personal_syllabus_path = personal_syllabus_path
             updated = True
@@ -51,7 +40,6 @@ def create_user_syllabus(
     us = UserSyllabus(
         user_id=user_id,
         syllabus_id=syllabus_id,
-        syllabus_permission=syllabus_permission,
         personal_syllabus_path=personal_syllabus_path,
         personal_profile_path=personal_profile_path,
     )

@@ -29,24 +29,40 @@
 
 ```text
 Lianjue_Backend/
-├─ app.py                    Flask app 工厂，注册 blueprint，初始化数据库
+├─ app.py                    Flask app 工厂，注册 11 个 blueprint，初始化数据库
 ├─ run.py                    服务启动入口，同时可拉起 JobChecker
 ├─ config.py                 配置加载
 ├─ config.example.json       配置模板
-├─ blueprint/                HTTP API 路由层
+├─ constant.py               枚举常量（JobStage、BasePath、UserPermission 等）
+├─ blueprint/                HTTP API 路由层（11 个 blueprint）
 ├─ tasks/                    业务逻辑层
+│   ├─ total_agent/          总 Agent（全局调度中枢，pydantic-ai 工具调用）
+│   ├─ study_buddy/          学伴 Agent（陪聊与轻量提醒）
+│   ├─ study_graph/          学习成长树（Student Agent、掌握度计算）
+│   ├─ personal_recommendation/  学习路径推荐（图谱构建、候选生成、IB-GRPO 选择）
+│   ├─ generative/           资源生成（文档/思维导图/测验/编程练习/PPT）
+│   ├─ learning_profile/     学习画像（特征计算、画像组装、周次推进）
+│   └─ common/               共享工具（Agent 模型构建、搜索、状态事件）
 ├─ repositories/             数据访问层
-├─ schemas/                  SQLAlchemy 数据表定义
+├─ schemas/                  SQLAlchemy 数据表定义（含 Agent 运行时状态表）
 ├─ utils/                    通用工具与 JobChecker
-├─ material/                 教学材料相关产物
-├─ schedule/                 教学大纲、个人教学大纲、日历相关产物
+├─ material/                 教学材料产物
+├─ schedule/                 教学大纲、个人教学大纲、日历产物
 ├─ pdfs/                     原始上传文件缓存
 ├─ markdowns/                文档解析产物
 ├─ triples/                  三元组产物
 ├─ knowledge/                知识产物
-├─ experiments/              实验计划、RAG 评测脚本与实验报告
+├─ generative/               AI 生成资源文件
+├─ study_graph/              学习成长树文件存储
+├─ study_buddy/              学伴树与消息历史
+├─ profiles/                 学习画像 JSON
+├─ history/                  聊天历史
+├─ experiments/              实验计划、RAG 评测脚本
 ├─ docs/                     补充文档
-└─ tests/ / test_*.py        各类测试与调试脚本
+│   ├─ *_dev_doc.md          各模块关闭报告（唯一事实源）
+│   ├─ *_contract.md         跨模块设计契约
+│   └─ archive/              已废弃的 small_plan 文档
+└─ tests/                    各类测试与调试脚本
 ```
 
 ## 主要数据实体
@@ -68,78 +84,25 @@ Lianjue_Backend/
 
 ## API 分组
 
-后端当前通过 5 组 blueprint 提供接口。
+后端当前通过 11 组 blueprint 提供接口：
 
-### 1. 用户接口
+| Blueprint | 前缀 | 职责 |
+|-----------|------|------|
+| `user_api` | `/api` | 用户注册/登录、画像查看/刷新、知识图谱快照 |
+| `learning_api` | `/api` | 学习路径推荐、学习计划管理、知识搜索 |
+| `total_agent_api` | `/api` | 总 Agent 统一调度入口（同步 + SSE 流式） |
+| `study_buddy_api` | `/api` | 学伴独立对话与消息历史 |
+| `study_graph_api` | `/api` | 学习成长树查看与 Student Agent 更新 |
+| `generative_api` | `/api` | AI 资源生成（文档/思维导图/测验/编程练习/PPT） |
+| `quiz_attempt_api` | `/api` | 测验提交与历史 |
+| `syllabus_material_api` | `/api` | 教学大纲与教学材料管理 |
+| `file_transmit_api` | `/api` | 文件上传与下载 |
+| `knowledge_build_api` | `/api` | 图谱构建 Job 管理 |
+| `admin_api` | `/api/admin` | 管理员：大纲发布、学生进度、权限管理 |
 
-位置：`blueprint/user_api.py`
+部分旧端点已废弃（返回 410）：`learning_ask_question`、`learning_update_personal_syllabus`、旧 `syllabus_material_*` 写入端点。
 
-- `POST /api/user_register`
-- `POST /api/user_login`
-- `POST /api/user_change_password`
-- `POST /api/user_reset_password`
-- `POST /api/user_update`
-- `POST /api/user_detail`
-- `GET /api/user_list`
-
-### 2. 教学大纲 / 教学材料接口
-
-位置：`blueprint/syllabus_material_api.py`
-
-教学大纲相关：
-
-- `POST /api/syllabus_build_draft`
-- `POST /api/syllabus_build`
-- `POST /api/syllabus_update_draft`
-- `POST /api/syllabus_update`
-- `POST /api/syllabus_detail`
-- `POST /api/syllabus_draft_detail`
-- `POST /api/syllabus_status`
-- `POST /api/syllabus_list`
-
-教学材料相关：
-
-- `POST /api/syllabus_material_generate_draft`
-- `POST /api/syllabus_material_update_draft`
-- `POST /api/syllabus_material_generate_final`
-- `POST /api/syllabus_material_update`
-- `POST /api/syllabus_material_publish`
-- `POST /api/syllabus_material_draft_detail`
-- `POST /api/syllabus_material_detail`
-- `POST /api/syllabus_material_status`
-- `POST /api/syllabus_material_list`
-
-### 3. 学习接口
-
-位置：`blueprint/learning_api.py`
-
-- `POST /api/learning_init_personal_syllabus`
-- `POST /api/learning_personal_syllabus_detail`
-- `POST /api/learning_ask_question`
-- `POST /api/learning_update_personal_syllabus`
-
-### 4. 文件接口
-
-位置：`blueprint/file_transmit_api.py`
-
-- `POST /api/file_upload`
-- `POST /api/file_upload_calendar`，支持可选 `user_id`，用于在创建 syllabus 后同步建立 owner 绑定
-- `POST /api/file_list_graph_files`
-- `POST /api/file_list_syllabus_files`
-- `POST /api/file_detail`
-
-### 5. 图谱 / Job 接口
-
-位置：`blueprint/knowledge_build_api.py`
-
-- `POST /api/job_graph_create`
-- `GET /api/job_graph_list`
-- `POST /api/job_create`
-- `POST /api/job_pause`
-- `POST /api/job_resume`
-- `POST /api/job_end`
-- `POST /api/job_detail`
-- `GET /api/job_list`
+详细接口文档见 `docs/interface_call_dev_doc.md`。
 
 ## 后台任务流水线
 

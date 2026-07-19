@@ -1,11 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from functools import lru_cache
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pydantic_ai.models.openai import OpenAIModel
 
 from pydantic_ai import Agent, ModelRetry, RunContext
-from pydantic_ai.models.openai import OpenAIModel
 
 from config import OPENAI_COMPAT_MODEL_CONFIGS
 from tasks.learning_profile import alignment
@@ -14,13 +16,6 @@ from tasks.learning_profile.models import LearningProfileDeps, LearningProfileRe
 from tasks.learning_profile.agent_tools import (
     _tool_assemble_profile,
     _tool_compute_features,
-    _tool_init_personal_syllabus_context,
-    _tool_load_existing_profile_context,
-    _tool_load_history_context,
-    _tool_load_personal_syllabus_context,
-    _tool_normalize_events,
-    _tool_read_personal_syllabus_context,
-    _tool_save_or_update_profile,
 )
 
 def _build_learning_profile_model() -> OpenAIModel:
@@ -34,42 +29,17 @@ def get_learning_profile_agent() -> Agent:
 		deps_type=LearningProfileDeps,
 		output_type=LearningProfileResult,
 		system_prompt=(
-			"You are the Learning Profile Agent. Use the registered tools step by step "
-			"to load context, normalize events, compute features, assemble the profile, "
-			"and save it when syllabus_id is present. Call one tool at a time. "
-			"Typical order: load_existing_profile_context, load_history_context, "
-			"load_personal_syllabus_context, normalize_events, compute_features, "
-			"assemble_profile, save_or_update_profile. Return only a LearningProfileResult JSON object."
+			"You are the Learning Profile Agent. "
+			"Context loading, event normalization, and profile persistence "
+			"are handled before and after you run. "
+			"Call compute_features then assemble_profile. "
+			"Return only a LearningProfileResult JSON object."
 		),
 		name='learning_profile_agent',
 		description='Learning profile tool-calling agent',
 		retries=2,
 		defer_model_check=True,
 	)
-
-	@agent.tool(sequential=True)
-	def load_existing_profile_context(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_load_existing_profile_context(ctx.deps.state)
-
-	@agent.tool(sequential=True)
-	def load_history_context(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_load_history_context(ctx.deps.state)
-
-	@agent.tool(sequential=True)
-	def load_personal_syllabus_context(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_load_personal_syllabus_context(ctx.deps.state)
-
-	@agent.tool(sequential=True)
-	def read_personal_syllabus(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_read_personal_syllabus_context(ctx.deps.state)
-
-	@agent.tool(sequential=True)
-	def init_personal_syllabus(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_init_personal_syllabus_context(ctx.deps.state)
-
-	@agent.tool(sequential=True)
-	def normalize_events(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_normalize_events(ctx.deps.state)
 
 	@agent.tool(sequential=True)
 	def compute_features(ctx: RunContext[LearningProfileDeps]) -> dict:
@@ -79,10 +49,6 @@ def get_learning_profile_agent() -> Agent:
 	def assemble_profile(ctx: RunContext[LearningProfileDeps]) -> dict:
 		return _tool_assemble_profile(ctx.deps.state)
 
-	@agent.tool(sequential=True)
-	def save_or_update_profile(ctx: RunContext[LearningProfileDeps]) -> dict:
-		return _tool_save_or_update_profile(ctx.deps.state)
-
 	@agent.output_validator
 	def require_profile_ready(
 		ctx: RunContext[LearningProfileDeps],
@@ -91,13 +57,8 @@ def get_learning_profile_agent() -> Agent:
 		state = ctx.deps.state
 		if not isinstance(state.get('profile'), dict):
 			raise ModelRetry(
-				'You must call normalize_events, compute_features, and assemble_profile before final output. '
+				'You must call compute_features and assemble_profile before final output. '
 				'The state does not contain a profile yet.'
-			)
-		if state.get('syllabus_id') is not None and not state.get('profile_saved'):
-			raise ModelRetry(
-				'You must call save_or_update_profile before final output when syllabus_id is present. '
-				'The profile has not been persisted yet.'
 			)
 		if not isinstance(output.profile, dict):
 			output.profile = state['profile']
@@ -192,4 +153,3 @@ def fallback_next_learning_profile_tool(state: Dict[str, Any]) -> Dict[str, Any]
 	if state.get('syllabus_id') is not None and not state.get('profile_saved'):
 		return {'action': 'tool', 'tool_name': 'save_or_update_profile', 'reason': 'fallback save profile'}
 	return {'action': 'finalize', 'tool_name': None, 'reason': 'fallback finalize'}
-

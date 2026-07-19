@@ -64,11 +64,16 @@ material/material_pdf/*
 history/*
 !history/.gitkeep
 
+study_buddy/*
+!study_buddy/.gitkeep
+
 profiles/*
 !profiles/.gitkeep
 
 study_graph/*
 !study_graph/.gitkeep
+quiz_attempts/*
+!quiz_attempts/.gitkeep
 tests/artifacts/
 tests/_artifacts/
 
@@ -86,3 +91,6 @@ personal_recommendation/learning_plan/*
 !personal_recommendation/learning_plan/.gitkeep
 personal_recommendation/recommendation_snapshot/*
 !personal_recommendation/recommendation_snapshot/.gitkeep
+
+.claude
+.codex

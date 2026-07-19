@@ -11,6 +11,7 @@ class Syllabus(db.Model):
     file_id: int = db.Column(db.Integer, nullable=True) # 描述的是教学日历文件的ID，便于前端展示和后续查询使用
     create_time = db.Column(db.DateTime, default=db.func.current_timestamp())
     day_one_time = db.Column(db.DateTime, nullable=True, default=None)
+    status: str = db.Column(db.String(20), nullable=False, default='draft')  # 'draft' | 'published'
 
     def __repr__(self):
         return f"<Syllabus {self.syllabus_id} - Edu Calendar Path: {self.edu_calendar_path} - Syllabus Draft Path: {self.syllabus_draft_path} - Syllabus Path: {self.syllabus_path} - File ID (calendar): {self.file_id}>"

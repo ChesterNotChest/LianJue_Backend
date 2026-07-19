@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 380" font-family="Inter, 'Noto Sans SC', system-ui, sans-serif">
+  <defs><filter id="sm"><feDropShadow dx="0" dy="1" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.08"/></filter></defs>
+  <rect width="900" height="380" fill="#f8fafc"/>
+  <text x="12" y="24" font-size="14" font-weight="700" fill="#0f172a">课程封面横幅算法（djb2 哈希 → 配色 + 几何背景 + 艺术字标题）</text>
+  <text x="12" y="42" font-size="11" fill="#94a3b8">生成 360×136 封面图，替换 logo/avatar 小图标，作为课程卡片顶部横幅</text>
+
+  <!-- Banner 1: 大数据概论 -->
+  <g transform="translate(12,60)">
+    <text x="0" y="-6" font-size="10" font-weight="600" fill="#94a3b8">Banner 1</text>
+    <!-- Card -->
+    <rect x="0" y="0" width="270" height="230" rx="12" fill="#fff" stroke="#e2e8f0" filter="url(#sm)"/>
+    <!-- Banner cover -->
+    <rect x="0" y="0" width="270" height="120" rx="12" fill="#4f46e5"/>
+    <rect x="0" y="60" width="270" height="60" fill="#4f46e5"/>
+    <circle cx="220" cy="40" r="70" fill="rgba(255,255,255,0.06)"/><circle cx="60" cy="90" r="100" fill="rgba(255,255,255,0.04)"/>
+    <line x1="50" y1="15" x2="160" y2="80" stroke="rgba(255,255,255,0.08)" stroke-width="2"/><line x1="100" y1="15" x2="200" y2="80" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
+    <text x="135" y="72" font-size="22" font-weight="800" fill="#fff" text-anchor="middle" letter-spacing="2">大数据概论</text>
+    <text x="135" y="94" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">Big Data · RAG · Algorithm</text>
+    <!-- Below banner -->
+    <text x="12" y="140" font-size="12" font-weight="700" fill="#0f172a">18 周 · 2025秋</text>
+    <rect x="180" y="136" width="42" height="18" rx="5" fill="#ede9fe"/><text x="201" y="149" font-size="8" font-weight="600" fill="#6366f1" text-anchor="middle">已发布</text>
+    <text x="12" y="168" font-size="10" fill="#64748b">学习进度</text><text x="246" y="168" font-size="10" font-weight="700" fill="#22c55e" text-anchor="end">68%</text>
+    <rect x="12" y="174" width="246" height="5" rx="2.5" fill="#f1f5f9"/><rect x="12" y="174" width="168" height="5" rx="2.5" fill="#22c55e"/>
+    <rect x="12" y="196" width="72" height="24" rx="7" fill="#6366f1"/><text x="48" y="213" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">进入学习</text>
+
+    <text x="135" y="252" font-size="9" fill="#94a3b8" text-anchor="middle">封面: hash="大数据概论" → #4f46e5 + 斜线几何</text>
+  </g>
+
+  <!-- Banner 2: Python -->
+  <g transform="translate(300,60)">
+    <text x="0" y="-6" font-size="10" font-weight="600" fill="#94a3b8">Banner 2</text>
+    <rect x="0" y="0" width="270" height="230" rx="12" fill="#fff" stroke="#e2e8f0" filter="url(#sm)"/>
+    <rect x="0" y="0" width="270" height="120" rx="12" fill="#0f766e"/>
+    <rect x="0" y="60" width="270" height="60" fill="#0f766e"/>
+    <circle cx="220" cy="30" r="80" fill="rgba(255,255,255,0.06)"/><circle cx="60" cy="80" r="90" fill="rgba(255,255,255,0.04)"/>
+    <g opacity="0.1" stroke="#fff" stroke-width="3"><rect x="60" y="70" width="40" height="40" rx="4" fill="none"/><rect x="120" y="55" width="40" height="40" rx="4" fill="none"/><rect x="90" y="30" width="30" height="40" rx="4" fill="none"/></g>
+    <text x="135" y="72" font-size="22" font-weight="800" fill="#fff" text-anchor="middle" letter-spacing="2">Python</text>
+    <text x="135" y="94" font-size="10" fill="rgba(255,255,255,0.5)" text-anchor="middle">程序设计 · Software</text>
+    <text x="12" y="140" font-size="12" font-weight="700" fill="#0f172a">12 周 · 2025秋</text>
+    <rect x="180" y="136" width="42" height="18" rx="5" fill="#ede9fe"/><text x="201" y="149" font-size="8" font-weight="600" fill="#6366f1" text-anchor="middle">已发布</text>
+    <text x="12" y="168" font-size="10" fill="#64748b">学习进度</text><text x="246" y="168" font-size="10" font-weight="700" fill="#f59e0b" text-anchor="end">34%</text>
+    <rect x="12" y="174" width="246" height="5" rx="2.5" fill="#f1f5f9"/><rect x="12" y="174" width="84" height="5" rx="2.5" fill="#f59e0b"/>
+    <rect x="12" y="196" width="72" height="24" rx="7" fill="#6366f1"/><text x="48" y="213" font-size="10" font-weight="700" fill="#fff" text-anchor="middle">进入学习</text>
+    <text x="135" y="252" font-size="9" fill="#94a3b8" text-anchor="middle">封面: hash="Python" → #0f766e + 矩形堆叠</text>
+  </g>
+
+  <!-- Banner 3: ML (draft) -->
+  <g transform="translate(588,60)">
+    <text x="0" y="-6" font-size="10" font-weight="600" fill="#94a3b8">Banner 3 (草稿)</text>
+    <rect x="0" y="0" width="270" height="230" rx="12" fill="#fafafa" stroke="#e2e8f0" stroke-dasharray="5,3"/>
+    <rect x="0" y="0" width="270" height="120" rx="12" fill="#94a3b8"/>
+    <rect x="0" y="60" width="270" height="60" fill="#94a3b8"/>
+    <circle cx="200" cy="40" r="70" fill="rgba(255,255,255,0.05)"/>
+    <text x="135" y="72" font-size="20" font-weight="800" fill="#fff" text-anchor="middle">Machine Learning</text>
+    <text x="135" y="94" font-size="10" fill="rgba(255,255,255,0.4)" text-anchor="middle">草稿 · 尚未发布</text>
+    <text x="12" y="140" font-size="12" font-weight="700" fill="#94a3b8">课程准备中</text>
+    <rect x="12" y="196" width="72" height="24" rx="7" fill="#f1f5f9" stroke="#e2e8f0"/><text x="48" y="213" font-size="10" font-weight="700" fill="#94a3b8" text-anchor="middle">等待中</text>
+    <text x="135" y="252" font-size="9" fill="#cbd5e1" text-anchor="middle">封面: 草稿 → 灰色 + 无几何</text>
+  </g>
+
+  <!-- Algorithm params -->
+  <g transform="translate(12,330)" font-size="10" fill="#64748b">
+    <text x="0" y="0"><tspan font-weight="700" fill="#0f172a">输出:</tspan> 360×136 SVG 封面图（课程卡片顶部横幅）</text>
+    <text x="0" y="15"><tspan font-weight="700" fill="#0f172a">哈希:</tspan> djb2(title) → 32-bit → 配色 / 几何 / 排版</text>
+    <text x="0" y="30"><tspan font-weight="700" fill="#0f172a">配色:</tspan> PALETTE[hash%8] = {#4f46e5, #0f766e, #b91c1c, #92400e, #1e40af, #6b21a8, #9d174d, #166534}</text>
+    <text x="0" y="45"><tspan font-weight="700" fill="#0f172a">几何:</tspan> (hash>>4)%4 → 斜线 / 矩形 / 波纹 / 三角重叠 · 半透明叠加</text>
+  </g>
+</svg>
