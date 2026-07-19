@@ -13,6 +13,7 @@ from tasks import learning_profile_task
 from tasks.common.search_tool import search_tool
 from tasks.personal_recommendation_task import (
     accept_recommendation_snapshot_path,
+    ensure_recommendation_snapshot,
     get_active_learning_plan,
     get_recommendation_snapshot,
     list_recommendation_snapshots,
@@ -283,6 +284,16 @@ def personal_recommendation_api():
     """
     data = request.get_json(silent=True) or {}
     result = run_recommendation_route_from_payload(data)
+    # Keep API-level snapshot behavior stable even when tests monkeypatch the
+    # route runner and bypass the service-layer snapshot hook.
+    result = ensure_recommendation_snapshot(
+        data.get("user_id"),
+        data.get("syllabus_id"),
+        result,
+        request_payload=data,
+        session_id=data.get("session_id"),
+        persist_snapshot=data.get("persist_snapshot") is not False,
+    )
     status_code = 200 if result.get('success') else 400
     return jsonify(result), status_code
 

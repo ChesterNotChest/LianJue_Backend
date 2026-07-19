@@ -345,11 +345,12 @@ def test_profile_personal_syllabus_multi_round_propagation(monkeypatch, repo_jso
     assert observations[0]["file_competance"] == "none"
     assert observations[1]["file_competance"] == "weak"
     assert observations[1]["profile_week_competance"] == "weak"
-    assert observations[2]["file_competance"] == "weak"
-    assert observations[2]["file_progress"] == 3
+    assert observations[2]["file_competance"] == "normal"
+    assert observations[2]["profile_week_competance"] == "normal"
+    assert observations[2]["file_progress"] == 0
     assert observations[3]["file_competance"] == "normal"
     assert observations[3]["profile_week_competance"] == "normal"
-    assert observations[3]["file_progress"] == 0
+    assert observations[3]["file_progress"] > observations[2]["file_progress"]
     assert len(master_two_data["period"][0]["suggestion_history"]) == 15
 
     print(

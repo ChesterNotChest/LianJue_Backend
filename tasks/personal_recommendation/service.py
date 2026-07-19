@@ -410,21 +410,27 @@ def _serialize_path_item(
     state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     item = _json_safe(dict(candidate))
-    path = [str(node_id) for node_id in item.get("path") or []]
-    context_path = _context_prefix_for_path(path, learning_tree, state)
-    full_path = context_path + [node_id for node_id in path if node_id not in context_path]
-    item["path"] = path
+    raw_path = [str(node_id) for node_id in item.get("path") or []]
+    actionable_path = _actionable_path(raw_path, learning_tree, state)
+    path_context = [node_id for node_id in raw_path if node_id not in actionable_path]
+    external_context = _context_prefix_for_path(actionable_path or raw_path, learning_tree, state)
+    context_path = []
+    for node_id in [*external_context, *path_context]:
+        if node_id not in context_path:
+            context_path.append(node_id)
+    full_path = context_path + [node_id for node_id in actionable_path if node_id not in context_path]
+    item["path"] = actionable_path
     item["context_path"] = context_path
     item["full_path"] = full_path
-    item["actionable_path"] = _actionable_path(path, learning_tree, state)
-    item["path_nodes"] = _path_node_details(path, learning_tree)
+    item["actionable_path"] = actionable_path
+    item["path_nodes"] = _path_node_details(actionable_path, learning_tree)
     item["context_path_nodes"] = _path_node_details(context_path, learning_tree)
     item["full_path_nodes"] = _path_node_details(full_path, learning_tree)
     item["actionable_path_nodes"] = _path_node_details(item["actionable_path"], learning_tree)
-    item["path_edges"] = _path_edges(path, learning_tree)
+    item["path_edges"] = _path_edges(actionable_path, learning_tree)
     item["full_path_edges"] = _path_edges(full_path, learning_tree)
-    item["fallback_dependency"] = summarize_fallback_dependency(path, learning_tree or {})
-    item["path_depth"] = int(item.get("path_depth") or len(path))
+    item["fallback_dependency"] = summarize_fallback_dependency(actionable_path, learning_tree or {})
+    item["path_depth"] = len(actionable_path)
     item["full_path_depth"] = len(full_path)
     item["selected"] = selected
     if rank is not None:
@@ -435,7 +441,7 @@ def _serialize_path_item(
         item["rag_relevance"] = score_candidate_with_overlay(item, rag_overlay)
         item["rag_matched_nodes"] = [
             node_id
-            for node_id in path
+            for node_id in actionable_path
             if (rag_overlay.get("node_relevance") or {}).get(str(node_id))
         ]
     return item

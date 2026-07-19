@@ -115,7 +115,11 @@ def test_syllabus_adapter_maps_period_as_semantic_weekly_knowledge_nodes():
     assert learning_tree
     assert "week_5" not in learning_tree
     assert "week_6" not in learning_tree
-    hbase_node_id = next(node_id for node_id, node in learning_tree.items() if "HBase" in node["title"])
+    hbase_node_id = next(
+        node_id
+        for node_id, node in learning_tree.items()
+        if "HBase" in node["title"] and node.get("decomposition_method") == "period_anchor"
+    )
     hbase_node = learning_tree[hbase_node_id]
     assert hbase_node["node_source"] == "syllabus_period"
     assert hbase_node["decomposition_method"] == "period_anchor"
